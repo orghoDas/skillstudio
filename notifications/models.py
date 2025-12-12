@@ -1,35 +1,30 @@
 from django.db import models
 from django.utils import timezone
-from accounts.models import User
+from django.conf import settings
+
+User = settings.AUTH_USER_MODEL
 
 
 class Notification(models.Model):
-
-    TYPES = [
-        ("course", "Course Update"),
-        ("exam", "Exam Reminder"),
-        ("event", "Event Reminder"),
-        ("system", "System Message"),
-        ("payment", "Payment Update"),
-        ("ai", "AI Recommendation"),
+    CHANNEL_CHOICES = [
+        ('email', 'Email'),
+        ('sms', 'SMS'),
+        ('in_app', 'In-App'),
+        ('push', 'Push Notification')
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    title = models.CharField(max_length=255)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    title = models.CharField(max_length=255, blank=True, null=True)
     message = models.TextField()
-    notif_type = models.CharField(max_length=20, choices=TYPES)
-
+    channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES, default='in_app')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 
-    metadata = models.JSONField(default=dict)
-
 
 class NotificationPreference(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_preferences')
     allow_email = models.BooleanField(default=True)
     allow_sms = models.BooleanField(default=False)
+    allow_in_app = models.BooleanField(default=True)
     allow_push = models.BooleanField(default=True)
-
     updated_at = models.DateTimeField(auto_now=True)
