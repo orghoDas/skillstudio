@@ -31,7 +31,7 @@ class Course(models.Model):
     instructor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='courses')
     title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True)
+    slug = models.SlugField(max_length=255, unique=True, default='default-slug')
     description = models.CharField(max_length=2000, blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2)
     thumbnail = models.URLField(blank=True, null = True)
@@ -51,7 +51,7 @@ class Course(models.Model):
 class CourseVersion(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='versions')
     version_number = models.PositiveIntegerField()
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, default='Version')
     content = models.JSONField(default=dict)
     published = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
