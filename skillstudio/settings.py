@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "ai_recommender",
     "social",
     "payments",
+    "notifications"
 ]
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
