@@ -7,7 +7,7 @@ from courses.models import Course
 
 class QuestionBank(models.Model):
     DIFFICULTIES = [
-        (easy', 'Easy'),
+        ('easy', 'Easy'),
         ('medium', 'Medium'),
         ('hard', 'Hard'),
     ]
@@ -35,4 +35,3 @@ class ExamAttempt(models.Model):
 
     started_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(null=True, blank=True) 
-
