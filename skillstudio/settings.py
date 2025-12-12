@@ -48,9 +48,25 @@ INSTALLED_APPS = [
     "rest_framework",      
     "channels",
     "core.apps.CoreConfig",
+    "accounts",
+    "courses",
+    "exams",
+    "events",
+    "ai_recommender",
+    "social",
+    "payments",
 ]
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("REDIS_URL", "redis://localhost:6379")],
+        },
+    },
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -125,3 +141,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
