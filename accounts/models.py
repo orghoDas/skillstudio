@@ -14,7 +14,7 @@ class User(AbstractBaseUser):
     created_at = models.DateTimeField(default=timezone.now)
 
 class AuditLog(models.Model):
-    user = models.ForeighnKey(User, on_delete=models.SET_NULL, null = True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null = True)
     action = models.CharField(max_length=255)
     object_type = models.CharField(max_length=100)
     object_id = models.CharField(max_length=100)
