@@ -51,16 +51,12 @@ INSTALLED_APPS = [
     "accounts",
     "courses",
     'assessments',
-    'enrollments',
-    'live',
-    "analytics",
     "exams",
     "events",
     "ai_recommender",
     "social",
     "payments",
     "notifications",
-    'audit'
 ]
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
