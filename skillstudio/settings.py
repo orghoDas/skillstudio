@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "social",
     "payments",
     "notifications",
+    'live'
 ]
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
