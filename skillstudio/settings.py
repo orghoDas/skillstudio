@@ -50,12 +50,17 @@ INSTALLED_APPS = [
     "core.apps.CoreConfig",
     "accounts",
     "courses",
+    'assessments',
+    'enrollments',
+    'live',
+    "analytics",
     "exams",
     "events",
     "ai_recommender",
     "social",
     "payments",
-    "notifications"
+    "notifications",
+    'audit'
 ]
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
