@@ -10,8 +10,6 @@ class Quiz(models.Model):
     total_marks = models.PositiveIntegerField(default=0)
     time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
 
-
-
 class QuizQuestion(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     question_text = models.TextField()
