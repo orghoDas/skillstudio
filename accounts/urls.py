@@ -4,11 +4,12 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from . import views
+from .views import InstructorOnlyView
 
 urlpatterns = [
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("register/", views.RegisterView.as_view(), name="register"),
     path("me/", views.ProfileView.as_view(), name="me"),
-    path("instructor-only/", views.InstructorOnlyView.as_view(), name="instructor_only"),
+    path("instructor-only/", InstructorOnlyView.as_view(), name="instructor_only"),
 ]

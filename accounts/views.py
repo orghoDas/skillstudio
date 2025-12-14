@@ -25,4 +25,4 @@ class InstructorOnlyView(APIView):
     permission_classes = [IsInstructor]
 
     def get(self, request):
-        return Response({"message": "Hello, Instructor!"})
+        return Response({"message": "Hello, Instructor!", 'user': request.user.email})
