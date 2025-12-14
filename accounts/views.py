@@ -5,7 +5,12 @@ from .models import Profile
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .permissions import IsInstructor
+from .permissions import IsInstructor, IsAdmin
+
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+
+from accounts.models import User
 
 
 class RegisterView(generics.CreateAPIView):
@@ -26,3 +31,13 @@ class InstructorOnlyView(APIView):
 
     def get(self, request):
         return Response({"message": "Hello, Instructor!", 'user': request.user.email})
+    
+
+class PromoteToInstructorView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
+        user.role = User.Role.INSTRUCTOR
+        user.save()
+        return Response({"message": f"User {user.email} promoted to Instructor."}, status=status.HTTP_200_OK)

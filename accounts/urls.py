@@ -12,4 +12,5 @@ urlpatterns = [
     path("register/", views.RegisterView.as_view(), name="register"),
     path("me/", views.ProfileView.as_view(), name="me"),
     path("instructor-only/", InstructorOnlyView.as_view(), name="instructor_only"),
+    path("promote/<int:user_id>/", views.PromoteToInstructorView.as_view(), name="promote_to_instructor"),
 ]
