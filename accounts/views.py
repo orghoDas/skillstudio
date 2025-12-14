@@ -1,10 +1,11 @@
 from django.shortcuts import render
 from rest_framework import generics, permissions
-from .serializers import RegisterSerializer, ProfileSerializer
+from .serializers import RegisterSerializer, ProfileSerializer, MeSerializer
 from .models import Profile
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from .permissions import IsInstructor, IsAdmin
 
 from rest_framework import status
@@ -41,3 +42,29 @@ class PromoteToInstructorView(APIView):
         user.role = User.Role.INSTRUCTOR
         user.save()
         return Response({"message": f"User {user.email} promoted to Instructor."}, status=status.HTTP_200_OK)
+    
+
+def login_page(request):
+    return render(request, "auth/login.html")
+
+
+def register_page(request):
+    return render(request, "auth/register.html")
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = MeSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = MeSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
