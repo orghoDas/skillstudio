@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
+from django.utils.text import slugify
+from django.core.exceptions import ValidationError
 # Create your models here.
 
 User = settings.AUTH_USER_MODEL
@@ -28,14 +30,22 @@ class Course(models.Model):
         ('under_review', 'Under Review'),
     ]
 
+    LEVELS = [
+        ('beginner', 'Beginner'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+    ]
+
     instructor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='courses')
     title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True, default='default-slug')
+    slug = models.SlugField(max_length=255, unique=True)
     description = models.CharField(max_length=2000, blank=True)
-    price = models.DecimalField(max_digits=8, decimal_places=2)
+    price = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    is_free = models.BooleanField(default=False)
     thumbnail = models.URLField(blank=True, null = True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    level = models.CharField(max_length=20, choices=LEVELS, default='beginner')
     current_version = models.ForeignKey('CourseVersion', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -46,6 +56,15 @@ class Course(models.Model):
 
     def __str__(self):
         return self.title
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.is_free:
+            self.price = 0
     
 
 class CourseVersion(models.Model):
@@ -94,8 +113,8 @@ class Lesson(models.Model):
     module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name='lessons')
     title = models.CharField(max_length=255)
     content_type = models.CharField(max_length=20, choices=CONTENT_CHOICES, default='video')
-    content = models.TextField(blank=True, null=True)
-    video_url = models.TextField(blank=True, null=True)
+    content_text = models.TextField(blank=True)
+    content_url = models.URLField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
@@ -105,6 +124,12 @@ class Lesson(models.Model):
 
     def __str__(self):
         return self.title
+    
+    def clean(self):
+        if self.content_type in ['video', 'resource'] and not self.content_url:
+            raise ValidationError(f"Content URL is required for content type '{self.content_type}'.")
+        if self.content_type in ['text', 'quiz', 'assignment'] and not self.content_text:
+            raise ValidationError(f"Content text is required for content type '{self.content_type}'.")
     
 
 class LessonResource(models.Model):
