@@ -119,6 +119,8 @@ class Lesson(models.Model):
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
 
+    view_count = models.PositiveIntegerField(default=0)
+
     class Meta:
         ordering = ['position']
 
