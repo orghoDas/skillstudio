@@ -126,10 +126,21 @@ class Lesson(models.Model):
         return self.title
     
     def clean(self):
-        if self.content_type in ['video', 'resource'] and not self.content_url:
-            raise ValidationError(f"Content URL is required for content type '{self.content_type}'.")
-        if self.content_type in ['text', 'quiz', 'assignment'] and not self.content_text:
-            raise ValidationError(f"Content text is required for content type '{self.content_type}'.")
+        if self.content_type == 'video' and not self.video_url:
+            raise ValidationError("Video lessons must have a video URL.")
+
+        if self.content_type == 'text' and not self.content_text:
+            raise ValidationError("Text lessons must have content.")
+
+        if self.content_type == 'quiz' and self.content_text:
+            raise ValidationError("Quiz lessons should not store text content.")
+        if self.content_type == 'resource' and not self.resources.exists():
+            raise ValidationError("Resource lessons must have at least one resource.")
+        
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     
 
 class LessonResource(models.Model):

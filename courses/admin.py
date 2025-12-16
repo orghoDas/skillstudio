@@ -12,16 +12,16 @@ from .models import (
 
 class LessonResourceInline(admin.TabularInline):
     model = LessonResource
-    extra = 0
+    extra = 1
 
 class LessonInline(admin.TabularInline):
     model = Lesson
-    extra = 0
+    extra = 1
     show_change_link = True
 
 class ModuleInline(admin.TabularInline):
     model = Module
-    extra = 0
+    extra = 1
     show_change_link = True
 
 
