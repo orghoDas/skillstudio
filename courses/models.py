@@ -114,7 +114,7 @@ class Lesson(models.Model):
     title = models.CharField(max_length=255)
     content_type = models.CharField(max_length=20, choices=CONTENT_CHOICES, default='video')
     content_text = models.TextField(blank=True)
-    content_url = models.URLField(blank=True)
+    video_url = models.URLField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
