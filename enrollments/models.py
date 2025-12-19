@@ -18,7 +18,7 @@ class Enrollment(models.Model):
     enrolled_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(null=True, blank=True)
 
-    completed = models.BooleanField(default=False)
+    is_completed = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ('user', 'course')   

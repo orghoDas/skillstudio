@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from .models import LessonProgress, Enrollment
 from courses.models import Lesson
 from .serializers import LessonProgressSerializer
+from .utils import check_and_complete_course, get_resume_lesson
 
 # Create your views here.
 
@@ -69,8 +70,38 @@ class LessonWatchTimeView(APIView):
             raise ValidationError({"detail": "Invalid watch time."})
         
         progress.watch_time += added_time
+
+        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds and not progress.is_completed):
+            progress.is_completed = True
+            progress.completed_at = timezone.now()
+
+        if progress.is_completed:
+            check_and_complete_course(progress.enrollment)
+
+
         progress.save(update_fields=['watch_time'])
 
         return Response({
-            "watch_time": progress.watch_time
+            "watch_time": progress.watch_time,
+            'completed': progress.is_completed
         })
+    
+
+class ResumeLessonView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        enrollment = get_object_or_404(Enrollment, user=request.user, course_id=course_id, status='active')
+
+        lesson = get_resume_lesson(enrollment)
+
+        if not lesson:
+            return Response({"detail": "All lessons completed.",
+                            'completed': True})
+        
+        return Response({
+            "lesson_id": lesson.id,
+            "lesson_title": lesson.title,
+            "module_title": lesson.module.title,
+        })
+    
