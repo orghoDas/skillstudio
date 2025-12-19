@@ -2,24 +2,9 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 
-# Create your models here.
-
 User = settings.AUTH_USER_MODEL
 
 
-# PostgreSQL Equivalent:
-# CREATE TABLE enrollments_enrollment (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     course_id INTEGER NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
-#     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'canceled')),
-#     enrolled_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     completed_at TIMESTAMP WITH TIME ZONE,
-#     progress JSONB DEFAULT '{}',
-#     completed BOOLEAN NOT NULL DEFAULT FALSE,
-#     UNIQUE (user_id, course_id)
-# );
-# CREATE INDEX enrollments_enrollment_user_course_idx ON enrollments_enrollment(user_id, course_id);
 class Enrollment(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
@@ -44,19 +29,6 @@ class Enrollment(models.Model):
         return f"{self.user} enrolled in {self.course} - {self.status}"
 
 
-# PostgreSQL Equivalent:
-# CREATE TABLE enrollments_lessonprogress (
-#     id SERIAL PRIMARY KEY,
-#     enrollment_id INTEGER REFERENCES enrollments_enrollment(id) ON DELETE CASCADE,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     lesson_id INTEGER NOT NULL REFERENCES courses_lesson(id) ON DELETE CASCADE,
-#     is_completed BOOLEAN NOT NULL DEFAULT FALSE,
-#     watch_time INTEGER NOT NULL DEFAULT 0 CHECK (watch_time >= 0),
-#     started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     completed_at TIMESTAMP WITH TIME ZONE,
-#     UNIQUE (enrollment_id, lesson_id)
-# );
-# CREATE INDEX enrollments_lessonprogress_lesson_completed_idx ON enrollments_lessonprogress(lesson_id, is_completed);
 class LessonProgress(models.Model):
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name='lesson_progress', null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lesson_progress')
@@ -74,16 +46,6 @@ class LessonProgress(models.Model):
         return f'{self.enrollment.user} - {self.lesson.title}'
 
 
-# PostgreSQL Equivalent:
-# CREATE TABLE enrollments_wishlist (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     course_id INTEGER NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
-#     added_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     UNIQUE (user_id, course_id)
-# );
-# CREATE INDEX enrollments_wishlist_user_id_idx ON enrollments_wishlist(user_id);
-# CREATE INDEX enrollments_wishlist_course_id_idx ON enrollments_wishlist(course_id);
 class Wishlist(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wishlists')
     course = models.ForeignKey('courses.Course', on_delete=models.CASCADE, related_name='wishlists')

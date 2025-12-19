@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.utils import timezone
 import uuid
 
-# Create your models here.
+
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
@@ -24,20 +24,6 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
-# PostgreSQL Equivalent:
-# CREATE TABLE accounts_user (
-#     id SERIAL PRIMARY KEY,
-#     password VARCHAR(128) NOT NULL,
-#     last_login TIMESTAMP WITH TIME ZONE,
-#     is_superuser BOOLEAN NOT NULL DEFAULT FALSE,
-#     username VARCHAR(150) UNIQUE,
-#     email VARCHAR(254) UNIQUE NOT NULL,
-#     role VARCHAR(20) NOT NULL DEFAULT 'student' CHECK (role IN ('admin', 'student', 'instructor')),
-#     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-#     is_staff BOOLEAN NOT NULL DEFAULT FALSE,
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-# );
-# CREATE INDEX accounts_user_email_idx ON accounts_user(email);
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         ADMIN = 'admin', 'Admin'
@@ -59,19 +45,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f'{self.email} ({self.role})'
 
 
-# PostgreSQL Equivalent:
-# CREATE TABLE accounts_profile (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER UNIQUE NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     full_name VARCHAR(255),
-#     bio TEXT,
-#     avatar VARCHAR(200),
-#     social_links JSONB DEFAULT '{}',
-#     interests JSONB DEFAULT '[]',
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-# );
-# CREATE INDEX accounts_profile_user_id_idx ON accounts_profile(user_id);
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     full_name = models.CharField(max_length=255, blank=True, null=True)
@@ -86,17 +59,6 @@ class Profile(models.Model):
         return self.full_name or self.user.email
     
 
-# PostgreSQL Equivalent:
-# CREATE TABLE accounts_emailverificationtoken (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     token UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     is_used BOOLEAN NOT NULL DEFAULT FALSE
-# );
-# CREATE INDEX accounts_emailverificationtoken_user_id_idx ON accounts_emailverificationtoken(user_id);
-# CREATE INDEX accounts_emailverificationtoken_token_idx ON accounts_emailverificationtoken(token);
 class EmailVerificationToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -108,16 +70,6 @@ class EmailVerificationToken(models.Model):
         return f'EmailVerification for {self.user.email} - Used: {self.is_used}'
     
 
-# PostgreSQL Equivalent:
-# CREATE TABLE accounts_passwordresettoken (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     token UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
-#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-# );
-# CREATE INDEX accounts_passwordresettoken_user_id_idx ON accounts_passwordresettoken(user_id);
-# CREATE INDEX accounts_passwordresettoken_token_idx ON accounts_passwordresettoken(token);
 class PasswordResetToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.UUIDField(default=uuid.uuid4, unique = True, editable=False)
@@ -128,17 +80,6 @@ class PasswordResetToken(models.Model):
         return f'PasswordResetToken for {self.user.email}'
     
 
-# PostgreSQL Equivalent:
-# CREATE TABLE accounts_apikey (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     key UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
-#     label VARCHAR(255) NOT NULL,
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-#     is_active BOOLEAN NOT NULL DEFAULT TRUE
-# );
-# CREATE INDEX accounts_apikey_user_id_idx ON accounts_apikey(user_id);
-# CREATE INDEX accounts_apikey_key_idx ON accounts_apikey(key);
 class APIKey(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
