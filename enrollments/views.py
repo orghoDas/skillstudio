@@ -4,9 +4,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 from .models import LessonProgress, Enrollment
 from courses.models import Lesson
+from .serializers import LessonProgressSerializer
 
 # Create your views here.
 
@@ -15,31 +17,33 @@ class LessonProgressView(APIView):
 
     def post(self, request, lesson_id):
         user = request.user
-        lesson = Lesson.objects.get(id=lesson_id)
+        lesson = get_object_or_404(Lesson, id=lesson_id)
         course = lesson.module.course
 
-        if not Enrollment.objects.filter(user=user, course=course, active=True).exists():
-            raise PermissionDenied("You must be enrolled in the course to update lesson progress.")
+        enrollment = get_object_or_404(Enrollment, user=user, course=course, status='active')
         
         progress, created = LessonProgress.objects.get_or_create(
+            enrollment=enrollment,
             user=user,
             lesson=lesson,
-            defaults={'is_completed': False, 'last_updated': timezone.now()}
         )
 
-        return Response({'started': True, 
-                         'created': created,
-        })
+        serializer = LessonProgressSerializer(progress)
+        return Response(serializer.data)
     
     def patch(self, request, lesson_id):
         user = request.user
-        lesson = lesson.objects.get(id=lesson_id)  
+        lesson = get_object_or_404(Lesson, id=lesson_id)  
 
-        progress = LessonProgress.objects.filter(user=user, lesson=lesson)
-        progress.is_completed = True
-        progress.is_completed = timezone.now()
-        progress.save()
+        enrollment = get_object_or_404(Enrollment, user=user, course=lesson.module.course, status='active')
 
-        return Response({'completed': True})
-    
+        progress = get_object_or_404(LessonProgress, enrollment=enrollment, user=user, lesson=lesson)
+        
+        if not progress.is_completed:
+            progress.is_completed = True
+            progress.completed_at = timezone.now()
+            progress.save()
+
+        serializer = LessonProgressSerializer(progress)
+        return Response(serializer.data)
     
