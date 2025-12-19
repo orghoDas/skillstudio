@@ -105,3 +105,24 @@ class ResumeLessonView(APIView):
             "module_title": lesson.module.title,
         })
     
+
+class CourseProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        user = request.user
+        enrollment = get_object_or_404(Enrollment, user=user, course_id=course_id, status='active')
+
+        total_lessons = Lesson.objects.filter(module__course_id=course_id).count()
+
+        completed_lessons = LessonProgress.objects.filter(enrollment=enrollment, is_completed=True).count()
+
+        progress_percentage = round((completed_lessons / total_lessons * 100), 2) if total_lessons > 0 else 0
+
+        return Response({
+            'course_id': course_id,
+            "total_lessons": total_lessons,
+            "completed_lessons": completed_lessons,
+            "progress_percentage": progress_percentage,
+            'is_completed': enrollment.is_completed
+        })
