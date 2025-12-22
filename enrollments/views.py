@@ -11,6 +11,8 @@ from courses.models import Lesson
 from .serializers import LessonProgressSerializer
 from .utils import check_and_complete_course, get_resume_lesson
 
+from .services import mark_lesson_completed, check_and_mark_course_completed
+
 # Create your views here.
 
 class LessonProgressView(APIView):
