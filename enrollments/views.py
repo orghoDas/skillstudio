@@ -192,4 +192,34 @@ class InstructorDashboardView(APIView):
             'weakest_performing_course': weakest_course,
         })
     
-    
+
+class InstructorCourseComparisonView(APIView):
+    permission_classes = [IsAuthenticated, IsInstructor]
+
+    def get(self, request):
+        instructor = request.user
+        courses = Course.objects.filter(instructor=instructor)
+
+        data = []
+
+        for course in courses:
+            enrollments = Enrollment.objects.filter(course=course)
+            total_enrollments = enrollments.count()
+
+            completed_enrollments = enrollments.filter(is_completed=True).count()
+            completion_rate = round((completed_enrollments / total_enrollments * 100), 2) if total_enrollments > 0 else 0
+
+            lessons = Lesson.objects.filter(module__course=course)
+            total_lessons = lessons.count() 
+
+            avg_watch_time = LessonProgress.objects.filter(lesson__in=lessons).aggregate(avg_time=Avg('watch_time'))['avg_time'] or 0
+
+            data.append({
+                'course_id': course.id,
+                'course_title': course.title,
+                'total_enrollments': total_enrollments,
+                'average_watch_time_seconds': round(avg_watch_time, 2),
+                'total_lessons': total_lessons,
+            })
+
+        return Response(data)
