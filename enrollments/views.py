@@ -117,12 +117,21 @@ class CourseProgressView(APIView):
 
         total_lessons = Lesson.objects.filter(module__course_id=course_id).count()
 
+        if total_lessons == 0:
+            return Response({
+                'course_id': course_id,
+                "total_lessons": 0,
+                "completed_lessons": 0,
+                "progress_percentage": 0,
+            })
+
         completed_lessons = LessonProgress.objects.filter(enrollment=enrollment, is_completed=True).count()
 
         progress_percentage = round((completed_lessons / total_lessons * 100), 2) if total_lessons > 0 else 0
 
         return Response({
             'course_id': course_id,
+            'course_title': enrollment.course.title,
             "total_lessons": total_lessons,
             "completed_lessons": completed_lessons,
             "progress_percentage": progress_percentage,
