@@ -119,7 +119,7 @@ class Lesson(models.Model):
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
 
-    view_count = models.PositiveIntegerField(default=0)\
+    view_count = models.PositiveIntegerField(default=0)
     
     duration_seconds = models.PositiveIntegerField(default=0)
 
