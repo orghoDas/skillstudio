@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.db.models import Count, Q, Avg, Sum
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -6,8 +7,10 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 
+from accounts.permissions import IsInstructor
+
 from .models import LessonProgress, Enrollment
-from courses.models import Lesson
+from courses.models import Course, Lesson
 from .serializers import LessonProgressSerializer
 from .utils import check_and_complete_course, get_resume_lesson
 
@@ -137,3 +140,56 @@ class CourseProgressView(APIView):
             "progress_percentage": progress_percentage,
             'is_completed': enrollment.is_completed
         })
+    
+
+class InstructorDashboardView(APIView):
+    permission_classes = [IsAuthenticated, IsInstructor]
+
+    def get(self, request):
+        instructor = request.user
+
+        courses = Course.objects.filter(instructor=instructor)
+        total_courses = courses.count()
+
+        enrollments = Enrollment.objects.filter(course__in=courses)
+        total_enrollments = enrollments.count()
+
+        total_students = enrollments.values('user').distinct().count()
+
+        course_progress = []
+
+        for course in courses:
+            course_enrollments = Enrollment.objects.filter(course=course)
+            total = course_enrollments.count()
+
+            if total == 0:
+                continue
+
+            completed = course_enrollments.filter(is_completed=True).count()
+            completion_rate = round((completed / total * 100), 2)
+            course_progress.append({
+                'course_id': course.id,
+                'course_title': course.title,
+                'total_enrollments': total,
+                'completed_enrollments': completed,
+                'completion_rate': completion_rate
+            })
+
+        avg_completion_rate = round(sum(c['completion_rate'] for c in course_progress) / len(course_progress), 2) if course_progress else 0
+
+        total_watch_time = LessonProgress.objects.filter(lesson__module__course__in=courses).aggregate(total_time=Sum('watch_time'))['total_time'] or 0
+
+        top_course = max(course_progress, key=lambda x: x['completion_rate']) if course_progress else None
+        weakest_course = min(course_progress, key=lambda x: x['completion_rate']) if course_progress else None
+
+        return Response({
+            'total_courses': total_courses,
+            'total_enrollments': total_enrollments,
+            'total_students': total_students,
+            'average_completion_rate': avg_completion_rate,
+            'total_watch_time_seconds': total_watch_time,
+            'top_performing_course': top_course,
+            'weakest_performing_course': weakest_course,
+        })
+    
+    
