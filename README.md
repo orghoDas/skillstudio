@@ -184,6 +184,3 @@ A personalized hub for each learner.
 - Password reset  
 - Activity logs  
 
----
-# 🏛 System Architecture  
-
