@@ -223,3 +223,33 @@ class InstructorCourseComparisonView(APIView):
             })
 
         return Response(data)
+    
+
+class InstructorLessonDropoffView(APIView):
+    permission_classes = [IsAuthenticated, IsInstructor]
+
+    def get(self, request, course_id):
+        instructor = request.user
+
+        course = get_object_or_404(Course, id=course_id, instructor=instructor)
+        lessons = Lesson.objects.filter(module__course=course)
+
+        data = []
+
+        for lesson in lessons:
+            started = LessonProgress.objects.filter(lesson=lesson).count()
+            completed = LessonProgress.objects.filter(lesson=lesson, is_completed=True).count()
+
+            drop_off = started - completed
+            drop_off_rate = round((drop_off / started * 100), 2) if started > 0 else 0
+
+            data.append({
+                'lesson_id': lesson.id,
+                'lesson_title': lesson.title,
+                'started_enrollments': started,
+                'completed_enrollments': completed,
+                'drop_off_count': drop_off,
+                'drop_off_rate_percentage': drop_off_rate,
+            })
+
+        return Response(data)
