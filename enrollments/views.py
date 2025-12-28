@@ -8,7 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from enrollments.constants import LESSON_WATCH_THRESHOLD
+from enrollments.constants import LESSON_COMPLETION_THRESHOLD
 
 from accounts.permissions import IsInstructor
 
@@ -88,7 +88,7 @@ class LessonWatchTimeView(APIView):
         
         progress.watch_time = min(progress.watch_time + added_time, lesson.duration_seconds)
 
-        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds * LESSON_WATCH_THRESHOLD and not progress.is_completed):
+        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds * LESSON_COMPLETION_THRESHOLD and not progress.is_completed):
             progress.is_completed = True
             progress.completed_at = timezone.now()
 
