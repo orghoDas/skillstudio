@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.db.models import Count, Q, Avg, Sum
+from django.db.models import Count, Q, Avg, Sum, F, ExpressionWrapper, FloatField
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -232,24 +232,27 @@ class InstructorLessonDropoffView(APIView):
         instructor = request.user
 
         course = get_object_or_404(Course, id=course_id, instructor=instructor)
-        lessons = Lesson.objects.filter(module__course=course)
+        lessons = Lesson.objects.filter(module__course=course).annotate(
+            started_count=Count('lessonprogress', distinct=True),
+            completed_count=Count('lessonprogress', filter=Q(lessonprogress__is_completed=True), distinct=True)
+        ).annotate(
+            drop_off_count=F('started_count') - F('completed_count'),
+            drop_off_rate=ExpressionWrapper(
+                (F('drop_off_count') * 100.0) / F('started_count'),
+                output_field=FloatField()
+            )
+        )
 
         data = []
 
         for lesson in lessons:
-            started = LessonProgress.objects.filter(lesson=lesson).count()
-            completed = LessonProgress.objects.filter(lesson=lesson, is_completed=True).count()
-
-            drop_off = started - completed
-            drop_off_rate = round((drop_off / started * 100), 2) if started > 0 else 0
-
             data.append({
                 'lesson_id': lesson.id,
                 'lesson_title': lesson.title,
-                'started_enrollments': started,
-                'completed_enrollments': completed,
-                'drop_off_count': drop_off,
-                'drop_off_rate_percentage': drop_off_rate,
+                'started_enrollments': lesson.started_count,
+                'completed_enrollments': lesson.completed_count,
+                'drop_off_count': lesson.drop_off_count,
+                'drop_off_rate_percentage': lesson.drop_off_rate,
             })
 
         return Response(data)
