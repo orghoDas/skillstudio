@@ -17,15 +17,17 @@ def check_and_complete_course(enrollment):
     return False
 
 def get_resume_lesson(enrollment):
-    course = enrollment.course
-
-    lessons = Lesson.objects.filter(module__course=course).order_by('module__position', 'position')
-
-    completed_ids = LessonProgress.objects.filter(enrollment=enrollment, is_completed=True).values_list('lesson_id', flat=True)
-
-    for lesson in lessons:
-        if lesson.id not in completed_ids:
-            return lesson
-        
-    return None
+    return (
+        Lesson.objects
+        .filter(
+            module__course=enrollment.course)
+            .exclude(
+                id__in=LessonProgress.objects.filter(
+                    enrollment=enrollment,
+                    is_completed=True
+                ).values_list('lesson_id', flat=True)
+            )
+        .order_by('module__positon', 'position')
+        .first()
+    )
 

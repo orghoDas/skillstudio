@@ -1,3 +1,5 @@
+import csv
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.db.models import Count, Q, Avg, Sum, F, ExpressionWrapper, FloatField
 from rest_framework.views import APIView
@@ -6,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from enrollments.constants import LESSON_WATCH_THRESHOLD
 
 from accounts.permissions import IsInstructor
 
@@ -62,29 +65,37 @@ class LessonWatchTimeView(APIView):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         course = lesson.module.course
 
-        if not Enrollment.objects.filter(user=user, course=course, status='active').exists():
-            raise PermissionDenied("You are not enrolled in this course.")
+        enrollment = get_object_or_404(Enrollment, user=user, course=course, status='active')
         
         progress, _ = LessonProgress.objects.get_or_create(
-            user = user,
-            lesson = lesson,)
+            enrollment=enrollment,
+            user=user,
+            lesson=lesson)
         
-        added_time = int(request.data.get('watch_time', 0))
+        added_time = request.data.get('watch_time')
+
+        try:
+            added_time = int(added_time)
+
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "Invalid watch time."})
+        
+        if added_time <=0:
+            raise ValidationError({"detail": "Invalid watch time."})
 
         if not isinstance(added_time, int) or added_time <= 0:
             raise ValidationError({"detail": "Invalid watch time."})
         
-        progress.watch_time += added_time
+        progress.watch_time = min(progress.watch_time + added_time, lesson.duration_seconds)
 
-        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds and not progress.is_completed):
+        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds * LESSON_WATCH_THRESHOLD and not progress.is_completed):
             progress.is_completed = True
             progress.completed_at = timezone.now()
 
+        progress.save(update_fields=['watch_time', 'is_completed', 'completed_at'])
+
         if progress.is_completed:
             check_and_complete_course(progress.enrollment)
-
-
-        progress.save(update_fields=['watch_time'])
 
         return Response({
             "watch_time": progress.watch_time,
@@ -130,7 +141,14 @@ class CourseProgressView(APIView):
 
         completed_lessons = LessonProgress.objects.filter(enrollment=enrollment, is_completed=True).count()
 
-        progress_percentage = round((completed_lessons / total_lessons * 100), 2) if total_lessons > 0 else 0
+        progress_percentage = round((completed_lessons / total_lessons * 100), 2)
+
+        if completed_lessons == total_lessons and not enrollment.is_completed:
+            enrollment.is_completed = True
+            enrollment.status = 'completed'
+            enrollment.completed_at = timezone.now()
+            enrollment.save(update_fields=['is_completed', 'status', 'completed_at'])
+
 
         return Response({
             'course_id': course_id,
@@ -256,3 +274,40 @@ class InstructorLessonDropoffView(APIView):
             })
 
         return Response(data)
+    
+
+class InstructorLessonAnalyticsCSVView(APIView):
+    permission_classes = [IsAuthenticated, IsInstructor]
+
+    def get(self, request, course_id):
+        instructor = request.user
+
+        course = get_object_or_404(Course, id=course_id, instructor=instructor)
+        lessons = Lesson.objects.filter(module__course=course).annotate(
+            started_count=Count('lessonprogress', distinct=True),
+            completed_count=Count('lessonprogress', filter=Q(lessonprogress__is_completed=True), distinct=True)
+        ).annotate(
+            drop_off_count=F('started_count') - F('completed_count'),
+            drop_off_rate=ExpressionWrapper(
+                (F('drop_off_count') * 100.0) / F('started_count'),
+                output_field=FloatField()
+            )
+        )
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="lesson_analytics_course_{course_id}.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['Lesson ID', 'Lesson Title', 'Started Enrollments', 'Completed Enrollments', 'Drop-off Count', 'Drop-off Rate (%)'])
+
+        for lesson in lessons:
+            writer.writerow([
+                lesson.id,
+                lesson.title,
+                lesson.started_count,
+                lesson.completed_count,
+                lesson.drop_off_count,
+                round(lesson.drop_off_rate or 0, 2),
+            ])
+
+        return response

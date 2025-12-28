@@ -15,7 +15,6 @@ class LessonDetailView(APIView):
 
     def get(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
-
         user = request.user
         course = lesson.module.course
 
@@ -39,9 +38,17 @@ class LessonDetailView(APIView):
             serializer = LessonDataSerializer(lesson)
             return Response(serializer.data)
         
-        is_enrolled = Enrollment.objects.filter(user=user, course=course, active=True).exists()
-        if not is_enrolled:
-            raise PermissionDenied("You must be enrolled in the course to access this lesson.")
+        enrollment = get_object_or_404(Enrollment, user=user, course=course, status='active')
+        
+        pre_lesson = Lesson.objects.filter(
+            module__course=course,
+            position__lt=lesson.position
+        ).order_by('-module__position', '-position').first()
+
+        if pre_lesson:
+            pre_progress = enrollment.lesson_progress.filter(lesson=pre_lesson, is_completed=True).first()
+            if not pre_progress:
+                raise PermissionDenied("Complete previous lessons to access this lesson.")
         
         serializer = LessonDataSerializer(lesson)
         return Response(serializer.data)
