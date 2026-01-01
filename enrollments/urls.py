@@ -12,5 +12,4 @@ urlpatterns = [
     path('instructor/courses/<int:course_id>/lesson-dropoff/', InstructorLessonDropoffView.as_view(), name='instructor-course-lesson-dropoff'),
     path('courses/<int:course_id>/enroll/', EnrollCourseView.as_view()),
     path('courses/<int:course_id>/cancel/', CancelEnrollmentView.as_view()),
-    path('dashboard/', StudentDashboardView.as_view(), name='student-dashboard'),
 ]

@@ -16,9 +16,14 @@ from accounts.permissions import IsInstructor
 from .models import LessonProgress, Enrollment
 from courses.models import Course, Lesson
 from .serializers import LessonProgressSerializer
-from .utils import check_and_complete_course, get_resume_lesson
-
-from .services import mark_lesson_completed, auto_complete_lesson, get_previous_lesson, get_next_lesson
+from .services import (
+    check_and_complete_course,
+    get_resume_lesson,
+    mark_lesson_completed,
+    auto_complete_lesson,
+    get_previous_lesson,
+    get_next_lesson,
+)
 
 # Create your views here.
 
@@ -416,61 +421,3 @@ class NextLessonView(APIView):
             "lesson_title": next_lesson.title,
             "module_title": next_lesson.module.title,
         })
-
-
-class StudentDashboardView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-
-        enrollments = (
-            Enrollment.objects
-            .filter(user=user)
-            .select_related('course')
-            .order_by('-enrolled_at')
-        )
-
-        dashboard = []
-
-        for enrollment in enrollments:
-            course = enrollment.course
-            progress_qs = LessonProgress.objects.filter(enrollment=enrollment)
-
-            total_lessons = Lesson.objects.filter(
-                module__course=course,
-                is_free=False
-            ).count()
-
-            completed_lessons = progress_qs.filter(is_completed=True).count()
-
-            progress_percentage = (
-                round((completed_lessons / total_lessons) * 100, 2)
-                if total_lessons > 0 else 0
-            )
-
-            # Resume lesson
-            completed_ids = set(
-                LessonProgress.objects.filter(
-                    enrollment=enrollment,
-                    is_completed=True
-                ).values_list('lesson_id', flat=True)
-            )
-
-            resume_lesson = get_resume_lesson(enrollment)
-
-            # Last activity
-            last_activity = progress_qs.aggregate(last=Max('updated_at'))['last']
-
-            dashboard.append({
-                "course_id": course.id,
-                "course_title": course.title,
-                "status": enrollment.status,
-                "progress_percentage": progress_percentage,
-                "completed_lessons": completed_lessons,
-                "total_lessons": total_lessons,
-                "resume_lesson_id": resume_lesson.id if resume_lesson else None,
-                "last_activity": last_activity
-            })
-
-        return Response(dashboard)

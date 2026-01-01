@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.core.exceptions import PermissionDenied
 
 from certificates.services import issue_certificate
 from courses.models import Lesson
@@ -128,3 +129,23 @@ def get_next_lesson(enrollment, current_lesson):
             return lesson
 
     return None
+
+
+def require_active_enrollment(user, course):
+    """Validate that user has active enrollment for course."""
+    if user.is_staff or user.is_superuser:
+        return None
+
+    if course.instructor == user:
+        return None
+
+    enrollment = Enrollment.objects.filter(
+        user=user,
+        course=course,
+        status='active'
+    ).first()
+
+    if not enrollment:
+        raise PermissionDenied("Active enrollment required.")
+
+    return enrollment

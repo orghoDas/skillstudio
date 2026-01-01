@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'analytics',
     'audit',
     'certificates',
+    'students',
 ]
 
 REST_FRAMEWORK = {

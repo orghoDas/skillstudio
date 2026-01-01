@@ -12,7 +12,7 @@ from accounts.permissions import IsAdmin
 from courses.permissions import CanEditCourse
 from courses.services import validate_course_for_submission
 from enrollments.services import get_next_lesson
-from enrollments.utils import require_active_enrollment
+from enrollments.services import require_active_enrollment
 
 from .models import Course, Lesson, User
 from .serializers import CourseCurriculumSerializer, LessonDataSerializer
