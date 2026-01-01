@@ -1,5 +1,6 @@
 from django.utils import timezone
 
+from certificates.services import issue_certificate
 from courses.models import Lesson
 from enrollments.constants import LESSON_COMPLETION_THRESHOLD
 from .models import Enrollment, LessonProgress
@@ -19,17 +20,33 @@ def mark_lesson_completed(enrollment, lesson):
 
     return progress
 
+def check_and_complete_course(enrollment):
+    total_lessons = Lesson.objects.filter(
+        module__course=enrollment.course,
+        is_free=False
+    ).count()
 
-def check_and_mark_course_completed(enrollment):
-    total_lessons = Lesson.objects.filter(module__course=enrollment.course).count()
-    completed_lessons = enrollment.lesson_progress.filter(is_completed=True).count()
+    completed_lessons = enrollment.lesson_progress.filter(
+        is_completed=True
+    ).count()
 
-    if total_lessons > 0 and total_lessons == completed_lessons:
+    if total_lessons == 0:
+        return False
+
+    if completed_lessons >= total_lessons:
         if not enrollment.is_completed:
+            enrollment.status = 'completed'
             enrollment.is_completed = True
             enrollment.completed_at = timezone.now()
-            enrollment.status = 'completed'
-            enrollment.save(update_fields=['is_completed', 'completed_at', 'status'])
+            enrollment.save(update_fields=[
+                'status',
+                'is_completed',
+                'completed_at'
+            ])
+
+            # 🎓 Issue certificate automatically
+            issue_certificate(enrollment)
+
         return True
 
     return False

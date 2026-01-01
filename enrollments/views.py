@@ -18,7 +18,7 @@ from courses.models import Course, Lesson
 from .serializers import LessonProgressSerializer
 from .utils import check_and_complete_course, get_resume_lesson
 
-from .services import mark_lesson_completed, check_and_mark_course_completed, auto_complete_lesson, get_previous_lesson, get_next_lesson
+from .services import mark_lesson_completed, auto_complete_lesson, get_previous_lesson, get_next_lesson
 
 # Create your views here.
 
@@ -66,38 +66,44 @@ class LessonWatchTimeView(APIView):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         course = lesson.module.course
 
-        enrollment = get_object_or_404(Enrollment, user=user, course=course, status='active')
-        
+        enrollment = get_object_or_404(
+            Enrollment,
+            user=user,
+            course=course,
+            status='active'
+        )
+
         progress, _ = LessonProgress.objects.get_or_create(
             enrollment=enrollment,
             user=user,
-            lesson=lesson)
-        
+            lesson=lesson
+        )
+
         added_time = request.data.get('watch_time')
 
         try:
             added_time = int(added_time)
-
         except (TypeError, ValueError):
             raise ValidationError({"detail": "Invalid watch time."})
-        
+
         if added_time <= 0:
             raise ValidationError({"detail": "Invalid watch time."})
-        
-        progress.watch_time = min(progress.watch_time + added_time, lesson.duration_seconds)
 
-        if (lesson.duration_seconds > 0 and progress.watch_time >= lesson.duration_seconds * LESSON_COMPLETION_THRESHOLD and not progress.is_completed):
-            progress.is_completed = True
-            progress.completed_at = timezone.now()
+        progress.watch_time = min(
+            progress.watch_time + added_time,
+            lesson.duration_seconds
+        )
 
-        progress.save(update_fields=['watch_time', 'is_completed', 'completed_at'])
+        progress.save(update_fields=['watch_time'])
 
-        if progress.is_completed:
-            check_and_complete_course(progress.enrollment)
+        # 🎯 AUTO COMPLETE LESSON
+        if auto_complete_lesson(progress):
+            mark_lesson_completed(enrollment, lesson)
+            check_and_complete_course(enrollment)
 
         return Response({
             "watch_time": progress.watch_time,
-            'completed': progress.is_completed
+            "completed": progress.is_completed
         })
     
 
