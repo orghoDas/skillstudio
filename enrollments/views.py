@@ -81,10 +81,7 @@ class LessonWatchTimeView(APIView):
         except (TypeError, ValueError):
             raise ValidationError({"detail": "Invalid watch time."})
         
-        if added_time <=0:
-            raise ValidationError({"detail": "Invalid watch time."})
-
-        if not isinstance(added_time, int) or added_time <= 0:
+        if added_time <= 0:
             raise ValidationError({"detail": "Invalid watch time."})
         
         progress.watch_time = min(progress.watch_time + added_time, lesson.duration_seconds)

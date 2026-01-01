@@ -1,7 +1,5 @@
 from rest_framework import serializers
-from .models import User, Profile
 from django.contrib.auth.password_validation import validate_password
-from django.db import models
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -24,11 +22,13 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("password2")
+        # Use provided role or default to STUDENT
+        role = validated_data.pop('role', User.Role.STUDENT)
         user = User.objects.create_user(
             email=validated_data["email"],
-            username=validated_data["username"],
+            username=validated_data.get("username"),
             password=validated_data["password"],
-            role=User.Role.STUDENT
+            role=role
         )
         return user
 
@@ -45,7 +45,21 @@ class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "email", "username", 'role', 'profile')
+        read_only_fields = ('id', 'email', 'role')  # Prevent changing email and role via this endpoint
 
-    def get_profile(self, obj):
-        profile = Profile.objects.get(user=obj)
-        return ProfileSerializer(profile).data
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop('profile', None)
+        
+        # Update user fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update profile if provided
+        if profile_data:
+            profile = instance.profile
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+
+        return instance

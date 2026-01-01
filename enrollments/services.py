@@ -36,12 +36,12 @@ def check_and_mark_course_completed(enrollment):
 
 
 def auto_complete_lesson(progress):
-    lesson_duration = progress.lesson.video_durattion
+    lesson_duration = progress.lesson.duration_seconds
 
     if lesson_duration == 0:
         return False
     
-    watched_ratio = progress.watch_time_seconds / lesson_duration
+    watched_ratio = progress.watch_time / lesson_duration
     return watched_ratio >= LESSON_COMPLETION_THRESHOLD
 
 
@@ -68,33 +68,27 @@ def get_next_lesson(enrollment, current_lesson):
         module__course=enrollment.course
     ).order_by('module__position', 'position')
 
-    lesson_list = list(lessons)
-    current_index = lesson_list.index(current_lesson)
-
-    for lesson in lesson_list[current_index + 1:]:
-        if lesson.is_free:
-            return lesson
-
-        progress = LessonProgress.objects.filter(
+    completed_ids = set(
+        LessonProgress.objects.filter(
             enrollment=enrollment,
-            lesson=lesson,
             is_completed=True
-        ).exists()
+        ).values_list('lesson_id', flat=True)
+    )
 
-        if not progress:
+    lesson_list = list(lessons)
+    try:
+        current_index = lesson_list.index(current_lesson)
+    except ValueError:
+        return None
+
+    # Look for next incomplete lesson after current
+    for lesson in lesson_list[current_index + 1:]:
+        # Skip free lessons in progression
+        if lesson.is_free:
+            continue
+
+        # Return first non-free lesson that's not completed
+        if lesson.id not in completed_ids:
             return lesson
 
     return None
-
-def check_and_complete_course(enrollment):
-    total_lessons = enrollment.course.lessons.count()
-    completed = enrollment.lesson_progress.filter(is_completed=True).count()
-
-    if total_lessons > 0 and completed == total_lessons:
-        enrollment.status = 'completed'
-        enrollment.is_completed = True
-        enrollment.completed_at = timezone.now()
-        enrollment.save()
-        return True
-
-    return False

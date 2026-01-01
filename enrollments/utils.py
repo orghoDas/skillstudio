@@ -11,7 +11,8 @@ def check_and_complete_course(enrollment):
     if total_lessons > 0 and total_lessons == completed_lessons:
         enrollment.is_completed = True
         enrollment.completed_at = timezone.now()
-        enrollment.save(update_fields=['is_completed', 'completed_at'])
+        enrollment.status = 'completed'
+        enrollment.save(update_fields=['is_completed', 'completed_at', 'status'])
 
         return True
     
@@ -32,9 +33,11 @@ def get_resume_lesson(enrollment):
     )
 
     for lesson in lessons:
+        # Skip free lessons in progression
         if lesson.is_free:
-            return lesson
+            continue
 
+        # Return first non-free lesson that's not completed
         if lesson.id not in completed_ids:
             return lesson
 

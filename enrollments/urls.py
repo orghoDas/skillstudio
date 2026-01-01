@@ -9,7 +9,7 @@ urlpatterns = [
     path('courses/<int:course_id>/progress/', CourseProgressView.as_view(), name='course-progress'),
     path('instructor/dashboard/', InstructorDashboardView.as_view(), name='instructor-dashboard'),
     path('instructor/courses/<int:course_id>/analytics/', InstructorCourseComparisonView.as_view(), name='instructor-course-analytics'),
-    path('instructor/couurses/<int:course_id>/lesson-dropoff/', InstructorLessonDropoffView.as_view(), name='instructor-course-lesson-dropoff'),
+    path('instructor/courses/<int:course_id>/lesson-dropoff/', InstructorLessonDropoffView.as_view(), name='instructor-course-lesson-dropoff'),
     path('courses/<int:course_id>/enroll/', EnrollCourseView.as_view()),
     path('courses/<int:course_id>/cancel/', CancelEnrollmentView.as_view()),
 ]
