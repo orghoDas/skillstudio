@@ -17,19 +17,19 @@ class MyCertificateView(APIView):
         )
 
         return Response({
-            'certificate_id': certificate.certificate_id,
+            'certificate_id': str(certificate.certificate_id),
             'course': certificate.course.title,
-            'issued_at': certificate.issued_at
-        })
-
+            'issued_at': certificate.issued_at,
+})
+    
 
 class VerifyCertificateView(APIView):
-    permission_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request, code):
         certificate = get_object_or_404(
             Certificate,
-            verification_code=code
+            certificate_id=code
         )
 
         return Response({
@@ -47,11 +47,12 @@ class DownloadCertificateView(APIView):
         certificate = get_object_or_404(
             Certificate,
             user=request.user,
-            course_id=course_id
-        )
+            course_id=course_id,
+            enrollment__is_completed=True
+)
 
         return FileResponse(
             certificate.pdf.open(),
             as_attachment=True,
             filename=f"{certificate.course.title}.pdf"
-        )
+)

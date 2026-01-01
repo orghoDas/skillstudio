@@ -80,6 +80,25 @@ def get_previous_lesson(lesson):
     
     return pre_module.lessons.order_by('-position').first()
 
+def get_resume_lesson(enrollment):
+    lessons = Lesson.objects.filter(
+        module__course=enrollment.course,
+        is_free=False
+    ).order_by('module__position', 'position')
+
+    completed_ids = set(
+        LessonProgress.objects.filter(
+            enrollment=enrollment,
+            is_completed=True
+        ).values_list('lesson_id', flat=True)
+    )
+
+    for lesson in lessons:
+        if lesson.id not in completed_ids:
+            return lesson
+
+    return None
+
 def get_next_lesson(enrollment, current_lesson):
     lessons = Lesson.objects.filter(
         module__course=enrollment.course

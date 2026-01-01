@@ -457,12 +457,7 @@ class StudentDashboardView(APIView):
                 ).values_list('lesson_id', flat=True)
             )
 
-            next_lesson = Lesson.objects.filter(
-                module__course=course,
-                is_free=False
-            ).exclude(
-                id__in=completed_ids
-            ).order_by('module__position', 'position').first()
+            resume_lesson = get_resume_lesson(enrollment)
 
             # Last activity
             last_activity = progress_qs.aggregate(last=Max('updated_at'))['last']
@@ -474,7 +469,7 @@ class StudentDashboardView(APIView):
                 "progress_percentage": progress_percentage,
                 "completed_lessons": completed_lessons,
                 "total_lessons": total_lessons,
-                "resume_lesson_id": next_lesson.id if next_lesson else None,
+                "resume_lesson_id": resume_lesson.id if resume_lesson else None,
                 "last_activity": last_activity
             })
 
