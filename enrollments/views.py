@@ -2,6 +2,7 @@ import csv
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.db.models import Count, Q, Avg, Sum, F, ExpressionWrapper, FloatField
+from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -17,7 +18,7 @@ from courses.models import Course, Lesson
 from .serializers import LessonProgressSerializer
 from .utils import check_and_complete_course, get_resume_lesson
 
-from .services import mark_lesson_completed, check_and_mark_course_completed
+from .services import mark_lesson_completed, check_and_mark_course_completed, auto_complete_lesson, get_previous_lesson, get_next_lesson
 
 # Create your views here.
 
@@ -311,3 +312,104 @@ class InstructorLessonAnalyticsCSVView(APIView):
             ])
 
         return response
+    
+
+class EnrollCourseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, course_id):
+        user = request.user
+        course = get_object_or_404(Course, id=course_id)
+
+        enrollment, created = Enrollment.objects.get_or_create(
+            user=user,
+            course=course,
+            defaults={'status': 'active'}
+        )
+
+        if not created:
+            if enrollment.status == 'canceled':
+                enrollment.status = 'active'
+                enrollment.completed_at = None
+                enrollment.is_completed = False
+                enrollment.save()
+                return Response({'enrolled': True, 'resumed': True})
+
+            return Response({'detail': 'Already enrolled.'}, status=400)
+
+        return Response({'enrolled': True}, status=201)
+    
+
+class CancelEnrollmentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, course_id):
+        enrollment = get_object_or_404(
+            Enrollment,
+            user=request.user,
+            course_id=course_id,
+            status='active'
+        )
+
+        enrollment.status = 'canceled'
+        enrollment.save(update_fields=['status'])
+
+        return Response({'canceled': True})
+    
+
+class ResumeLessonView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        user = request.user
+
+        enrollment = get_object_or_404(
+            Enrollment,
+            user=user,
+            course_id=course_id,
+            status='active'
+        )
+
+        lesson = get_resume_lesson(enrollment)
+
+        if not lesson:
+            return Response({
+                "detail": "Course completed.",
+                "completed": True
+            })
+
+        return Response({
+            "lesson_id": lesson.id,
+            "lesson_title": lesson.title,
+            "module_id": lesson.module.id,
+            "module_title": lesson.module.title,
+        })
+
+
+class NextLessonView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id, lesson_id):
+        enrollment = get_object_or_404(
+            Enrollment,
+            user=request.user,
+            course_id=course_id,
+            status='active'
+        )
+
+        current_lesson = get_object_or_404(Lesson, id=lesson_id)
+
+        next_lesson = get_next_lesson(enrollment, current_lesson)
+
+        if not next_lesson:
+            return Response({
+                "detail": "No next lesson.",
+                "completed": True
+            })
+
+        return Response({
+            "lesson_id": next_lesson.id,
+            "lesson_title": next_lesson.title,
+            "module_title": next_lesson.module.title,
+        })

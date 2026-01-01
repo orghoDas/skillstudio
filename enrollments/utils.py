@@ -1,6 +1,7 @@
 from django.utils import timezone
 from courses.models import Lesson
-from .models import LessonProgress
+from .models import Enrollment, LessonProgress
+from django.core.exceptions import PermissionDenied 
 
 def check_and_complete_course(enrollment):
     course = enrollment.course
@@ -17,17 +18,43 @@ def check_and_complete_course(enrollment):
     return False
 
 def get_resume_lesson(enrollment):
-    return (
-        Lesson.objects
-        .filter(
-            module__course=enrollment.course)
-            .exclude(
-                id__in=LessonProgress.objects.filter(
-                    enrollment=enrollment,
-                    is_completed=True
-                ).values_list('lesson_id', flat=True)
-            )
-        .order_by('module__positon', 'position')
-        .first()
+    course = enrollment.course
+
+    lessons = Lesson.objects.filter(
+        module__course=course
+    ).order_by('module__position', 'position')
+
+    completed_ids = set(
+        LessonProgress.objects.filter(
+            enrollment=enrollment,
+            is_completed=True
+        ).values_list('lesson_id', flat=True)
     )
 
+    for lesson in lessons:
+        if lesson.is_free:
+            return lesson
+
+        if lesson.id not in completed_ids:
+            return lesson
+
+    return None
+
+
+def require_active_enrollment(user, course):
+    if user.is_staff or user.is_superuser:
+        return None
+
+    if course.instructor == user:
+        return None
+
+    enrollment = Enrollment.objects.filter(
+        user=user,
+        course=course,
+        status='active'
+    ).first()
+
+    if not enrollment:
+        raise PermissionDenied("Active enrollment required.")
+
+    return enrollment

@@ -62,3 +62,39 @@ def get_previous_lesson(lesson):
         return None
     
     return pre_module.lessons.order_by('-position').first()
+
+def get_next_lesson(enrollment, current_lesson):
+    lessons = Lesson.objects.filter(
+        module__course=enrollment.course
+    ).order_by('module__position', 'position')
+
+    lesson_list = list(lessons)
+    current_index = lesson_list.index(current_lesson)
+
+    for lesson in lesson_list[current_index + 1:]:
+        if lesson.is_free:
+            return lesson
+
+        progress = LessonProgress.objects.filter(
+            enrollment=enrollment,
+            lesson=lesson,
+            is_completed=True
+        ).exists()
+
+        if not progress:
+            return lesson
+
+    return None
+
+def check_and_complete_course(enrollment):
+    total_lessons = enrollment.course.lessons.count()
+    completed = enrollment.lesson_progress.filter(is_completed=True).count()
+
+    if total_lessons > 0 and completed == total_lessons:
+        enrollment.status = 'completed'
+        enrollment.is_completed = True
+        enrollment.completed_at = timezone.now()
+        enrollment.save()
+        return True
+
+    return False

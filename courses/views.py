@@ -6,129 +6,59 @@ from django.shortcuts import get_object_or_404
 
 from django.db.models import F
 
+from enrollments.utils import require_active_enrollment
+
 from .models import Course, Lesson, User
 from .serializers import CourseCurriculumSerializer, LessonDataSerializer
 from enrollments.models import Enrollment, LessonProgress
 
 class LessonDetailView(APIView):
-    permission_classes = [AllowAny]
 
     def get(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
-        user = request.user
         course = lesson.module.course
+        user = request.user
 
-        # 1️⃣ Free lesson → always allowed
+        Lesson.objects.filter(id=lesson.id).update(view_count=F('view_count') + 1)
+
+        # Free lesson → public
         if lesson.is_free:
             return Response(LessonDataSerializer(lesson).data)
 
-        # 2️⃣ Not logged in → blocked
+        # Protected lesson
         if not user.is_authenticated:
-            raise PermissionDenied("Login required to access this lesson.")
+            raise PermissionDenied("Login required.")
 
-        # 3️⃣ Admin / Instructor → allowed
-        if user.is_staff or course.instructor == user:
-            return Response(LessonDataSerializer(lesson).data)
+        enrollment = require_active_enrollment(user, course)
 
-        # 4️⃣ Must be enrolled
-        enrollment = Enrollment.objects.filter(
-            user=user,
-            course=course,
-            status='active'
-        ).first()
+        # 🔒 Lock check (progression)
+        if lesson.position > enrollment.current_position:
+            raise PermissionDenied("Lesson is locked.")
 
-        if not enrollment:
-            raise PermissionDenied("You must be enrolled in this course.")
-
-        # 5️⃣ Locking logic (core security)
-        completed_ids = set(
-            LessonProgress.objects.filter(
-                enrollment=enrollment,
-                is_completed=True
-            ).values_list('lesson_id', flat=True)
-        )
-
-        ordered_lessons = list(
-            Lesson.objects.filter(
-                module__course=course
-            ).order_by('module__position', 'position')
-        )
-
-        unlocked_ids = set()
-        for l in ordered_lessons:
-            unlocked_ids.add(l.id)
-            if l.id not in completed_ids:
-                break
-
-        if lesson.id not in unlocked_ids:
-            raise PermissionDenied("Complete previous lessons to unlock this one.")
-
-        # 6️⃣ Allowed
-        return Response(LessonDataSerializer(lesson).data)
-    
-
-class CourseLessonListView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, course_id):
-        user = request.user
-
-        enrollment = get_object_or_404(
-            Enrollment,
-            user=user,
-            course_id=course_id,
-            status='active'
-        )
-
-        lessons = Lesson.objects.filter(
-            module__course=Course).order_by('module__position', 'position')
-
-        completed_ids = set(
-            LessonProgress.objects.filter(
-                enrollment=enrollment,
-                is_completed=True
-            ).values_list('lesson_id', flat=True)
-        )
-
-        lesson_data = []
-        previous_completed = True  
-
-        for lesson in lessons:
-            is_completed = lesson.id in completed_ids
-
-            is_locked = (
-                not lesson.is_free
-                and not is_completed
-                and not previous_completed
-            )
-
-            lesson_data.append({
-                'id': lesson.id,
-                'title': lesson.title,
-                'position': lesson.position,
-                'is_free': lesson.is_free,
-                'is_completed': is_completed,
-                'is_locked': is_locked,
-            })
-
-            previous_completed = is_completed or lesson.is_free
-
-        return Response(lesson_data)
-    
+        return Response(LessonDataSerializer(lesson).data)    
 
 class CourseCurriculumView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, course_id):
         user = request.user
         course = get_object_or_404(Course, id=course_id)
 
-        enrollment = get_object_or_404(
-            Enrollment,
-            user=user,
-            course=course,
-            status='active'
-        )
+        enrollment = None
+
+        # 🔐 ACCESS ENFORCEMENT (Step 8)
+        if not course.is_free:
+            if not user.is_authenticated:
+                raise PermissionDenied("Login required.")
+
+            enrollment = Enrollment.objects.filter(
+                user=user,
+                course=course,
+                status='active'
+            ).first()
+
+            if not enrollment and course.instructor != user and not user.is_staff:
+                raise PermissionDenied("Active enrollment required.")
 
         # 1️⃣ All lessons (ordered)
         lessons = Lesson.objects.filter(
@@ -138,12 +68,15 @@ class CourseCurriculumView(APIView):
         lesson_ids = list(lessons.values_list('id', flat=True))
 
         # 2️⃣ Completed lessons
-        completed_ids = set(
-            LessonProgress.objects.filter(
-                enrollment=enrollment,
-                is_completed=True
-            ).values_list('lesson_id', flat=True)
-        )
+        completed_ids = set()
+
+        if enrollment:
+            completed_ids = set(
+                LessonProgress.objects.filter(
+                    enrollment=enrollment,
+                    is_completed=True
+                ).values_list('lesson_id', flat=True)
+            )
 
         # 3️⃣ Locked lesson computation (ONCE)
         locked_ids = set()
@@ -158,7 +91,7 @@ class CourseCurriculumView(APIView):
             else:
                 locked_ids.add(lesson.id)
 
-        # 4️⃣ Serializer context (IMPORTANT)
+        # 4️⃣ Serializer context
         serializer = CourseCurriculumSerializer(
             course,
             context={
