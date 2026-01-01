@@ -1,22 +1,33 @@
+import uuid
 from django.db import models
-from django.utils import timezone
-from django.contrib.auth.models import User
+from django.conf import settings
 
 
 class Certificate(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    course = models.ForeignKey('courses.Course', on_delete=models.CASCADE)
-    enrollment = models.OneToOneField(
-        'enrollments.Enrollment',
-        on_delete=models.CASCADE
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='certificates'
     )
 
-    certificate_id = models.CharField(max_length=64, unique=True)
-    issued_at = models.DateTimeField(default=timezone.now)
+    course = models.ForeignKey(
+        'courses.Course',
+        on_delete=models.CASCADE,
+        related_name='certificates'
+    )
+
+    enrollment = models.OneToOneField(
+        'enrollments.Enrollment',
+        on_delete=models.CASCADE,
+        related_name='certificate'
+    )
+
+    issued_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('user', 'course')
 
     def __str__(self):
-        return f"Certificate — {self.user} — {self.course}"
-
+        return f"{self.user} — {self.course}"

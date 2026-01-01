@@ -67,7 +67,8 @@ INSTALLED_APPS = [
     "notifications",
     'live',
     'analytics',
-    'audit'
+    'audit',
+    'certificates',
 ]
 
 REST_FRAMEWORK = {
@@ -170,3 +171,5 @@ STATICFILES_DIRS = [BASE_DIR / 'templates' / 'static']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+FRONTEND_URL = 'https://your-frontend-domain.com'

@@ -1,3 +1,4 @@
+from django.http import FileResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,3 +21,37 @@ class MyCertificateView(APIView):
             'course': certificate.course.title,
             'issued_at': certificate.issued_at
         })
+
+
+class VerifyCertificateView(APIView):
+    permission_classes = []
+
+    def get(self, request, code):
+        certificate = get_object_or_404(
+            Certificate,
+            verification_code=code
+        )
+
+        return Response({
+            "valid": True,
+            "user": certificate.user.get_full_name(),
+            "course": certificate.course.title,
+            "issued_at": certificate.issued_at
+        })
+    
+
+class DownloadCertificateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        certificate = get_object_or_404(
+            Certificate,
+            user=request.user,
+            course_id=course_id
+        )
+
+        return FileResponse(
+            certificate.pdf.open(),
+            as_attachment=True,
+            filename=f"{certificate.course.title}.pdf"
+        )

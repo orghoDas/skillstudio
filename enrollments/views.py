@@ -1,7 +1,7 @@
 import csv
 from django.http import HttpResponse
 from django.shortcuts import render
-from django.db.models import Count, Q, Avg, Sum, F, ExpressionWrapper, FloatField
+from django.db.models import Count, Q, Avg, Sum, F, ExpressionWrapper, FloatField, Max
 from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -416,3 +416,66 @@ class NextLessonView(APIView):
             "lesson_title": next_lesson.title,
             "module_title": next_lesson.module.title,
         })
+
+
+class StudentDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        enrollments = (
+            Enrollment.objects
+            .filter(user=user)
+            .select_related('course')
+            .order_by('-enrolled_at')
+        )
+
+        dashboard = []
+
+        for enrollment in enrollments:
+            course = enrollment.course
+            progress_qs = LessonProgress.objects.filter(enrollment=enrollment)
+
+            total_lessons = Lesson.objects.filter(
+                module__course=course,
+                is_free=False
+            ).count()
+
+            completed_lessons = progress_qs.filter(is_completed=True).count()
+
+            progress_percentage = (
+                round((completed_lessons / total_lessons) * 100, 2)
+                if total_lessons > 0 else 0
+            )
+
+            # Resume lesson
+            completed_ids = set(
+                LessonProgress.objects.filter(
+                    enrollment=enrollment,
+                    is_completed=True
+                ).values_list('lesson_id', flat=True)
+            )
+
+            next_lesson = Lesson.objects.filter(
+                module__course=course,
+                is_free=False
+            ).exclude(
+                id__in=completed_ids
+            ).order_by('module__position', 'position').first()
+
+            # Last activity
+            last_activity = progress_qs.aggregate(last=Max('updated_at'))['last']
+
+            dashboard.append({
+                "course_id": course.id,
+                "course_title": course.title,
+                "status": enrollment.status,
+                "progress_percentage": progress_percentage,
+                "completed_lessons": completed_lessons,
+                "total_lessons": total_lessons,
+                "resume_lesson_id": next_lesson.id if next_lesson else None,
+                "last_activity": last_activity
+            })
+
+        return Response(dashboard)

@@ -37,6 +37,7 @@ class LessonProgress(models.Model):
     watch_time = models.PositiveIntegerField(default=0)
     started_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(null=True,  blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ('enrollment', 'lesson')
