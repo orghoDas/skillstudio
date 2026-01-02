@@ -1,31 +1,25 @@
-# certificates/services/issue.py
-
-from certificates.models import Certificate
-from certificates.pdf import generate_certificate_pdf
-
+from django.db import transaction, IntegrityError
 
 def issue_certificate(enrollment):
-    """
-    Creates certificate + generates & stores PDF
-    """
+    from .models import Certificate
+    from .pdf import generate_certificate_pdf
 
-    # Prevent duplicates
-    certificate, created = Certificate.objects.get_or_create(
-        user=enrollment.user,
-        course=enrollment.course,
-        enrollment=enrollment
-    )
+    try:
+        with transaction.atomic():
+            certificate, created = Certificate.objects.get_or_create(
+                user=enrollment.user,
+                course=enrollment.course
+            )
 
-    # Generate PDF only once
-    if created or not certificate.pdf:
-        pdf_file = generate_certificate_pdf(certificate)
+            if not certificate.pdf:
+                pdf_file = generate_certificate_pdf(certificate)
+                certificate.pdf.save(pdf_file.name, pdf_file)
 
-        certificate.pdf.save(
-            pdf_file.name,
-            pdf_file,
-            save=False
+            return certificate
+
+    except IntegrityError:
+        # Another process created it simultaneously
+        return Certificate.objects.get(
+            user=enrollment.user,
+            course=enrollment.course
         )
-
-        certificate.save(update_fields=["pdf"])
-
-    return certificate

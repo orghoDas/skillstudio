@@ -61,6 +61,9 @@ class DownloadCertificateView(APIView):
                 {"detail": "Certificate PDF not available"},
                 status=404
             )
+        
+        if not enrollment.is_completed:
+            raise PermissionDenied("Course not completed")
 
         return FileResponse(
             certificate.pdf.open("rb"),
