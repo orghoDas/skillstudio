@@ -217,13 +217,3 @@ class LessonResource(models.Model):
 
     def __str__(self):
         return f"{self.lesson.title} - {self.resource_type}"
-
-
-# courses/models.py
-class CourseSkill(models.Model):
-    course = models.ForeignKey("Course", on_delete=models.CASCADE)
-    skill = models.ForeignKey("skills.Skill", on_delete=models.CASCADE)
-    weight = models.FloatField(default=1.0)
-
-    class Meta:
-        unique_together = ("course", "skill")
