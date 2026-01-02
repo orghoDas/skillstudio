@@ -7,21 +7,62 @@ User = settings.AUTH_USER_MODEL
 
 class Payment(models.Model):
     STATUS_CHOICES = [
-        ("pending","Pending"),
-        ("completed","Completed"),
-        ("failed","Failed"),
-        ("refunded","Refunded")
+        ("pending", "Pending"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+        ("refunded", "Refunded"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="payments")
-    course = models.ForeignKey("courses.Course", on_delete=models.SET_NULL, null=True, blank=True)
-    event = models.ForeignKey("live.Event", on_delete=models.SET_NULL, null=True, blank=True)
+
+    course = models.ForeignKey(
+        "courses.Course",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments"
+    )
+
+    instructor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instructor_payments"
+    )
+
+    payout = models.ForeignKey(
+        "payments.Payout",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments"
+    )
+
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    platform_fee = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+
+    instructor_earnings = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+
     currency = models.CharField(max_length=10, default="USD")
     provider = models.CharField(max_length=100, blank=True, null=True)
     provider_id = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
-    metadata = models.JSONField(default=dict, blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending"
+    )
+
     created_at = models.DateTimeField(default=timezone.now)
 
 
@@ -57,10 +98,23 @@ class CouponRedemption(models.Model):
 
 
 class Payout(models.Model):
-    instructor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="payouts")
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("processing", "Processing"),
+        ("paid", "Paid"),
+        ("failed", "Failed"),
+    ]
+
+    instructor = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="payouts"
+    )
+
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=10, default="USD")
-    status = models.CharField(max_length=20, default="pending")
-    provider_details = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+
     processed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+

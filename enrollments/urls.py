@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import EnrollCourseView, InstructorDashboardView, LessonProgressView, LessonWatchTimeView, ResumeLessonView, CourseProgressView, InstructorCourseComparisonView, InstructorLessonDropoffView, CancelEnrollmentView, StudentDashboardView
+from .views import EnrollCourseView, InstructorDashboardView, LessonProgressView, LessonWatchTimeView, ResumeLessonView, CourseProgressView, InstructorCourseComparisonView, InstructorLessonDropoffView, CancelEnrollmentView
 
 urlpatterns = [
     path('lessons/<int:lesson_id>/progress/', LessonProgressView.as_view(), name='lesson-progress'),
