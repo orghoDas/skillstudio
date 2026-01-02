@@ -2,25 +2,17 @@ from django.db import models
 from django.conf import settings
 
 
-class SkillProfile(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    skills = models.JSONField(default=list, blank=True)
-    last_updated = models.DateTimeField(auto_now=True)
+# skills/models.py
+class Skill(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    category = models.CharField(max_length=100)
 
 
-class Recommendation(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="recommendations")
-    score = models.FloatField()
-    reason = models.TextField(blank=True, null=True)
-    model_version = models.CharField(max_length=50, blank=True, null=True)
-    recommended_course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
+# skills/models.py
+class UserSkill(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE)
+    proficiency = models.FloatField(default=0.0)
 
-
-class Embedding(models.Model):
-    entity_type = models.CharField(max_length=50)
-    entity_id = models.BigIntegerField()
-    vector = models.BinaryField()
-    meta = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
+    class Meta:
+        unique_together = ("user", "skill")
