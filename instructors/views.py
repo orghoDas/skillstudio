@@ -72,7 +72,6 @@ class InstructorDashboardView(APIView):
             ]
         })
 
-    
 
 class InstructorEnrollmentTrendsView(APIView):
     permission_classes = [IsAuthenticated, IsInstructor]

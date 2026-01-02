@@ -174,3 +174,4 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 FRONTEND_URL = 'https://your-frontend-domain.com'
+BACKEND_URL = "https://api.yourdomain.com"

@@ -24,17 +24,22 @@ class MyCertificateView(APIView):
     
 
 class VerifyCertificateView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def get(self, request, code):
         certificate = get_object_or_404(
             Certificate,
-            certificate_id=code
+            certificate_code=code
         )
 
         return Response({
             "valid": True,
-            "user": certificate.user.get_full_name(),
+            "user": (
+                certificate.user.profile.full_name
+                if hasattr(certificate.user, "profile")
+                else certificate.user.email
+            ),
             "course": certificate.course.title,
             "issued_at": certificate.issued_at
         })
@@ -49,10 +54,16 @@ class DownloadCertificateView(APIView):
             user=request.user,
             course_id=course_id,
             enrollment__is_completed=True
-)
+        )
+
+        if not certificate.pdf:
+            return Response(
+                {"detail": "Certificate PDF not available"},
+                status=404
+            )
 
         return FileResponse(
-            certificate.pdf.open(),
+            certificate.pdf.open("rb"),
             as_attachment=True,
-            filename=f"{certificate.course.title}.pdf"
-)
+            filename=f"{certificate.course.slug}.pdf"
+        )

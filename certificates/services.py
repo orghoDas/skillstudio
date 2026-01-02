@@ -1,18 +1,31 @@
-import uuid
-from .models import Certificate
+# certificates/services/issue.py
+
+from certificates.models import Certificate
+from certificates.pdf import generate_certificate_pdf
 
 
 def issue_certificate(enrollment):
-    if not enrollment.is_completed:
-        return None
+    """
+    Creates certificate + generates & stores PDF
+    """
 
+    # Prevent duplicates
     certificate, created = Certificate.objects.get_or_create(
         user=enrollment.user,
         course=enrollment.course,
-        enrollment=enrollment,
-        defaults={
-            'certificate_id': uuid.uuid4().hex
-        }
+        enrollment=enrollment
     )
+
+    # Generate PDF only once
+    if created or not certificate.pdf:
+        pdf_file = generate_certificate_pdf(certificate)
+
+        certificate.pdf.save(
+            pdf_file.name,
+            pdf_file,
+            save=False
+        )
+
+        certificate.save(update_fields=["pdf"])
 
     return certificate

@@ -17,13 +17,15 @@ def generate_certificate_pdf(certificate):
     c.setFont("Helvetica-Bold", 28)
     c.drawCentredString(width / 2, height - 140, "Certificate of Completion")
 
-    # 👤 Name
-    c.setFont("Helvetica", 18)
-    c.drawCentredString(
-        width / 2,
-        height - 240,
-        certificate.user.get_full_name()
+    # 👤 Student Name (SAFE)
+    name = (
+        certificate.user.profile.full_name
+        if hasattr(certificate.user, "profile") and certificate.user.profile.full_name
+        else certificate.user.email
     )
+
+    c.setFont("Helvetica", 18)
+    c.drawCentredString(width / 2, height - 240, name)
 
     # 📘 Course
     c.setFont("Helvetica", 14)
@@ -40,29 +42,37 @@ def generate_certificate_pdf(certificate):
         certificate.course.title
     )
 
-    # 🔐 Verification code
+    # 🔐 Verification Code
     c.setFont("Helvetica", 10)
     c.drawCentredString(
         width / 2,
         120,
-        f"Verification Code: {certificate.verification_code}"
+        f"Verification Code: {certificate.certificate_code}"
     )
 
-    # 🔗 QR CODE
-    verify_url = f"{settings.FRONTEND_URL}/verify-certificate/{certificate.verification_code}"
+    # 🔗 QR → BACKEND VERIFY URL
+    verify_url = (
+        f"{settings.BACKEND_URL}/certificates/verify/"
+        f"{certificate.certificate_code}/"
+    )
 
     qr_img = qrcode.make(verify_url)
     qr_buffer = BytesIO()
     qr_img.save(qr_buffer)
     qr_buffer.seek(0)
 
-    qr_reader = ImageReader(qr_buffer)
-    c.drawImage(qr_reader, width - 160, 80, 100, 100)
+    c.drawImage(
+        ImageReader(qr_buffer),
+        width - 160,
+        80,
+        100,
+        100
+    )
 
     c.showPage()
     c.save()
-
     buffer.seek(0)
+
     return ContentFile(
         buffer.read(),
         name=f"certificate_{certificate.id}.pdf"
