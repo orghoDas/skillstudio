@@ -1,0 +1,416 @@
+{% extends 'base.html' %}
+
+{% block title %}AI Recommendations - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold text-white mb-2">
+                                <i class="fas fa-robot text-blue-500 mr-3"></i>AI Recommendations
+                            </h1>
+                            <p class="text-gray-400">Personalized course suggestions based on your learning journey</p>
+                        </div>
+                        <button onclick="refreshRecommendations()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Insights -->
+                <div class="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-xl p-6 mb-8">
+                    <div class="flex items-start">
+                        <div class="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
+                            <i class="fas fa-lightbulb text-blue-500 text-xl"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-white font-semibold mb-2">AI Insights</h3>
+                            <p id="aiInsight" class="text-gray-300 text-sm leading-relaxed">
+                                <span class="inline-block animate-pulse">Analyzing your learning patterns...</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recommendation Categories -->
+                <div class="flex gap-3 mb-6 overflow-x-auto pb-2">
+                    <button onclick="filterRecommendations('all')" class="filter-btn active px-6 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap">
+                        All Recommendations
+                    </button>
+                    <button onclick="filterRecommendations('continue-learning')" class="filter-btn px-6 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap">
+                        <i class="fas fa-play-circle mr-1"></i>Continue Learning
+                    </button>
+                    <button onclick="filterRecommendations('skill-building')" class="filter-btn px-6 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap">
+                        <i class="fas fa-chart-line mr-1"></i>Skill Building
+                    </button>
+                    <button onclick="filterRecommendations('trending')" class="filter-btn px-6 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap">
+                        <i class="fas fa-fire mr-1"></i>Trending Now
+                    </button>
+                    <button onclick="filterRecommendations('career-path')" class="filter-btn px-6 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap">
+                        <i class="fas fa-briefcase mr-1"></i>Career Path
+                    </button>
+                </div>
+
+                <!-- For You Section -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">
+                            <i class="fas fa-sparkles text-yellow-500 mr-2"></i>Recommended For You
+                        </h2>
+                        <span class="text-gray-400 text-sm">Based on your interests and goals</span>
+                    </div>
+                    <div id="personalizedRecommendations" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Loading state -->
+                        <div class="col-span-full flex items-center justify-center py-12">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Continue Learning -->
+                <div class="mb-8" id="continueLearningSection">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">
+                            <i class="fas fa-play-circle text-green-500 mr-2"></i>Continue Your Journey
+                        </h2>
+                    </div>
+                    <div id="continueRecommendations" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Skill Building -->
+                <div class="mb-8" id="skillBuildingSection">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">
+                            <i class="fas fa-chart-line text-purple-500 mr-2"></i>Build Your Skills
+                        </h2>
+                        <span class="text-gray-400 text-sm">Courses to complement your current knowledge</span>
+                    </div>
+                    <div id="skillRecommendations" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Career Path Recommendations -->
+                <div class="mb-8" id="careerPathSection">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">
+                            <i class="fas fa-briefcase text-blue-500 mr-2"></i>Advance Your Career
+                        </h2>
+                        <span class="text-gray-400 text-sm">Curated learning paths for your career goals</span>
+                    </div>
+                    <div id="careerRecommendations" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Similar Students Also Took -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">
+                            <i class="fas fa-users text-orange-500 mr-2"></i>Students Like You Also Took
+                        </h2>
+                    </div>
+                    <div id="similarStudents" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.filter-btn {
+    background-color: #1a1f2e;
+    color: #9ca3af;
+    border: 1px solid #374151;
+}
+
+.filter-btn:hover {
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+.filter-btn.active {
+    background-color: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
+}
+</style>
+
+<script>
+let currentFilter = 'all';
+let allRecommendations = {};
+
+async function loadRecommendations() {
+    try {
+        const data = await apiRequest('/api/ai-recommender/recommendations/');
+        
+        allRecommendations = data;
+        
+        // Update AI insight
+        document.getElementById('aiInsight').textContent = data.ai_insight || 'Based on your learning patterns, we recommend focusing on practical projects to reinforce your skills.';
+        
+        // Render different sections
+        renderPersonalizedRecommendations(data.personalized);
+        renderContinueLearning(data.continue_learning);
+        renderSkillBuilding(data.skill_building);
+        renderCareerPath(data.career_path);
+        renderSimilarStudents(data.similar_students);
+        
+    } catch (error) {
+        console.error('Error loading recommendations:', error);
+        showAlert('Failed to load recommendations', 'error');
+    }
+}
+
+function renderPersonalizedRecommendations(courses) {
+    const container = document.getElementById('personalizedRecommendations');
+    
+    if (!courses || courses.length === 0) {
+        container.innerHTML = `
+            <div class="col-span-full text-center py-12">
+                <div class="text-gray-400 mb-4">
+                    <i class="fas fa-robot text-6xl mb-4"></i>
+                    <p>No personalized recommendations yet</p>
+                    <p class="text-sm mt-2">Complete more courses to get better recommendations</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-blue-500 transition-all group overflow-hidden">
+            <div class="relative">
+                <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-full h-48 object-cover">
+                <div class="absolute top-3 left-3">
+                    <span class="px-3 py-1 rounded-full text-xs font-medium bg-blue-500 text-white">
+                        ${course.match_score}% Match
+                    </span>
+                </div>
+                ${course.is_trending ? '<div class="absolute top-3 right-3"><span class="px-3 py-1 rounded-full text-xs font-medium bg-orange-500 text-white"><i class="fas fa-fire mr-1"></i>Trending</span></div>' : ''}
+            </div>
+            <div class="p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="px-2 py-1 bg-purple-500/10 text-purple-500 rounded text-xs font-medium">${course.category}</span>
+                    <span class="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">${course.level}</span>
+                </div>
+                <h3 class="text-white font-semibold text-lg mb-2 group-hover:text-blue-500 transition-colors">${course.title}</h3>
+                <p class="text-gray-400 text-sm mb-4 line-clamp-2">${course.description}</p>
+                
+                <!-- Recommendation Reason -->
+                <div class="bg-[#0f1419] border border-blue-500/20 rounded-lg p-3 mb-4">
+                    <div class="flex items-start">
+                        <i class="fas fa-magic text-blue-500 mr-2 mt-1 text-sm"></i>
+                        <p class="text-gray-300 text-xs leading-relaxed">${course.reason}</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center text-sm text-gray-400">
+                        <i class="fas fa-star text-yellow-500 mr-1"></i>
+                        <span class="text-white font-medium mr-1">${course.rating.toFixed(1)}</span>
+                        <span>(${course.reviews_count})</span>
+                    </div>
+                    <div class="flex items-center text-sm text-gray-400">
+                        <i class="fas fa-users mr-1"></i>
+                        <span>${course.students_count.toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <div class="text-2xl font-bold text-white">
+                        ${course.price === 0 ? '<span class="text-green-500">FREE</span>' : `$${course.price}`}
+                    </div>
+                    <a href="/courses/${course.slug}/" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors text-sm font-medium">
+                        View Course
+                    </a>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderContinueLearning(courses) {
+    const container = document.getElementById('continueRecommendations');
+    
+    if (!courses || courses.length === 0) {
+        document.getElementById('continueLearningSection').style.display = 'none';
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-green-500 transition-all p-5">
+            <div class="flex items-start gap-4">
+                <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-24 h-24 rounded-lg object-cover flex-shrink-0">
+                <div class="flex-1">
+                    <h3 class="text-white font-semibold mb-2">${course.title}</h3>
+                    <div class="flex items-center text-sm text-gray-400 mb-3">
+                        <span>${course.current_lesson}/${course.total_lessons} lessons</span>
+                        <span class="mx-2">•</span>
+                        <span>${course.time_remaining} left</span>
+                    </div>
+                    <div class="mb-3">
+                        <div class="w-full bg-gray-700 rounded-full h-2">
+                            <div class="bg-green-500 h-2 rounded-full transition-all" style="width: ${course.progress}%"></div>
+                        </div>
+                        <div class="flex items-center justify-between mt-1">
+                            <span class="text-xs text-gray-400">${course.progress}% complete</span>
+                            <span class="text-xs text-green-500">Almost there!</span>
+                        </div>
+                    </div>
+                    <a href="/students/learn/${course.id}/" class="inline-block bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg transition-colors text-sm font-medium">
+                        <i class="fas fa-play mr-1"></i>Continue Learning
+                    </a>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderSkillBuilding(courses) {
+    const container = document.getElementById('skillRecommendations');
+    
+    if (!courses || courses.length === 0) {
+        document.getElementById('skillBuildingSection').style.display = 'none';
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-purple-500 transition-all overflow-hidden">
+            <div class="relative">
+                <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-full h-40 object-cover">
+                <div class="absolute top-3 left-3">
+                    <span class="px-3 py-1 rounded-full text-xs font-medium bg-purple-500 text-white">
+                        <i class="fas fa-arrow-up mr-1"></i>${course.skill_improvement}
+                    </span>
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="text-white font-semibold mb-2 text-sm">${course.title}</h3>
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xs text-gray-400">${course.duration}</span>
+                    <span class="text-gray-600">•</span>
+                    <span class="text-xs text-gray-400">${course.level}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-white font-bold">${course.price === 0 ? '<span class="text-green-500">FREE</span>' : `$${course.price}`}</span>
+                    <a href="/courses/${course.slug}/" class="text-purple-500 hover:text-purple-400 text-sm font-medium">
+                        Learn More →
+                    </a>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderCareerPath(paths) {
+    const container = document.getElementById('careerRecommendations');
+    
+    if (!paths || paths.length === 0) {
+        document.getElementById('careerPathSection').style.display = 'none';
+        return;
+    }
+    
+    container.innerHTML = paths.map(path => `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-blue-500 transition-all p-6">
+            <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mr-4">
+                    <i class="fas ${path.icon} text-blue-500 text-xl"></i>
+                </div>
+                <div class="flex-1">
+                    <h3 class="text-white font-semibold text-lg">${path.title}</h3>
+                    <p class="text-gray-400 text-sm">${path.courses_count} courses • ${path.duration}</p>
+                </div>
+                <span class="px-3 py-1 bg-blue-500/10 text-blue-500 rounded-full text-xs font-medium">
+                    ${path.completion}% Complete
+                </span>
+            </div>
+            <p class="text-gray-400 text-sm mb-4">${path.description}</p>
+            <div class="space-y-2 mb-4">
+                ${path.next_courses.slice(0, 3).map((course, idx) => `
+                    <div class="flex items-center text-sm">
+                        <span class="w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center text-xs text-gray-400 mr-3">${idx + 1}</span>
+                        <span class="text-gray-300">${course}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <a href="/learning-paths/${path.id}/" class="block w-full bg-blue-500 hover:bg-blue-600 text-white text-center px-6 py-2 rounded-lg transition-colors font-medium">
+                Continue Path
+            </a>
+        </div>
+    `).join('');
+}
+
+function renderSimilarStudents(courses) {
+    const container = document.getElementById('similarStudents');
+    
+    if (!courses || courses.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center text-gray-400 py-8">No recommendations available</div>';
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-orange-500 transition-all overflow-hidden group">
+            <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-full h-32 object-cover">
+            <div class="p-4">
+                <h3 class="text-white font-medium text-sm mb-2 line-clamp-2 group-hover:text-orange-500 transition-colors">${course.title}</h3>
+                <div class="flex items-center justify-between text-xs text-gray-400 mb-3">
+                    <div class="flex items-center">
+                        <i class="fas fa-star text-yellow-500 mr-1"></i>
+                        <span class="text-white">${course.rating.toFixed(1)}</span>
+                    </div>
+                    <span>${course.students_count} students</span>
+                </div>
+                <a href="/courses/${course.slug}/" class="text-orange-500 hover:text-orange-400 text-xs font-medium">
+                    View Course →
+                </a>
+            </div>
+        </div>
+    `).join('');
+}
+
+function filterRecommendations(category) {
+    currentFilter = category;
+    
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Show/hide sections
+    document.getElementById('continueLearningSection').style.display = 
+        category === 'all' || category === 'continue-learning' ? 'block' : 'none';
+    document.getElementById('skillBuildingSection').style.display = 
+        category === 'all' || category === 'skill-building' ? 'block' : 'none';
+    document.getElementById('careerPathSection').style.display = 
+        category === 'all' || category === 'career-path' ? 'block' : 'none';
+    
+    // For trending, filter personalized recommendations
+    if (category === 'trending') {
+        const trendingCourses = allRecommendations.personalized?.filter(c => c.is_trending);
+        renderPersonalizedRecommendations(trendingCourses);
+    } else if (category === 'all') {
+        renderPersonalizedRecommendations(allRecommendations.personalized);
+    }
+}
+
+async function refreshRecommendations() {
+    showAlert('Refreshing recommendations...', 'info');
+    await loadRecommendations();
+    showAlert('Recommendations updated!', 'success');
+}
+
+// Load recommendations on page load
+loadRecommendations();
+</script>
+{% endblock %}

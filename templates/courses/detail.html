@@ -1,0 +1,291 @@
+{% extends 'base.html' %}
+
+{% block title %}Course Details - SkillStudio{% endblock %}
+
+{% block content %}
+<div id="course-loading" class="container mx-auto px-6 py-8">
+    <div class="animate-pulse space-y-6">
+        <div class="h-8 bg-dark-surface rounded w-3/4"></div>
+        <div class="h-64 bg-dark-surface rounded"></div>
+        <div class="h-32 bg-dark-surface rounded"></div>
+    </div>
+</div>
+
+<div id="course-content" class="hidden">
+    <!-- Hero Section -->
+    <div class="bg-gradient-to-br from-blue-900 to-purple-900 border-b border-dark-border">
+        <div class="container mx-auto px-6 py-12">
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="md:col-span-2">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <span id="course-category" class="text-xs px-3 py-1 bg-purple-600 rounded-full"></span>
+                        <span id="course-level" class="text-xs px-3 py-1 bg-blue-600 rounded-full capitalize"></span>
+                    </div>
+                    <h1 id="course-title" class="text-4xl font-bold mb-4"></h1>
+                    <p id="course-description" class="text-lg text-gray-300 mb-6"></p>
+                    <div class="flex items-center space-x-6 text-sm">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <span id="instructor-name"></span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-5 h-5 fill-current text-yellow-500" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                            </svg>
+                            <span id="course-rating">0.0</span>
+                            <span class="text-gray-400">(<span id="reviews-count">0</span> reviews)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                            </svg>
+                            <span id="enrollment-count">0</span> students
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Enrollment Card -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <div class="text-center mb-4">
+                        <p class="text-3xl font-bold" id="course-price">$0</p>
+                    </div>
+                    <button id="enroll-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors mb-3">
+                        Enroll Now
+                    </button>
+                    <div id="enrollment-status" class="hidden mb-3"></div>
+                    <div class="space-y-2 text-sm text-gray-400">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span id="course-duration">Self-paced</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>Certificate of completion</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                            <span>Access on mobile and desktop</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Course Content -->
+    <div class="container mx-auto px-6 py-8">
+        <div class="grid md:grid-cols-3 gap-8">
+            <!-- Main Content -->
+            <div class="md:col-span-2 space-y-8">
+                <!-- What You'll Learn -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">What you'll learn</h2>
+                    <div id="learning-outcomes" class="grid md:grid-cols-2 gap-3">
+                        <div class="flex items-start space-x-2">
+                            <svg class="w-5 h-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span class="text-gray-300">Build real-world projects</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Course Curriculum -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Course Curriculum</h2>
+                    <div id="course-curriculum" class="space-y-2">
+                        <p class="text-gray-400">Loading curriculum...</p>
+                    </div>
+                </div>
+
+                <!-- Requirements -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Requirements</h2>
+                    <ul id="requirements-list" class="list-disc list-inside space-y-2 text-gray-300">
+                        <li>Basic computer skills</li>
+                        <li>Willingness to learn</li>
+                    </ul>
+                </div>
+
+                <!-- Reviews -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Student Reviews</h2>
+                    <div id="reviews-container">
+                        <p class="text-gray-400">No reviews yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <!-- Instructor Info -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-4">Instructor</h3>
+                    <div class="flex items-center space-x-3 mb-3">
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                            <span id="instructor-avatar" class="text-lg font-bold">I</span>
+                        </div>
+                        <div>
+                            <p id="instructor-name-sidebar" class="font-semibold"></p>
+                            <p class="text-sm text-gray-400">Instructor</p>
+                        </div>
+                    </div>
+                    <p id="instructor-bio" class="text-sm text-gray-400">Experienced educator passionate about teaching.</p>
+                </div>
+
+                <!-- Share Course -->
+                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-4">Share this course</h3>
+                    <div class="flex space-x-2">
+                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
+                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                        </button>
+                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
+                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
+                        </button>
+                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
+                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseData = null;
+
+document.addEventListener('DOMContentLoaded', async function() {
+    const slug = window.location.pathname.split('/')[2];
+    await loadCourse(slug);
+});
+
+async function loadCourse(slug) {
+    try {
+        const response = await fetch(`/api/courses/${slug}/`);
+        if (!response.ok) throw new Error('Course not found');
+        
+        courseData = await response.json();
+        
+        // Hide loading, show content
+        document.getElementById('course-loading').classList.add('hidden');
+        document.getElementById('course-content').classList.remove('hidden');
+        
+        // Populate course details
+        document.getElementById('course-title').textContent = courseData.title;
+        document.getElementById('course-description').textContent = courseData.description || '';
+        document.getElementById('course-category').textContent = courseData.category || 'General';
+        document.getElementById('course-level').textContent = courseData.level || 'All Levels';
+        document.getElementById('instructor-name').textContent = courseData.instructor_name || 'Instructor';
+        document.getElementById('instructor-name-sidebar').textContent = courseData.instructor_name || 'Instructor';
+        document.getElementById('instructor-avatar').textContent = (courseData.instructor_name || 'I').charAt(0).toUpperCase();
+        document.getElementById('course-rating').textContent = courseData.rating || '0.0';
+        document.getElementById('reviews-count').textContent = courseData.reviews_count || 0;
+        document.getElementById('enrollment-count').textContent = courseData.enrollment_count || 0;
+        
+        // Price
+        const price = parseFloat(courseData.price);
+        if (price === 0) {
+            document.getElementById('course-price').textContent = 'FREE';
+            document.getElementById('course-price').classList.add('text-green-400');
+        } else {
+            document.getElementById('course-price').textContent = `$${price}`;
+        }
+        
+        // Check enrollment status
+        await checkEnrollmentStatus();
+        
+        // Setup enroll button
+        document.getElementById('enroll-btn').addEventListener('click', handleEnrollment);
+        
+    } catch (error) {
+        console.error('Error loading course:', error);
+        document.getElementById('course-loading').innerHTML = `
+            <div class="text-center py-16">
+                <p class="text-red-400 text-lg">Course not found</p>
+                <a href="/courses/" class="text-blue-400 hover:text-blue-300 mt-4 inline-block">← Back to Courses</a>
+            </div>
+        `;
+    }
+}
+
+async function checkEnrollmentStatus() {
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        document.getElementById('enroll-btn').textContent = 'Login to Enroll';
+        document.getElementById('enroll-btn').onclick = () => window.location.href = '/auth/login/?next=' + window.location.pathname;
+        return;
+    }
+    
+    try {
+        const response = await apiRequest(`/api/enrollments/?course=${courseData.id}`);
+        if (response && response.results && response.results.length > 0) {
+            const enrollment = response.results[0];
+            document.getElementById('enroll-btn').textContent = 'Continue Learning';
+            document.getElementById('enroll-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            document.getElementById('enroll-btn').classList.add('bg-green-600', 'hover:bg-green-700');
+            document.getElementById('enroll-btn').onclick = () => window.location.href = `/courses/${courseData.slug || courseData.id}/learn/`;
+            
+            // Show enrollment status
+            const statusEl = document.getElementById('enrollment-status');
+            statusEl.innerHTML = `
+                <div class="bg-green-900/30 border border-green-600 rounded-lg p-3 text-sm">
+                    <p class="text-green-400 font-semibold">✓ You're enrolled</p>
+                    <div class="mt-2">
+                        <div class="w-full bg-dark-bg rounded-full h-2">
+                            <div class="bg-green-600 h-2 rounded-full" style="width: ${enrollment.progress || 0}%"></div>
+                        </div>
+                        <p class="text-gray-400 text-xs mt-1">${enrollment.progress || 0}% Complete</p>
+                    </div>
+                </div>
+            `;
+            statusEl.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error checking enrollment:', error);
+    }
+}
+
+async function handleEnrollment() {
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=' + window.location.pathname;
+        return;
+    }
+    
+    const btn = document.getElementById('enroll-btn');
+    btn.disabled = true;
+    btn.textContent = 'Enrolling...';
+    
+    try {
+        const response = await apiRequest('/api/enrollments/', {
+            method: 'POST',
+            body: JSON.stringify({ course: courseData.id })
+        });
+        
+        if (response) {
+            showAlert('Successfully enrolled in the course!', 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        }
+    } catch (error) {
+        console.error('Enrollment error:', error);
+        showAlert(error.message || 'Failed to enroll. Please try again.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Enroll Now';
+    }
+}
+</script>
+{% endblock %}

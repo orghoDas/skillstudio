@@ -1,0 +1,150 @@
+<!-- Alert Component -->
+<!-- Usage: Include this file and call showAlert(message, type, duration) from JavaScript -->
+
+<div id="alert-container" class="fixed top-20 right-4 z-50 space-y-2 max-w-md"></div>
+
+<script>
+/**
+ * Display an alert notification
+ * @param {string} message - The message to display
+ * @param {string} type - Alert type: 'success', 'error', 'warning', 'info'
+ * @param {number} duration - Duration in milliseconds (default: 5000, 0 = no auto-hide)
+ */
+window.showAlert = function(message, type = 'info', duration = 5000) {
+    const container = document.getElementById('alert-container');
+    if (!container) return;
+    
+    // Create alert element
+    const alert = document.createElement('div');
+    alert.className = `alert-item flex items-start space-x-3 p-4 rounded-lg shadow-lg border transform transition-all duration-300 translate-x-full opacity-0 ${getAlertClasses(type)}`;
+    
+    // Alert content
+    alert.innerHTML = `
+        <div class="flex-shrink-0">
+            ${getAlertIcon(type)}
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium">${getAlertTitle(type)}</p>
+            <p class="text-sm opacity-90 mt-1">${message}</p>
+        </div>
+        <button class="alert-close flex-shrink-0 text-current opacity-70 hover:opacity-100 transition-opacity" aria-label="Close">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    
+    // Add to container
+    container.appendChild(alert);
+    
+    // Animate in
+    setTimeout(() => {
+        alert.classList.remove('translate-x-full', 'opacity-0');
+    }, 10);
+    
+    // Close button handler
+    const closeBtn = alert.querySelector('.alert-close');
+    closeBtn.addEventListener('click', () => removeAlert(alert));
+    
+    // Auto-hide after duration
+    if (duration > 0) {
+        setTimeout(() => removeAlert(alert), duration);
+    }
+    
+    return alert;
+};
+
+/**
+ * Remove an alert with animation
+ */
+function removeAlert(alert) {
+    alert.classList.add('translate-x-full', 'opacity-0');
+    setTimeout(() => alert.remove(), 300);
+}
+
+/**
+ * Get alert styling classes based on type
+ */
+function getAlertClasses(type) {
+    const classes = {
+        success: 'bg-green-900/90 border-green-600 text-green-100',
+        error: 'bg-red-900/90 border-red-600 text-red-100',
+        warning: 'bg-yellow-900/90 border-yellow-600 text-yellow-100',
+        info: 'bg-blue-900/90 border-blue-600 text-blue-100'
+    };
+    return classes[type] || classes.info;
+}
+
+/**
+ * Get alert icon based on type
+ */
+function getAlertIcon(type) {
+    const icons = {
+        success: `
+            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `,
+        error: `
+            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `,
+        warning: `
+            <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+        `,
+        info: `
+            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `
+    };
+    return icons[type] || icons.info;
+}
+
+/**
+ * Get alert title based on type
+ */
+function getAlertTitle(type) {
+    const titles = {
+        success: 'Success',
+        error: 'Error',
+        warning: 'Warning',
+        info: 'Info'
+    };
+    return titles[type] || titles.info;
+}
+
+/**
+ * Clear all alerts
+ */
+window.clearAllAlerts = function() {
+    const container = document.getElementById('alert-container');
+    if (!container) return;
+    
+    const alerts = container.querySelectorAll('.alert-item');
+    alerts.forEach(alert => removeAlert(alert));
+};
+</script>
+
+<style>
+/* Additional alert styles */
+.alert-item {
+    min-width: 320px;
+    backdrop-filter: blur(10px);
+}
+
+@media (max-width: 640px) {
+    .alert-item {
+        min-width: calc(100vw - 2rem);
+    }
+    
+    #alert-container {
+        right: 1rem;
+        left: 1rem;
+        max-width: none;
+    }
+}
+</style>

@@ -1,0 +1,366 @@
+{% extends 'base.html' %}
+
+{% block title %}Learn - SkillStudio{% endblock %}
+
+{% block content %}
+<div id="learning-container">
+    <!-- Loading State -->
+    <div class="flex justify-center items-center h-screen">
+        <div class="animate-spin h-16 w-16 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseSlug;
+let enrollmentData;
+let currentLesson = null;
+let sections = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        const currentPath = window.location.pathname;
+        window.location.href = `/auth/login/?next=${currentPath}`;
+        return;
+    }
+
+    // Get course slug from URL
+    const pathParts = window.location.pathname.split('/');
+    courseSlug = pathParts[2];
+    
+    loadCourse();
+});
+
+async function loadCourse() {
+    try {
+        // Get enrollment data
+        const enrollmentResponse = await apiRequest(`/api/enrollments/?course_slug=${courseSlug}`);
+        if (!enrollmentResponse.results || enrollmentResponse.results.length === 0) {
+            // Not enrolled - redirect to course detail
+            window.location.href = `/courses/${courseSlug}/`;
+            return;
+        }
+        enrollmentData = enrollmentResponse.results[0];
+
+        // Load course sections and lessons
+        const sectionsResponse = await apiRequest(`/api/courses/${courseSlug}/sections/`);
+        sections = sectionsResponse.results || sectionsResponse;
+
+        // Find first incomplete lesson or first lesson
+        currentLesson = findNextLesson();
+
+        renderLearningInterface();
+        if (currentLesson) {
+            loadLesson(currentLesson.id);
+        }
+    } catch (error) {
+        console.error('Error loading course:', error);
+        document.getElementById('learning-container').innerHTML = `
+            <div class="flex items-center justify-center h-screen">
+                <div class="text-center">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <p class="text-xl font-semibold mb-2">Error Loading Course</p>
+                    <p class="text-gray-400 mb-6">Failed to load course content</p>
+                    <a href="/my-courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                        Back to My Courses
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function findNextLesson() {
+    const completedLessonIds = enrollmentData.completed_lessons || [];
+    
+    for (const section of sections) {
+        for (const lesson of section.lessons || []) {
+            if (!completedLessonIds.includes(lesson.id)) {
+                return lesson;
+            }
+        }
+    }
+    
+    // All lessons completed, return first lesson
+    return sections[0]?.lessons?.[0] || null;
+}
+
+function renderLearningInterface() {
+    const container = document.getElementById('learning-container');
+    const course = enrollmentData.course;
+
+    container.innerHTML = `
+        <div class="flex h-screen overflow-hidden">
+            <!-- Sidebar - Course Content -->
+            <div id="course-sidebar" class="w-96 bg-dark-surface border-r border-dark-border overflow-y-auto">
+                <!-- Course Header -->
+                <div class="p-6 border-b border-dark-border">
+                    <a href="/my-courses/" class="text-sm text-gray-400 hover:text-white mb-3 inline-block">
+                        ← Back to My Courses
+                    </a>
+                    <h2 class="text-xl font-semibold mb-2">${course.title}</h2>
+                    <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
+                        <span>${enrollmentData.completed_lessons_count || 0} / ${enrollmentData.total_lessons_count || 0} lessons</span>
+                        <span>${Math.round(enrollmentData.progress_percentage || 0)}% complete</span>
+                    </div>
+                    <div class="w-full bg-dark-bg rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${enrollmentData.progress_percentage || 0}%"></div>
+                    </div>
+                </div>
+
+                <!-- Sections & Lessons -->
+                <div class="p-4">
+                    ${sections.map((section, sectionIndex) => renderSection(section, sectionIndex)).join('')}
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- Lesson Header -->
+                <div class="bg-dark-surface border-b border-dark-border p-6">
+                    <h1 id="lesson-title" class="text-2xl font-bold mb-2">Select a lesson to start</h1>
+                    <p id="lesson-type" class="text-gray-400"></p>
+                </div>
+
+                <!-- Lesson Content -->
+                <div id="lesson-content" class="flex-1 overflow-y-auto p-8 bg-dark-bg">
+                    <div class="max-w-4xl mx-auto text-center text-gray-400">
+                        <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p>Select a lesson from the sidebar to begin learning</p>
+                    </div>
+                </div>
+
+                <!-- Lesson Navigation -->
+                <div id="lesson-navigation" class="hidden bg-dark-surface border-t border-dark-border p-6">
+                    <div class="flex items-center justify-between max-w-4xl mx-auto">
+                        <button id="prev-lesson" onclick="navigateLesson('prev')" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            ← Previous Lesson
+                        </button>
+                        <button id="mark-complete" onclick="markLessonComplete()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                            Mark as Complete
+                        </button>
+                        <button id="next-lesson" onclick="navigateLesson('next')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Next Lesson →
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSection(section, sectionIndex) {
+    const completedLessonIds = enrollmentData.completed_lessons || [];
+    const lessons = section.lessons || [];
+
+    return `
+        <div class="mb-4">
+            <button onclick="toggleSection(${sectionIndex})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
+                <span class="font-semibold">Section ${sectionIndex + 1}: ${section.title}</span>
+                <svg class="section-chevron w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div class="section-content space-y-1 mt-2">
+                ${lessons.map(lesson => renderLesson(lesson, completedLessonIds)).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderLesson(lesson, completedLessonIds) {
+    const isCompleted = completedLessonIds.includes(lesson.id);
+    const isCurrent = currentLesson && currentLesson.id === lesson.id;
+
+    const typeIcons = {
+        video: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+        article: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+        quiz: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+        assignment: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
+    };
+
+    return `
+        <button onclick="loadLesson(${lesson.id})" class="w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 ${
+            isCurrent ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'hover:bg-dark-hover'
+        }">
+            <div class="w-8 h-8 flex-shrink-0 ${isCompleted ? 'bg-green-900/50' : 'bg-dark-bg'} rounded-lg flex items-center justify-center">
+                ${isCompleted ? `
+                    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                ` : `
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${typeIcons[lesson.content_type] || typeIcons.article}"/>
+                    </svg>
+                `}
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="font-medium text-sm truncate ${isCompleted ? 'text-green-400' : ''}">${lesson.title}</p>
+                <p class="text-xs text-gray-500 capitalize">${lesson.content_type}${lesson.duration ? ` • ${lesson.duration} min` : ''}</p>
+            </div>
+        </button>
+    `;
+}
+
+function toggleSection(index) {
+    const sections = document.querySelectorAll('.section-content');
+    const chevrons = document.querySelectorAll('.section-chevron');
+    sections[index].classList.toggle('hidden');
+    chevrons[index].classList.toggle('rotate-180');
+}
+
+async function loadLesson(lessonId) {
+    try {
+        // Find lesson in sections
+        let foundLesson = null;
+        for (const section of sections) {
+            foundLesson = section.lessons?.find(l => l.id === lessonId);
+            if (foundLesson) break;
+        }
+
+        if (!foundLesson) return;
+
+        currentLesson = foundLesson;
+
+        // Update lesson header
+        document.getElementById('lesson-title').textContent = currentLesson.title;
+        document.getElementById('lesson-type').textContent = `${currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1)}${currentLesson.duration ? ` • ${currentLesson.duration} minutes` : ''}`;
+
+        // Render lesson content based on type
+        const contentArea = document.getElementById('lesson-content');
+        if (currentLesson.content_type === 'video') {
+            contentArea.innerHTML = `
+                <div class="max-w-4xl mx-auto">
+                    <div class="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
+                        <div class="text-center text-white">
+                            <svg class="w-20 h-20 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <p class="text-gray-400">Video player would be embedded here</p>
+                            <p class="text-sm text-gray-500 mt-2">Integrate with Vimeo, YouTube, or custom video player</p>
+                        </div>
+                    </div>
+                    <div class="prose prose-invert max-w-none">
+                        <p class="text-gray-300">${currentLesson.content || 'No description available'}</p>
+                    </div>
+                </div>
+            `;
+        } else if (currentLesson.content_type === 'article') {
+            contentArea.innerHTML = `
+                <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
+                    <div class="text-gray-300 whitespace-pre-wrap">${currentLesson.content || 'No content available'}</div>
+                </div>
+            `;
+        } else {
+            contentArea.innerHTML = `
+                <div class="max-w-4xl mx-auto text-center">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <p class="text-xl font-semibold mb-2">${currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1)}</p>
+                    <p class="text-gray-400 mb-6">${currentLesson.content || 'Interactive content'}</p>
+                </div>
+            `;
+        }
+
+        // Show navigation
+        document.getElementById('lesson-navigation').classList.remove('hidden');
+        updateNavigationButtons();
+
+        // Update sidebar to highlight current lesson
+        renderLearningInterface();
+
+        // Track progress
+        trackLessonAccess(lessonId);
+    } catch (error) {
+        console.error('Error loading lesson:', error);
+        showAlert('Failed to load lesson', 'error');
+    }
+}
+
+function updateNavigationButtons() {
+    const allLessons = [];
+    sections.forEach(section => {
+        (section.lessons || []).forEach(lesson => allLessons.push(lesson));
+    });
+
+    const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
+    
+    document.getElementById('prev-lesson').disabled = currentIndex === 0;
+    document.getElementById('next-lesson').disabled = currentIndex === allLessons.length - 1;
+
+    // Update mark complete button
+    const completedLessonIds = enrollmentData.completed_lessons || [];
+    const isCompleted = completedLessonIds.includes(currentLesson.id);
+    const markBtn = document.getElementById('mark-complete');
+    if (isCompleted) {
+        markBtn.textContent = '✓ Completed';
+        markBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        markBtn.classList.add('bg-gray-700');
+        markBtn.disabled = true;
+    } else {
+        markBtn.textContent = 'Mark as Complete';
+        markBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+        markBtn.classList.remove('bg-gray-700');
+        markBtn.disabled = false;
+    }
+}
+
+function navigateLesson(direction) {
+    const allLessons = [];
+    sections.forEach(section => {
+        (section.lessons || []).forEach(lesson => allLessons.push(lesson));
+    });
+
+    const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
+    const nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+
+    if (nextIndex >= 0 && nextIndex < allLessons.length) {
+        loadLesson(allLessons[nextIndex].id);
+    }
+}
+
+async function markLessonComplete() {
+    try {
+        await apiRequest(`/api/enrollments/${enrollmentData.id}/complete-lesson/`, {
+            method: 'POST',
+            body: JSON.stringify({ lesson_id: currentLesson.id })
+        });
+
+        // Update local enrollment data
+        if (!enrollmentData.completed_lessons) {
+            enrollmentData.completed_lessons = [];
+        }
+        enrollmentData.completed_lessons.push(currentLesson.id);
+        enrollmentData.completed_lessons_count = (enrollmentData.completed_lessons_count || 0) + 1;
+        enrollmentData.progress_percentage = (enrollmentData.completed_lessons_count / enrollmentData.total_lessons_count) * 100;
+
+        showAlert('Lesson marked as complete!', 'success');
+        renderLearningInterface();
+        loadLesson(currentLesson.id);
+    } catch (error) {
+        console.error('Error marking lesson complete:', error);
+        showAlert('Failed to mark lesson as complete', 'error');
+    }
+}
+
+async function trackLessonAccess(lessonId) {
+    try {
+        await apiRequest(`/api/enrollments/${enrollmentData.id}/track-progress/`, {
+            method: 'POST',
+            body: JSON.stringify({ lesson_id: lessonId })
+        });
+    } catch (error) {
+        console.error('Error tracking progress:', error);
+    }
+}
+</script>
+{% endblock %}

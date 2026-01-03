@@ -1,0 +1,162 @@
+<nav class="bg-dark-surface border-b border-dark-border sticky top-0 z-40">
+    <div class="container mx-auto px-6">
+        <div class="flex items-center justify-between h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-8">
+                <a href="/" class="flex items-center space-x-2">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>
+                    <span class="text-xl font-bold">SkillStudio</span>
+                </a>
+                
+                <!-- Main Navigation (Desktop) -->
+                <div class="hidden md:flex items-center space-x-6">
+                    <a href="/courses/" class="text-gray-300 hover:text-white">Courses</a>
+                    <a href="/events/" class="text-gray-300 hover:text-white">Events</a>
+                    <a href="/social/circles/" class="text-gray-300 hover:text-white">Learning Circles</a>
+                    <a href="/live/sessions/" class="text-gray-300 hover:text-white">Live Sessions</a>
+                </div>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="hidden md:flex flex-1 max-w-md mx-8">
+                <div class="relative w-full">
+                    <input type="text" 
+                           placeholder="Search courses, instructors..." 
+                           class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Right Side Actions -->
+            <div class="flex items-center space-x-4">
+                <!-- Check if user is authenticated -->
+                <div id="auth-section">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+                
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="hidden md:hidden border-t border-dark-border">
+        <div class="px-6 py-4 space-y-3">
+            <a href="/courses/" class="block text-gray-300 hover:text-white">Courses</a>
+            <a href="/events/" class="block text-gray-300 hover:text-white">Events</a>
+            <a href="/social/circles/" class="block text-gray-300 hover:text-white">Learning Circles</a>
+            <a href="/live/sessions/" class="block text-gray-300 hover:text-white">Live Sessions</a>
+            <div class="pt-3 border-t border-dark-border">
+                <input type="text" 
+                       placeholder="Search..." 
+                       class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+            </div>
+        </div>
+    </div>
+</nav>
+
+<script>
+    // Mobile menu toggle
+    document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+        const menu = document.getElementById('mobile-menu');
+        menu.classList.toggle('hidden');
+    });
+    
+    // Check authentication and render appropriate UI
+    function renderAuthSection() {
+        const authSection = document.getElementById('auth-section');
+        const token = localStorage.getItem('access_token');
+        const userRole = localStorage.getItem('user_role');
+        
+        if (token) {
+            // User is logged in
+            authSection.innerHTML = `
+                <a href="/notifications/" class="relative text-gray-300 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                    <span class="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 text-xs flex items-center justify-center">3</span>
+                </a>
+                
+                <div class="relative">
+                    <button id="user-menu-btn" class="flex items-center space-x-2 text-gray-300 hover:text-white">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-sm font-semibold">
+                            ${userRole ? userRole.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    
+                    <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-dark-surface border border-dark-border rounded-lg shadow-xl py-2">
+                        ${userRole === 'student' ? `
+                            <a href="/students/dashboard/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                                    </svg>
+                                    <span>Dashboard</span>
+                                </div>
+                            </a>
+                            <a href="/enrollments/my-courses/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">My Learning</a>
+                            <a href="/certificates/my-certificates/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">Certificates</a>
+                        ` : userRole === 'instructor' ? `
+                            <a href="/instructors/dashboard/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                    </svg>
+                                    <span>Dashboard</span>
+                                </div>
+                            </a>
+                            <a href="/courses/my-courses/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">My Courses</a>
+                            <a href="/instructors/payouts/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">Payouts</a>
+                        ` : `
+                            <a href="/admin/dashboard/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">Admin Dashboard</a>
+                        `}
+                        <hr class="my-2 border-dark-border">
+                        <a href="/settings/profile/" class="block px-4 py-2 text-sm text-gray-300 hover:bg-dark-hover">Settings</a>
+                        <button onclick="logout()" class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-dark-hover">Sign Out</button>
+                    </div>
+                </div>
+            `;
+            
+            // Toggle user menu
+            document.getElementById('user-menu-btn')?.addEventListener('click', () => {
+                document.getElementById('user-menu').classList.toggle('hidden');
+            });
+            
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                const menu = document.getElementById('user-menu');
+                const btn = document.getElementById('user-menu-btn');
+                if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+                    menu.classList.add('hidden');
+                }
+            });
+            
+        } else {
+            // User is not logged in
+            authSection.innerHTML = `
+                <a href="/auth/login/" class="text-gray-300 hover:text-white">Sign In</a>
+                <a href="/auth/register/" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                    Get Started
+                </a>
+            `;
+        }
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', renderAuthSection);
+</script>

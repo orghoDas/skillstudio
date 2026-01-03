@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Welcome Section -->
+    <div>
+        <h1 class="text-3xl font-bold mb-2">Welcome back, <span id="user-name">Student</span>!</h1>
+        <p class="text-gray-400">Continue your learning journey</p>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-2xl font-bold" id="enrolled-count">0</p>
+            <p class="text-sm text-gray-400">Enrolled Courses</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-2xl font-bold" id="completed-count">0</p>
+            <p class="text-sm text-gray-400">Completed Courses</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-2xl font-bold" id="certificates-count">0</p>
+            <p class="text-sm text-gray-400">Certificates Earned</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-orange-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-2xl font-bold" id="circles-count">0</p>
+            <p class="text-sm text-gray-400">Learning Circles</p>
+        </div>
+    </div>
+
+    <!-- Continue Learning -->
+    <div>
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Continue Learning</h2>
+            <a href="/courses/" class="text-blue-400 hover:text-blue-300">View All →</a>
+        </div>
+        <div id="continue-learning" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Loading skeleton -->
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        </div>
+    </div>
+
+    <!-- Upcoming Events -->
+    <div>
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Upcoming Events</h2>
+            <a href="/events/" class="text-blue-400 hover:text-blue-300">View All →</a>
+        </div>
+        <div id="upcoming-events" class="space-y-4">
+            <!-- Loading skeleton -->
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-24"></div>
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-24"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/dashboard/';
+        return;
+    }
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('user-name').textContent = user.email?.split('@')[0] || 'Student';
+
+    // Load dashboard stats
+    async function loadStats() {
+        try {
+            const [enrollments, certificates, circles] = await Promise.all([
+                apiRequest('/api/enrollments/'),
+                apiRequest('/api/certificates/'),
+                apiRequest('/api/social/circles/my-circles/')
+            ]);
+
+            if (enrollments && enrollments.results) {
+                const enrolled = enrollments.results.filter(e => e.status !== 'completed');
+                const completed = enrollments.results.filter(e => e.status === 'completed');
+                document.getElementById('enrolled-count').textContent = enrolled.length;
+                document.getElementById('completed-count').textContent = completed.length;
+            }
+
+            if (certificates && certificates.results) {
+                document.getElementById('certificates-count').textContent = certificates.results.length;
+            }
+
+            if (circles && circles.results) {
+                document.getElementById('circles-count').textContent = circles.results.length;
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    // Load in-progress courses
+    async function loadContinueLearning() {
+        try {
+            const response = await apiRequest('/api/enrollments/?status=in_progress&limit=3');
+            const container = document.getElementById('continue-learning');
+
+            if (response && response.results && response.results.length > 0) {
+                container.innerHTML = response.results.map(enrollment => `
+                    <a href="/courses/${enrollment.course_slug || enrollment.course}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
+                        <div class="h-40 bg-gradient-to-br from-blue-500 to-purple-600"></div>
+                        <div class="p-4">
+                            <h3 class="font-semibold mb-2">${enrollment.course_title || 'Course'}</h3>
+                            <div class="mb-3">
+                                <div class="w-full bg-dark-bg rounded-full h-2">
+                                    <div class="bg-blue-600 h-2 rounded-full" style="width: ${enrollment.progress || 0}%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">${enrollment.progress || 0}% Complete</p>
+                            </div>
+                            <span class="text-blue-400 text-sm">Continue Learning →</span>
+                        </div>
+                    </a>
+                `).join('');
+            } else {
+                container.innerHTML = `
+                    <div class="col-span-3 text-center py-12 bg-dark-surface border border-dark-border rounded-lg">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                        <p class="text-gray-400 mb-4">You haven't enrolled in any courses yet</p>
+                        <a href="/courses/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">Browse Courses</a>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading courses:', error);
+        }
+    }
+
+    // Load upcoming events
+    async function loadUpcomingEvents() {
+        try {
+            const response = await apiRequest('/api/events/?limit=3');
+            const container = document.getElementById('upcoming-events');
+
+            if (response && response.results && response.results.length > 0) {
+                container.innerHTML = response.results.map(event => `
+                    <a href="/events/${event.id}/" class="block bg-dark-surface border border-dark-border rounded-lg p-4 hover:border-blue-500 transition-colors">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-semibold mb-1">${event.title}</h3>
+                                <p class="text-sm text-gray-400 mb-2">${event.description?.substring(0, 100) || ''}...</p>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <span>${new Date(event.start_datetime).toLocaleDateString()}</span>
+                                    <span>${event.event_type}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                `).join('');
+            } else {
+                container.innerHTML = `
+                    <div class="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
+                        <p class="text-gray-400">No upcoming events</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading events:', error);
+        }
+    }
+
+    // Load all data
+    await Promise.all([
+        loadStats(),
+        loadContinueLearning(),
+        loadUpcomingEvents()
+    ]);
+});
+</script>
+{% endblock %}

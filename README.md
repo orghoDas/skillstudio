@@ -116,7 +116,6 @@ Below is the complete feature list (your original text, unchanged — only forma
 - Weekly challenges  
 - Resource sharing  
 - Meeting scheduler  
-- Group leaderboard  
 
 ---
 

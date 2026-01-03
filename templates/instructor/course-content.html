@@ -1,0 +1,369 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Content - Instructor - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div id="content-container">
+    <!-- Loading -->
+    <div class="flex justify-center items-center py-20">
+        <div class="animate-spin h-16 w-16 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    </div>
+</div>
+
+<!-- Add Section Modal -->
+<div id="section-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+    <div class="bg-dark-surface border border-dark-border rounded-lg max-w-lg w-full">
+        <div class="p-6 border-b border-dark-border flex items-center justify-between">
+            <h2 class="text-xl font-bold">Add Section</h2>
+            <button onclick="closeModal('section-modal')" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <form id="section-form" class="p-6 space-y-4">
+            <div>
+                <label for="section-title" class="block text-sm font-medium mb-2">Section Title</label>
+                <input type="text" id="section-title" required
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="section-description" class="block text-sm font-medium mb-2">Description (Optional)</label>
+                <textarea id="section-description" rows="3"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+            <div class="flex space-x-3">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
+                    Add Section
+                </button>
+                <button type="button" onclick="closeModal('section-modal')" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Lesson Modal -->
+<div id="lesson-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+    <div class="bg-dark-surface border border-dark-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b border-dark-border flex items-center justify-between">
+            <h2 class="text-xl font-bold">Add Lesson</h2>
+            <button onclick="closeModal('lesson-modal')" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <form id="lesson-form" class="p-6 space-y-4">
+            <input type="hidden" id="lesson-section-id">
+            <div>
+                <label for="lesson-title" class="block text-sm font-medium mb-2">Lesson Title</label>
+                <input type="text" id="lesson-title" required
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="lesson-type" class="block text-sm font-medium mb-2">Content Type</label>
+                <select id="lesson-type" required
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="video">Video</option>
+                    <option value="article">Article</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="assignment">Assignment</option>
+                </select>
+            </div>
+            <div>
+                <label for="lesson-content" class="block text-sm font-medium mb-2">Content/Description</label>
+                <textarea id="lesson-content" rows="6"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Lesson content or description..."></textarea>
+            </div>
+            <div>
+                <label for="lesson-duration" class="block text-sm font-medium mb-2">Duration (minutes)</label>
+                <input type="number" id="lesson-duration" min="0"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex items-center space-x-3">
+                <input type="checkbox" id="lesson-is-free"
+                    class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                <label for="lesson-is-free" class="text-sm font-medium">Free preview</label>
+            </div>
+            <div class="flex space-x-3">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
+                    Add Lesson
+                </button>
+                <button type="button" onclick="closeModal('lesson-modal')" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseSlug;
+let courseData;
+let sections = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get course slug from URL
+    const pathParts = window.location.pathname.split('/');
+    courseSlug = pathParts[3];
+    
+    loadCourseContent();
+
+    // Form handlers
+    document.getElementById('section-form').addEventListener('submit', handleAddSection);
+    document.getElementById('lesson-form').addEventListener('submit', handleAddLesson);
+});
+
+async function loadCourseContent() {
+    try {
+        // Load course details
+        courseData = await apiRequest(`/api/courses/${courseSlug}/`);
+        
+        // Load sections with lessons
+        const sectionsResponse = await apiRequest(`/api/courses/${courseSlug}/sections/`);
+        sections = sectionsResponse.results || sectionsResponse;
+
+        renderContent();
+    } catch (error) {
+        console.error('Error loading content:', error);
+        document.getElementById('content-container').innerHTML = `
+            <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                <p class="text-red-400 mb-4">Failed to load course content</p>
+                <a href="/instructor/courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                    Back to Courses
+                </a>
+            </div>
+        `;
+    }
+}
+
+function renderContent() {
+    const container = document.getElementById('content-container');
+    
+    container.innerHTML = `
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center text-sm text-gray-400 mb-4">
+                <a href="/instructor/courses/" class="hover:text-white">My Courses</a>
+                <svg class="w-4 h-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                <span>${courseData.title}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold mb-2">Course Content</h1>
+                    <p class="text-gray-400">${sections.length} sections, ${getTotalLessons()} lessons</p>
+                </div>
+                <button onclick="openModal('section-modal')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>Add Section</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sections List -->
+        <div class="space-y-4">
+            ${sections.length > 0 ? sections.map((section, index) => renderSection(section, index)).join('') : `
+                <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No sections yet</p>
+                    <button onclick="openModal('section-modal')" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        Add Your First Section
+                    </button>
+                </div>
+            `}
+        </div>
+    `;
+}
+
+function renderSection(section, index) {
+    const lessons = section.lessons || [];
+    
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
+            <div class="p-6 border-b border-dark-border">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <h3 class="text-xl font-semibold mb-1">Section ${index + 1}: ${section.title}</h3>
+                        ${section.description ? `<p class="text-sm text-gray-400">${section.description}</p>` : ''}
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-400">${lessons.length} lessons</span>
+                        <button onclick="openAddLesson(${section.id})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                            + Add Lesson
+                        </button>
+                        <button onclick="deleteSection(${section.id})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            ${lessons.length > 0 ? `
+                <div class="divide-y divide-dark-border">
+                    ${lessons.map((lesson, lessonIndex) => renderLesson(lesson, lessonIndex)).join('')}
+                </div>
+            ` : `
+                <div class="p-8 text-center text-gray-400">
+                    No lessons in this section yet
+                </div>
+            `}
+        </div>
+    `;
+}
+
+function renderLesson(lesson, index) {
+    const typeIcons = {
+        video: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        article: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+        quiz: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>',
+        assignment: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>'
+    };
+
+    return `
+        <div class="p-4 hover:bg-dark-hover transition-colors flex items-center justify-between">
+            <div class="flex items-center space-x-4 flex-1">
+                <div class="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        ${typeIcons[lesson.content_type] || typeIcons.article}
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h4 class="font-medium mb-1">${lesson.title}</h4>
+                    <div class="flex items-center space-x-4 text-xs text-gray-400">
+                        <span class="capitalize">${lesson.content_type}</span>
+                        ${lesson.duration ? `<span>${lesson.duration} min</span>` : ''}
+                        ${lesson.is_free_preview ? '<span class="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">Free Preview</span>' : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="deleteLesson(${lesson.id})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
+                    Delete
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function getTotalLessons() {
+    return sections.reduce((total, section) => total + (section.lessons?.length || 0), 0);
+}
+
+function openModal(modalId) {
+    document.getElementById(modalId).classList.remove('hidden');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+    if (modalId === 'section-modal') {
+        document.getElementById('section-form').reset();
+    } else if (modalId === 'lesson-modal') {
+        document.getElementById('lesson-form').reset();
+    }
+}
+
+function openAddLesson(sectionId) {
+    document.getElementById('lesson-section-id').value = sectionId;
+    openModal('lesson-modal');
+}
+
+async function handleAddSection(e) {
+    e.preventDefault();
+    
+    const data = {
+        title: document.getElementById('section-title').value,
+        description: document.getElementById('section-description').value,
+        order: sections.length + 1
+    };
+
+    try {
+        await apiRequest(`/api/courses/${courseSlug}/sections/`, {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+        
+        showAlert('Section added successfully!', 'success');
+        closeModal('section-modal');
+        loadCourseContent();
+    } catch (error) {
+        console.error('Error adding section:', error);
+        showAlert('Failed to add section', 'error');
+    }
+}
+
+async function handleAddLesson(e) {
+    e.preventDefault();
+    
+    const sectionId = document.getElementById('lesson-section-id').value;
+    const section = sections.find(s => s.id == sectionId);
+    
+    const data = {
+        title: document.getElementById('lesson-title').value,
+        content_type: document.getElementById('lesson-type').value,
+        content: document.getElementById('lesson-content').value,
+        duration: parseInt(document.getElementById('lesson-duration').value) || null,
+        is_free_preview: document.getElementById('lesson-is-free').checked,
+        order: (section.lessons?.length || 0) + 1
+    };
+
+    try {
+        await apiRequest(`/api/courses/sections/${sectionId}/lessons/`, {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+        
+        showAlert('Lesson added successfully!', 'success');
+        closeModal('lesson-modal');
+        loadCourseContent();
+    } catch (error) {
+        console.error('Error adding lesson:', error);
+        showAlert('Failed to add lesson', 'error');
+    }
+}
+
+async function deleteSection(sectionId) {
+    if (!confirm('Are you sure you want to delete this section and all its lessons?')) return;
+    
+    try {
+        await apiRequest(`/api/courses/sections/${sectionId}/`, { method: 'DELETE' });
+        showAlert('Section deleted successfully', 'success');
+        loadCourseContent();
+    } catch (error) {
+        console.error('Error deleting section:', error);
+        showAlert('Failed to delete section', 'error');
+    }
+}
+
+async function deleteLesson(lessonId) {
+    if (!confirm('Are you sure you want to delete this lesson?')) return;
+    
+    try {
+        await apiRequest(`/api/courses/lessons/${lessonId}/`, { method: 'DELETE' });
+        showAlert('Lesson deleted successfully', 'success');
+        loadCourseContent();
+    } catch (error) {
+        console.error('Error deleting lesson:', error);
+        showAlert('Failed to delete lesson', 'error');
+    }
+}
+</script>
+{% endblock %}

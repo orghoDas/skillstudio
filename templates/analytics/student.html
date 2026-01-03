@@ -1,0 +1,408 @@
+{% extends 'base.html' %}
+
+{% block title %}My Learning Analytics - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <h1 class="text-3xl font-bold text-white mb-2">My Learning Analytics</h1>
+                    <p class="text-gray-400">Track your progress and achievements</p>
+                </div>
+
+                <!-- Overview Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Courses Enrolled</span>
+                            <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-book text-blue-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="totalCourses">0</div>
+                        <div class="text-sm">
+                            <span class="text-blue-500" id="activeCourses">0 active</span>
+                            <span class="text-gray-500"> • </span>
+                            <span class="text-green-500" id="completedCourses">0 completed</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Learning Streak</span>
+                            <div class="w-10 h-10 bg-orange-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-fire text-orange-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="streak">0</div>
+                        <div class="text-sm text-gray-400">days in a row</div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Total Hours</span>
+                            <div class="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-clock text-purple-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="totalHours">0</div>
+                        <div class="text-sm">
+                            <span class="text-purple-500" id="weeklyHours">0h</span>
+                            <span class="text-gray-500"> this week</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Certificates Earned</span>
+                            <div class="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-certificate text-yellow-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="certificates">0</div>
+                        <div class="text-sm text-gray-400">achievements unlocked</div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Learning Progress Chart -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Learning Progress</h3>
+                        <canvas id="progressChart" height="250"></canvas>
+                    </div>
+
+                    <!-- Activity Chart -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Activity Overview</h3>
+                        <canvas id="activityChart" height="250"></canvas>
+                    </div>
+                </div>
+
+                <!-- Course Progress -->
+                <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800 mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-white">Current Courses</h3>
+                        <select id="courseFilter" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                            <option value="all">All Courses</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div id="coursesList" class="space-y-4">
+                        <!-- Loading state -->
+                        <div class="flex items-center justify-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Sections -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Skills Progress -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Skills Development</h3>
+                        <div id="skillsProgress" class="space-y-4">
+                            <!-- Loading state -->
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Learning Goals -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-white">Learning Goals</h3>
+                            <button onclick="addGoal()" class="text-blue-500 hover:text-blue-400 text-sm">
+                                <i class="fas fa-plus mr-1"></i>Add Goal
+                            </button>
+                        </div>
+                        <div id="learningGoals" class="space-y-3">
+                            <!-- Loading state -->
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Achievements & Badges -->
+                <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold text-white mb-6">Recent Achievements</h3>
+                    <div id="achievements" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <!-- Loading state -->
+                        <div class="col-span-full flex items-center justify-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let progressChart, activityChart;
+
+async function loadAnalytics() {
+    try {
+        const data = await apiRequest('/api/analytics/student/');
+        
+        // Update overview stats
+        document.getElementById('totalCourses').textContent = data.overview.total_courses;
+        document.getElementById('activeCourses').textContent = `${data.overview.active_courses} active`;
+        document.getElementById('completedCourses').textContent = `${data.overview.completed_courses} completed`;
+        document.getElementById('streak').textContent = data.overview.streak_days;
+        document.getElementById('totalHours').textContent = data.overview.total_hours;
+        document.getElementById('weeklyHours').textContent = `${data.overview.weekly_hours}h`;
+        document.getElementById('certificates').textContent = data.overview.certificates_earned;
+        
+        // Render charts
+        renderProgressChart(data.progress_timeline);
+        renderActivityChart(data.activity_data);
+        
+        // Render courses list
+        renderCoursesList(data.courses);
+        
+        // Render skills progress
+        renderSkillsProgress(data.skills);
+        
+        // Render learning goals
+        renderLearningGoals(data.goals);
+        
+        // Render achievements
+        renderAchievements(data.achievements);
+        
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        showAlert('Failed to load analytics data', 'error');
+    }
+}
+
+function renderProgressChart(data) {
+    const ctx = document.getElementById('progressChart').getContext('2d');
+    
+    if (progressChart) {
+        progressChart.destroy();
+    }
+    
+    progressChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Completion %',
+                data: data.values,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        color: '#9ca3af',
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#9ca3af'
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderActivityChart(data) {
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    
+    if (activityChart) {
+        activityChart.destroy();
+    }
+    
+    activityChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Videos Watched', 'Assessments', 'Reading', 'Practice'],
+            datasets: [{
+                data: [data.videos, data.assessments, data.reading, data.practice],
+                backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#9ca3af',
+                        padding: 15
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderCoursesList(courses) {
+    const container = document.getElementById('coursesList');
+    
+    if (!courses || courses.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-8">No courses enrolled yet</div>';
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => `
+        <div class="flex items-center justify-between p-4 bg-[#0f1419] rounded-lg border border-gray-800 hover:border-blue-500 transition-colors">
+            <div class="flex items-center flex-1">
+                <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-16 h-16 rounded-lg object-cover mr-4">
+                <div class="flex-1">
+                    <h4 class="text-white font-medium mb-1">${course.title}</h4>
+                    <div class="flex items-center text-sm text-gray-400 mb-2">
+                        <span>${course.instructor}</span>
+                        <span class="mx-2">•</span>
+                        <span>${course.lessons_completed}/${course.total_lessons} lessons</span>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="w-48 bg-gray-700 rounded-full h-2 mr-3">
+                            <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: ${course.progress}%"></div>
+                        </div>
+                        <span class="text-white text-sm font-medium">${course.progress}%</span>
+                    </div>
+                </div>
+            </div>
+            <a href="/students/learn/${course.id}/" class="ml-4 bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                ${course.progress === 0 ? 'Start' : 'Continue'}
+            </a>
+        </div>
+    `).join('');
+}
+
+function renderSkillsProgress(skills) {
+    const container = document.getElementById('skillsProgress');
+    
+    if (!skills || skills.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-4">No skills tracked yet</div>';
+        return;
+    }
+    
+    container.innerHTML = skills.map(skill => `
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-white text-sm font-medium">${skill.name}</span>
+                <span class="text-gray-400 text-sm">${skill.level}/5</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="h-2 rounded-full transition-all ${getSkillColor(skill.level)}" style="width: ${(skill.level / 5) * 100}%"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getSkillColor(level) {
+    if (level >= 4) return 'bg-green-500';
+    if (level >= 3) return 'bg-blue-500';
+    if (level >= 2) return 'bg-yellow-500';
+    return 'bg-gray-500';
+}
+
+function renderLearningGoals(goals) {
+    const container = document.getElementById('learningGoals');
+    
+    if (!goals || goals.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-gray-400 py-4">
+                <p class="mb-3">No learning goals set</p>
+                <button onclick="addGoal()" class="text-blue-500 hover:text-blue-400">
+                    <i class="fas fa-plus mr-1"></i>Add your first goal
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = goals.map(goal => `
+        <div class="flex items-start p-3 bg-[#0f1419] rounded-lg">
+            <input type="checkbox" ${goal.completed ? 'checked' : ''} onchange="toggleGoal(${goal.id})" class="mt-1 mr-3 w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+            <div class="flex-1">
+                <div class="text-white text-sm ${goal.completed ? 'line-through text-gray-500' : ''}">${goal.title}</div>
+                <div class="text-gray-400 text-xs mt-1">
+                    Due: ${new Date(goal.deadline).toLocaleDateString()}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderAchievements(achievements) {
+    const container = document.getElementById('achievements');
+    
+    if (!achievements || achievements.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center text-gray-400 py-4">No achievements yet</div>';
+        return;
+    }
+    
+    container.innerHTML = achievements.map(achievement => `
+        <div class="flex flex-col items-center p-4 bg-[#0f1419] rounded-lg border border-gray-800 hover:border-yellow-500 transition-colors group cursor-pointer" title="${achievement.description}">
+            <div class="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center mb-3 group-hover:bg-yellow-500/20 transition-colors">
+                <i class="fas ${achievement.icon} text-yellow-500 text-2xl"></i>
+            </div>
+            <div class="text-white text-sm font-medium text-center mb-1">${achievement.title}</div>
+            <div class="text-gray-400 text-xs">${new Date(achievement.earned_at).toLocaleDateString()}</div>
+        </div>
+    `).join('');
+}
+
+function addGoal() {
+    // Implementation would show modal to add new goal
+    showAlert('Add goal modal would appear here', 'info');
+}
+
+function toggleGoal(goalId) {
+    // Implementation would toggle goal completion
+    apiRequest(`/api/analytics/goals/${goalId}/toggle/`, { method: 'POST' })
+        .then(() => loadAnalytics())
+        .catch(error => showAlert('Failed to update goal', 'error'));
+}
+
+// Course filter
+document.getElementById('courseFilter').addEventListener('change', async (e) => {
+    const filter = e.target.value;
+    const data = await apiRequest(`/api/analytics/student/?filter=${filter}`);
+    renderCoursesList(data.courses);
+});
+
+// Load data on page load
+loadAnalytics();
+</script>
+{% endblock %}

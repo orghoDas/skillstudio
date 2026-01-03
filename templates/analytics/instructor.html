@@ -1,0 +1,474 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics Dashboard - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <h1 class="text-3xl font-bold text-white mb-2">Analytics Dashboard</h1>
+                    <p class="text-gray-400">Track your course performance and student engagement</p>
+                </div>
+
+                <!-- Date Range Filter -->
+                <div class="mb-6 flex items-center gap-4">
+                    <select id="dateRange" class="bg-[#1a1f2e] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                        <option value="7">Last 7 days</option>
+                        <option value="30" selected>Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                        <option value="365">Last year</option>
+                        <option value="all">All time</option>
+                    </select>
+                    <button onclick="exportData()" class="bg-[#1a1f2e] text-white px-4 py-2 rounded-lg border border-gray-700 hover:border-blue-500 transition-colors">
+                        <i class="fas fa-download mr-2"></i>Export Report
+                    </button>
+                </div>
+
+                <!-- Overview Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Total Revenue</span>
+                            <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-dollar-sign text-green-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="totalRevenue">$0</div>
+                        <div class="text-sm" id="revenueChange">
+                            <span class="text-green-500">↑ 0%</span>
+                            <span class="text-gray-500">vs last period</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Total Students</span>
+                            <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-users text-blue-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="totalStudents">0</div>
+                        <div class="text-sm" id="studentsChange">
+                            <span class="text-green-500">↑ 0%</span>
+                            <span class="text-gray-500">vs last period</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Avg Completion</span>
+                            <div class="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-chart-line text-purple-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="avgCompletion">0%</div>
+                        <div class="text-sm" id="completionChange">
+                            <span class="text-green-500">↑ 0%</span>
+                            <span class="text-gray-500">vs last period</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Avg Rating</span>
+                            <div class="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-star text-yellow-500"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-white mb-1" id="avgRating">0.0</div>
+                        <div class="text-sm text-gray-400" id="totalReviews">0 reviews</div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Revenue Chart -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Revenue Overview</h3>
+                        <canvas id="revenueChart" height="250"></canvas>
+                    </div>
+
+                    <!-- Enrollments Chart -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Student Enrollments</h3>
+                        <canvas id="enrollmentsChart" height="250"></canvas>
+                    </div>
+                </div>
+
+                <!-- Course Performance Table -->
+                <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800 mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-white">Course Performance</h3>
+                        <input type="text" id="courseSearch" placeholder="Search courses..." class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none w-64">
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b border-gray-800">
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Course</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Students</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Revenue</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Avg Rating</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Completion</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Engagement</th>
+                                    <th class="text-left text-gray-400 font-medium py-3 px-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="coursesTable">
+                                <!-- Skeleton loaders -->
+                                <tr class="border-b border-gray-800">
+                                    <td colspan="7" class="py-4 px-4">
+                                        <div class="flex items-center justify-center py-8">
+                                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Student Engagement Details -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Top Performing Courses -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Top Performing Courses</h3>
+                        <div id="topCourses" class="space-y-4">
+                            <!-- Loading state -->
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <h3 class="text-lg font-semibold text-white mb-4">Recent Activity</h3>
+                        <div id="recentActivity" class="space-y-4">
+                            <!-- Loading state -->
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let revenueChart, enrollmentsChart;
+
+async function loadAnalytics() {
+    const dateRange = document.getElementById('dateRange').value;
+    
+    try {
+        const data = await apiRequest(`/api/analytics/instructor/?range=${dateRange}`);
+        
+        // Update overview stats
+        document.getElementById('totalRevenue').textContent = `$${data.overview.total_revenue.toLocaleString()}`;
+        document.getElementById('totalStudents').textContent = data.overview.total_students.toLocaleString();
+        document.getElementById('avgCompletion').textContent = `${data.overview.avg_completion}%`;
+        document.getElementById('avgRating').textContent = data.overview.avg_rating.toFixed(1);
+        document.getElementById('totalReviews').textContent = `${data.overview.total_reviews} reviews`;
+        
+        // Update change percentages
+        updateChange('revenueChange', data.overview.revenue_change);
+        updateChange('studentsChange', data.overview.students_change);
+        updateChange('completionChange', data.overview.completion_change);
+        
+        // Render charts
+        renderRevenueChart(data.revenue_timeline);
+        renderEnrollmentsChart(data.enrollments_timeline);
+        
+        // Render course table
+        renderCoursesTable(data.courses);
+        
+        // Render top courses
+        renderTopCourses(data.top_courses);
+        
+        // Render recent activity
+        renderRecentActivity(data.recent_activity);
+        
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        showAlert('Failed to load analytics data', 'error');
+    }
+}
+
+function updateChange(elementId, value) {
+    const element = document.getElementById(elementId);
+    const isPositive = value >= 0;
+    const arrow = isPositive ? '↑' : '↓';
+    const color = isPositive ? 'text-green-500' : 'text-red-500';
+    
+    element.innerHTML = `
+        <span class="${color}">${arrow} ${Math.abs(value)}%</span>
+        <span class="text-gray-500">vs last period</span>
+    `;
+}
+
+function renderRevenueChart(data) {
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    
+    if (revenueChart) {
+        revenueChart.destroy();
+    }
+    
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Revenue',
+                data: data.values,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#9ca3af',
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#9ca3af'
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderEnrollmentsChart(data) {
+    const ctx = document.getElementById('enrollmentsChart').getContext('2d');
+    
+    if (enrollmentsChart) {
+        enrollmentsChart.destroy();
+    }
+    
+    enrollmentsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: 'Enrollments',
+                data: data.values,
+                backgroundColor: '#3b82f6',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#9ca3af',
+                        stepSize: 1
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#9ca3af'
+                    },
+                    grid: {
+                        color: 'rgba(75, 85, 99, 0.2)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderCoursesTable(courses) {
+    const tbody = document.getElementById('coursesTable');
+    
+    if (!courses || courses.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-8 text-gray-400">
+                    No courses found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = courses.map(course => `
+        <tr class="border-b border-gray-800 hover:bg-[#0f1419] transition-colors">
+            <td class="py-4 px-4">
+                <div class="flex items-center">
+                    <img src="${course.thumbnail || '/static/images/course-placeholder.png'}" alt="${course.title}" class="w-12 h-12 rounded-lg object-cover mr-3">
+                    <div>
+                        <div class="text-white font-medium">${course.title}</div>
+                        <div class="text-sm text-gray-400">${course.category}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-4 px-4 text-white">${course.students_count}</td>
+            <td class="py-4 px-4 text-green-500 font-medium">$${course.revenue.toLocaleString()}</td>
+            <td class="py-4 px-4">
+                <div class="flex items-center">
+                    <i class="fas fa-star text-yellow-500 mr-1 text-sm"></i>
+                    <span class="text-white">${course.avg_rating.toFixed(1)}</span>
+                    <span class="text-gray-400 text-sm ml-1">(${course.reviews_count})</span>
+                </div>
+            </td>
+            <td class="py-4 px-4">
+                <div class="flex items-center">
+                    <div class="w-24 bg-gray-700 rounded-full h-2 mr-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: ${course.completion_rate}%"></div>
+                    </div>
+                    <span class="text-white text-sm">${course.completion_rate}%</span>
+                </div>
+            </td>
+            <td class="py-4 px-4">
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${getEngagementColor(course.engagement_score)}">
+                    ${course.engagement_score}%
+                </span>
+            </td>
+            <td class="py-4 px-4">
+                <a href="/analytics/course/${course.id}/" class="text-blue-500 hover:text-blue-400">
+                    <i class="fas fa-chart-bar mr-1"></i>Details
+                </a>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getEngagementColor(score) {
+    if (score >= 80) return 'bg-green-500/20 text-green-500';
+    if (score >= 60) return 'bg-blue-500/20 text-blue-500';
+    if (score >= 40) return 'bg-yellow-500/20 text-yellow-500';
+    return 'bg-red-500/20 text-red-500';
+}
+
+function renderTopCourses(courses) {
+    const container = document.getElementById('topCourses');
+    
+    if (!courses || courses.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-4">No data available</div>';
+        return;
+    }
+    
+    container.innerHTML = courses.map((course, index) => `
+        <div class="flex items-center justify-between p-3 bg-[#0f1419] rounded-lg">
+            <div class="flex items-center">
+                <div class="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center mr-3">
+                    <span class="text-blue-500 font-bold">#${index + 1}</span>
+                </div>
+                <div>
+                    <div class="text-white font-medium text-sm">${course.title}</div>
+                    <div class="text-gray-400 text-xs">${course.students_count} students</div>
+                </div>
+            </div>
+            <div class="text-green-500 font-medium">$${course.revenue.toLocaleString()}</div>
+        </div>
+    `).join('');
+}
+
+function renderRecentActivity(activities) {
+    const container = document.getElementById('recentActivity');
+    
+    if (!activities || activities.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-4">No recent activity</div>';
+        return;
+    }
+    
+    container.innerHTML = activities.map(activity => `
+        <div class="flex items-start p-3 bg-[#0f1419] rounded-lg">
+            <div class="w-8 h-8 bg-blue-500/10 rounded-full flex items-center justify-center mr-3 mt-1">
+                <i class="fas ${getActivityIcon(activity.type)} text-blue-500 text-sm"></i>
+            </div>
+            <div class="flex-1">
+                <div class="text-white text-sm">${activity.message}</div>
+                <div class="text-gray-400 text-xs mt-1">${formatTimeAgo(activity.timestamp)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getActivityIcon(type) {
+    const icons = {
+        enrollment: 'fa-user-plus',
+        completion: 'fa-check-circle',
+        review: 'fa-star',
+        revenue: 'fa-dollar-sign',
+        question: 'fa-question-circle'
+    };
+    return icons[type] || 'fa-circle';
+}
+
+function formatTimeAgo(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function exportData() {
+    showAlert('Exporting analytics data...', 'info');
+    // Implementation would download CSV or PDF report
+}
+
+// Search functionality
+document.getElementById('courseSearch').addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#coursesTable tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+});
+
+// Date range change
+document.getElementById('dateRange').addEventListener('change', loadAnalytics);
+
+// Load data on page load
+loadAnalytics();
+</script>
+{% endblock %}

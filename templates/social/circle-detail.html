@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+
+{% block title %}Circle Details - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div id="circle-container" class="space-y-6">
+    <!-- Loading State -->
+    <div class="animate-pulse space-y-6">
+        <div class="h-48 bg-dark-surface rounded-lg"></div>
+        <div class="h-64 bg-dark-surface rounded-lg"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let circleId;
+let isMember = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get circle ID from URL
+    const pathParts = window.location.pathname.split('/');
+    circleId = pathParts[pathParts.length - 2];
+    
+    loadCircleDetails();
+});
+
+async function loadCircleDetails() {
+    const container = document.getElementById('circle-container');
+
+    try {
+        const circle = await apiRequest(`/api/social/circles/${circleId}/`);
+        
+        // Check membership
+        if (circle.members) {
+            const user = JSON.parse(localStorage.getItem('user'));
+            isMember = circle.members.some(m => m.id === user.id);
+        }
+
+        container.innerHTML = `
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30 rounded-lg p-8">
+                <div class="flex items-start justify-between mb-6">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
+                            <span class="text-3xl font-bold">${circle.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div>
+                            <h1 class="text-3xl font-bold mb-2">${circle.name}</h1>
+                            <span class="px-3 py-1 text-sm rounded-full ${getStatusClass(circle.status)}">
+                                ${circle.status}
+                            </span>
+                        </div>
+                    </div>
+                    ${renderActionButton(circle)}
+                </div>
+                <p class="text-gray-300 text-lg">${circle.description || 'No description'}</p>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-6">
+                <!-- Main Content -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- About -->
+                    <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                        <h2 class="text-xl font-semibold mb-4">About</h2>
+                        <div class="space-y-3 text-gray-400">
+                            <div class="flex items-center space-x-3">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                                </svg>
+                                <span>${circle.members_count || 0} of ${circle.max_members || 10} members</span>
+                            </div>
+                            ${circle.course_title ? `
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                    </svg>
+                                    <span>Course: ${circle.course_title}</span>
+                                </div>
+                            ` : ''}
+                            <div class="flex items-center space-x-3">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <span>Created ${new Date(circle.created_at).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Discussion Board (if member) -->
+                    ${isMember ? `
+                        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                            <h2 class="text-xl font-semibold mb-4">Discussion Board</h2>
+                            <div id="discussions-container">
+                                <p class="text-gray-400 text-center py-8">No discussions yet. Start one!</p>
+                            </div>
+                            <div class="mt-4">
+                                <textarea id="new-discussion" placeholder="Start a discussion..." rows="3"
+                                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-purple-500 mb-3"></textarea>
+                                <button onclick="postDiscussion()" class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
+                                    Post
+                                </button>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Activity Feed -->
+                    <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                        <h2 class="text-xl font-semibold mb-4">Recent Activity</h2>
+                        <div id="activity-feed" class="space-y-4">
+                            <p class="text-gray-400 text-center py-8">No recent activity</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="space-y-6">
+                    <!-- Creator -->
+                    ${circle.creator ? `
+                        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                            <h3 class="text-lg font-semibold mb-4">Circle Creator</h3>
+                            <div class="flex items-center space-x-3">
+                                <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                    <span class="text-lg font-bold">${circle.creator.email?.charAt(0).toUpperCase() || 'U'}</span>
+                                </div>
+                                <div>
+                                    <p class="font-semibold">${circle.creator.first_name || 'Unknown'} ${circle.creator.last_name || ''}</p>
+                                    <p class="text-sm text-gray-400">${circle.creator.email || ''}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Members -->
+                    <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4">Members</h3>
+                        <div id="members-list" class="space-y-3">
+                            ${circle.members && circle.members.length > 0 ? 
+                                circle.members.map(member => `
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                            <span class="text-sm font-bold">${member.email?.charAt(0).toUpperCase() || 'U'}</span>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="font-medium truncate">${member.first_name || 'Unknown'} ${member.last_name || ''}</p>
+                                            <p class="text-sm text-gray-400 truncate">${member.email || ''}</p>
+                                        </div>
+                                    </div>
+                                `).join('') :
+                                '<p class="text-gray-400 text-sm">No members yet</p>'
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading circle:', error);
+        container.innerHTML = `
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-12 text-center">
+                <svg class="w-20 h-20 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <p class="text-xl font-semibold mb-2">Circle Not Found</p>
+                <p class="text-gray-400 mb-6">This learning circle doesn't exist or you don't have access to it.</p>
+                <a href="/social/circles/" class="inline-block px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
+                    Back to Circles
+                </a>
+            </div>
+        `;
+    }
+}
+
+function renderActionButton(circle) {
+    const user = JSON.parse(localStorage.getItem('user'));
+    
+    if (isMember) {
+        return `
+            <button onclick="handleLeaveCircle()" class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors">
+                Leave Circle
+            </button>
+        `;
+    } else if (circle.members_count >= circle.max_members) {
+        return `
+            <button disabled class="px-6 py-3 bg-gray-700 text-gray-400 rounded-lg font-semibold cursor-not-allowed">
+                Circle Full
+            </button>
+        `;
+    } else {
+        return `
+            <button onclick="handleJoinCircle()" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
+                Join Circle
+            </button>
+        `;
+    }
+}
+
+function getStatusClass(status) {
+    const classes = {
+        active: 'bg-green-900/50 text-green-400',
+        pending: 'bg-yellow-900/50 text-yellow-400',
+        completed: 'bg-gray-900/50 text-gray-400'
+    };
+    return classes[status] || classes.active;
+}
+
+async function handleJoinCircle() {
+    try {
+        await apiRequest(`/api/social/circles/${circleId}/join/`, { method: 'POST' });
+        showAlert('Successfully joined the circle!', 'success');
+        loadCircleDetails();
+    } catch (error) {
+        console.error('Error joining circle:', error);
+        showAlert(error.message || 'Failed to join circle', 'error');
+    }
+}
+
+async function handleLeaveCircle() {
+    if (!confirm('Are you sure you want to leave this circle?')) return;
+    
+    try {
+        await apiRequest(`/api/social/circles/${circleId}/leave/`, { method: 'POST' });
+        showAlert('Successfully left the circle', 'success');
+        loadCircleDetails();
+    } catch (error) {
+        console.error('Error leaving circle:', error);
+        showAlert(error.message || 'Failed to leave circle', 'error');
+    }
+}
+
+async function postDiscussion() {
+    const content = document.getElementById('new-discussion').value.trim();
+    if (!content) {
+        showAlert('Please enter a message', 'error');
+        return;
+    }
+
+    try {
+        await apiRequest(`/api/social/circles/${circleId}/discussions/`, {
+            method: 'POST',
+            body: JSON.stringify({ content })
+        });
+        document.getElementById('new-discussion').value = '';
+        showAlert('Discussion posted!', 'success');
+        loadDiscussions();
+    } catch (error) {
+        console.error('Error posting discussion:', error);
+        showAlert('Failed to post discussion', 'error');
+    }
+}
+
+async function loadDiscussions() {
+    // Implementation for loading discussions
+    // This would fetch from /api/social/circles/{id}/discussions/
+}
+</script>
+{% endblock %}

@@ -12,6 +12,12 @@ User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
+    role = serializers.ChoiceField(
+        choices=[User.Role.STUDENT, User.Role.INSTRUCTOR],
+        required=False,
+        default=User.Role.STUDENT,
+        help_text="User role: 'student' or 'instructor'. Defaults to 'student'."
+    )
 
     class Meta:
         model = User
@@ -21,18 +27,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
-        request = self.context.get('request')
-
-        # Only admin can set role during registration
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
-            if request.user.role != 'admin':
-                attrs.pop('role', None)
-        else:
-            # For unauthenticated registration, remove role
-            attrs.pop('role', None)
-
+        # Validate passwords match
         if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError({"password": "Passwords do not match."})
+        
+        # Validate role - only allow student or instructor during registration
+        role = attrs.get('role', User.Role.STUDENT)
+        if role not in [User.Role.STUDENT, User.Role.INSTRUCTOR]:
+            raise serializers.ValidationError({
+                "role": "Only 'student' or 'instructor' roles are allowed during registration."
+            })
         
         return attrs
 

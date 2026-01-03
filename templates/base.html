@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SkillStudio - Learn, Teach, Grow{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#0f1419',
+                            surface: '#1a1f2e',
+                            hover: '#252b3b',
+                            border: '#2d3748',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Custom Styles -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1a1f2e;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        
+        /* Smooth transitions */
+        * {
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+        }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-dark-bg text-gray-100 min-h-screen">
+    <!-- Navigation -->
+    {% include 'components/navbar.html' %}
+    
+    <!-- Alert Component -->
+    {% include 'components/alert.html' %}
+    
+    <!-- Main Content -->
+    <div class="flex">
+        <!-- Sidebar (if needed) -->
+        {% block sidebar %}{% endblock %}
+        
+        <!-- Main Content Area -->
+        <main class="flex-1 {% block main_classes %}p-6 lg:p-8{% endblock %}">
+            <!-- Alert Messages -->
+            {% if messages %}
+                <div class="mb-6 space-y-3">
+                    {% for message in messages %}
+                        <div class="p-4 rounded-lg border {% if message.tags == 'error' %}bg-red-900/20 border-red-800 text-red-200{% elif message.tags == 'success' %}bg-green-900/20 border-green-800 text-green-200{% elif message.tags == 'warning' %}bg-yellow-900/20 border-yellow-800 text-yellow-200{% else %}bg-blue-900/20 border-blue-800 text-blue-200{% endif %}">
+                            <p>{{ message }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            
+            <!-- Page Content -->
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    {% block footer %}
+    <footer class="bg-dark-surface border-t border-dark-border mt-auto">
+        <div class="container mx-auto px-6 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">SkillStudio</h3>
+                    <p class="text-gray-400 text-sm">Empowering learners and educators worldwide.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Platform</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-blue-400">Browse Courses</a></li>
+                        <li><a href="#" class="hover:text-blue-400">Become Instructor</a></li>
+                        <li><a href="#" class="hover:text-blue-400">Learning Circles</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Support</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-blue-400">Help Center</a></li>
+                        <li><a href="#" class="hover:text-blue-400">Contact Us</a></li>
+                        <li><a href="#" class="hover:text-blue-400">Terms of Service</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Connect</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-blue-400">Twitter</a></li>
+                        <li><a href="#" class="hover:text-blue-400">LinkedIn</a></li>
+                        <li><a href="#" class="hover:text-blue-400">GitHub</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-dark-border mt-8 pt-8 text-center text-sm text-gray-400">
+                <p>&copy; 2026 SkillStudio. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+    {% endblock %}
+    
+    <!-- JavaScript -->
+    <script>
+        // Global API helper
+        const API_BASE = '/api';
+        
+        // Get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        const csrftoken = getCookie('csrftoken');
+        
+        // API fetch helper
+        async function apiRequest(endpoint, options = {}) {
+            const token = localStorage.getItem('access_token');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers,
+            };
+            
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            if (options.method && options.method !== 'GET') {
+                headers['X-CSRFToken'] = csrftoken;
+            }
+            
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers,
+            });
+            
+            if (response.status === 401) {
+                // Token expired, try to refresh
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (refreshToken) {
+                    const refreshResponse = await fetch(`${API_BASE}/accounts/api/token/refresh/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh: refreshToken }),
+                    });
+                    
+                    if (refreshResponse.ok) {
+                        const data = await refreshResponse.json();
+                        localStorage.setItem('access_token', data.access);
+                        // Retry original request
+                        headers['Authorization'] = `Bearer ${data.access}`;
+                        return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+                    } else {
+                        // Refresh failed, logout
+                        logout();
+                    }
+                }
+            }
+            
+            return response;
+        }
+        
+        // Logout helper
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user_role');
+            window.location.href = '/auth/login/';
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+            
+            toast.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-transform duration-300`;
+            toast.textContent = message;
+            toast.style.transform = 'translateX(400px)';
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateX(0)';
+            }, 10);
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateX(400px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

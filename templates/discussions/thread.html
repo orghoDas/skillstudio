@@ -1,0 +1,403 @@
+{% extends 'base.html' %}
+
+{% block title %}Discussion Thread - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Breadcrumb -->
+                <div class="flex items-center text-sm text-gray-400 mb-6">
+                    <a href="/courses/" class="hover:text-white">Courses</a>
+                    <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                    <a href="#" id="courseLink" class="hover:text-white">Course</a>
+                    <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                    <a href="#" id="discussionsLink" class="hover:text-white">Discussions</a>
+                    <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                    <span class="text-white">Thread</span>
+                </div>
+
+                <!-- Thread Header -->
+                <div class="bg-[#1a1f2e] rounded-xl p-8 border border-gray-800 mb-6">
+                    <div class="flex items-start gap-2 mb-4">
+                        <span id="threadCategory" class="px-3 py-1 bg-gray-700 text-gray-300 rounded text-sm"></span>
+                        <span id="threadType" class="hidden px-3 py-1 bg-purple-500/10 text-purple-500 rounded text-sm font-medium">Question</span>
+                        <span id="answeredBadge" class="hidden px-3 py-1 bg-green-500/10 text-green-500 rounded text-sm font-medium"><i class="fas fa-check mr-1"></i>Answered</span>
+                    </div>
+                    
+                    <h1 id="threadTitle" class="text-3xl font-bold text-white mb-4">Loading...</h1>
+                    
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                <span id="authorInitial" class="text-white font-bold">?</span>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span id="authorName" class="text-white font-medium">Loading...</span>
+                                    <span id="authorBadge" class="hidden px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs">Instructor</span>
+                                </div>
+                                <div class="text-gray-400 text-sm" id="createdAt">Just now</div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-4 text-gray-400">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-eye"></i>
+                                <span id="viewsCount">0</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-comment"></i>
+                                <span id="repliesCount">0</span>
+                            </div>
+                            <button onclick="toggleLike()" class="flex items-center gap-2 hover:text-red-500 transition-colors">
+                                <i id="likeIcon" class="far fa-heart"></i>
+                                <span id="likesCount">0</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thread Content -->
+                <div class="bg-[#1a1f2e] rounded-xl p-8 border border-gray-800 mb-6">
+                    <div id="threadContent" class="text-gray-300 leading-relaxed whitespace-pre-wrap">
+                        Loading content...
+                    </div>
+                    
+                    <!-- Thread Actions -->
+                    <div class="flex items-center gap-3 mt-6 pt-6 border-t border-gray-800">
+                        <button onclick="toggleSubscribe()" id="subscribeBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm">
+                            <i class="far fa-bell mr-2"></i>Subscribe
+                        </button>
+                        <button onclick="shareThread()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm">
+                            <i class="fas fa-share mr-2"></i>Share
+                        </button>
+                        <button onclick="reportThread()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm">
+                            <i class="fas fa-flag mr-2"></i>Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Replies Header -->
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold text-white">
+                        <span id="repliesCountHeader">0</span> Replies
+                    </h2>
+                    <select id="sortReplies" class="bg-[#1a1f2e] text-white px-4 py-2 rounded-lg border border-gray-800 focus:border-blue-500 focus:outline-none">
+                        <option value="oldest">Oldest First</option>
+                        <option value="newest">Newest First</option>
+                        <option value="popular">Most Popular</option>
+                    </select>
+                </div>
+
+                <!-- Replies List -->
+                <div id="repliesList" class="space-y-4 mb-8">
+                    <!-- Replies will be populated here -->
+                </div>
+
+                <!-- Reply Form -->
+                <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold text-white mb-4">Post a Reply</h3>
+                    <textarea id="replyContent" rows="6" placeholder="Share your thoughts or answer the question..." class="w-full bg-[#0f1419] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none resize-none mb-4"></textarea>
+                    
+                    <div class="flex items-center justify-between">
+                        <label class="flex items-center text-gray-400 text-sm">
+                            <input type="checkbox" id="markAsAnswer" class="hidden mr-2 w-4 h-4 text-green-500 bg-gray-700 border-gray-600 rounded focus:ring-green-500">
+                            <span id="markAsAnswerLabel" class="hidden"><i class="fas fa-check-circle text-green-500 mr-2"></i>Mark this as the answer</span>
+                        </label>
+                        <button onclick="postReply()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                            <i class="fas fa-paper-plane mr-2"></i>Post Reply
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let threadData = null;
+let isSubscribed = false;
+let isLiked = false;
+
+async function loadThread() {
+    const threadId = getThreadIdFromUrl();
+    const courseId = getCourseIdFromUrl();
+    
+    try {
+        const data = await apiRequest(`/api/discussions/${threadId}/`);
+        
+        threadData = data;
+        
+        // Update breadcrumb
+        document.getElementById('courseLink').href = `/courses/${courseId}/`;
+        document.getElementById('courseLink').textContent = data.course_name;
+        document.getElementById('discussionsLink').href = `/courses/${courseId}/discussions/`;
+        
+        // Update thread header
+        document.getElementById('threadTitle').textContent = data.title;
+        document.getElementById('threadCategory').textContent = data.category;
+        
+        if (data.type === 'question') {
+            document.getElementById('threadType').classList.remove('hidden');
+            if (data.is_answered) {
+                document.getElementById('answeredBadge').classList.remove('hidden');
+            }
+            // Show mark as answer option for instructor/TA
+            if (data.can_mark_answer) {
+                document.getElementById('markAsAnswer').classList.remove('hidden');
+                document.getElementById('markAsAnswerLabel').classList.remove('hidden');
+            }
+        }
+        
+        // Author info
+        document.getElementById('authorInitial').textContent = data.author.name[0];
+        document.getElementById('authorName').textContent = data.author.name;
+        if (data.author.is_instructor) {
+            document.getElementById('authorBadge').classList.remove('hidden');
+        }
+        document.getElementById('createdAt').textContent = formatTimeAgo(data.created_at);
+        
+        // Stats
+        document.getElementById('viewsCount').textContent = data.views_count;
+        document.getElementById('repliesCount').textContent = data.replies_count;
+        document.getElementById('repliesCountHeader').textContent = data.replies_count;
+        document.getElementById('likesCount').textContent = data.likes_count;
+        
+        // Content
+        document.getElementById('threadContent').textContent = data.content;
+        
+        // User state
+        isSubscribed = data.is_subscribed;
+        isLiked = data.is_liked;
+        updateSubscribeButton();
+        updateLikeButton();
+        
+        // Load replies
+        renderReplies(data.replies);
+        
+    } catch (error) {
+        console.error('Error loading thread:', error);
+        showAlert('Failed to load discussion', 'error');
+    }
+}
+
+function getThreadIdFromUrl() {
+    const path = window.location.pathname;
+    const match = path.match(/\/discussions\/(\d+)/);
+    return match ? match[1] : null;
+}
+
+function getCourseIdFromUrl() {
+    const path = window.location.pathname;
+    const match = path.match(/\/courses\/(\d+)\//);
+    return match ? match[1] : null;
+}
+
+function renderReplies(replies) {
+    const container = document.getElementById('repliesList');
+    
+    if (!replies || replies.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-400">
+                <i class="fas fa-comments text-4xl mb-3"></i>
+                <p>No replies yet. Be the first to respond!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = replies.map(reply => `
+        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800 ${reply.is_answer ? 'border-green-500' : ''}">
+            ${reply.is_answer ? `
+                <div class="mb-4 pb-4 border-b border-green-500/20">
+                    <span class="px-3 py-1 bg-green-500/10 text-green-500 rounded text-sm font-medium">
+                        <i class="fas fa-check-circle mr-1"></i>Accepted Answer
+                    </span>
+                </div>
+            ` : ''}
+            
+            <div class="flex items-start gap-4">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">${reply.author.name[0]}</span>
+                    </div>
+                </div>
+                
+                <div class="flex-1">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-white font-medium">${reply.author.name}</span>
+                            ${reply.author.is_instructor ? '<span class="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs">Instructor</span>' : ''}
+                            ${reply.author.is_ta ? '<span class="px-2 py-0.5 bg-purple-500/10 text-purple-500 rounded text-xs">TA</span>' : ''}
+                            <span class="text-gray-400 text-sm">${formatTimeAgo(reply.created_at)}</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleReplyLike(${reply.id})" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors">
+                                <i class="${reply.is_liked ? 'fas' : 'far'} fa-heart"></i>
+                                <span>${reply.likes_count}</span>
+                            </button>
+                            <button onclick="replyToReply(${reply.id})" class="text-gray-400 hover:text-blue-500 transition-colors">
+                                <i class="fas fa-reply"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-gray-300 leading-relaxed whitespace-pre-wrap">${reply.content}</div>
+                    
+                    ${reply.nested_replies && reply.nested_replies.length > 0 ? `
+                        <div class="mt-4 pl-6 border-l-2 border-gray-700 space-y-3">
+                            ${reply.nested_replies.map(nested => `
+                                <div class="text-sm">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <div class="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center">
+                                            <span class="text-white font-bold text-xs">${nested.author.name[0]}</span>
+                                        </div>
+                                        <span class="text-white font-medium">${nested.author.name}</span>
+                                        <span class="text-gray-400 text-xs">${formatTimeAgo(nested.created_at)}</span>
+                                    </div>
+                                    <div class="text-gray-400 ml-8">${nested.content}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function formatTimeAgo(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return date.toLocaleDateString();
+}
+
+async function postReply() {
+    const content = document.getElementById('replyContent').value;
+    const markAsAnswer = document.getElementById('markAsAnswer').checked;
+    
+    if (!content.trim()) {
+        showAlert('Please enter your reply', 'error');
+        return;
+    }
+    
+    try {
+        const threadId = getThreadIdFromUrl();
+        await apiRequest(`/api/discussions/${threadId}/replies/`, {
+            method: 'POST',
+            body: JSON.stringify({ content, is_answer: markAsAnswer })
+        });
+        
+        showAlert('Reply posted successfully!', 'success');
+        document.getElementById('replyContent').value = '';
+        loadThread();
+        
+    } catch (error) {
+        console.error('Error posting reply:', error);
+        showAlert('Failed to post reply', 'error');
+    }
+}
+
+async function toggleLike() {
+    try {
+        const threadId = getThreadIdFromUrl();
+        const data = await apiRequest(`/api/discussions/${threadId}/like/`, {
+            method: 'POST'
+        });
+        
+        isLiked = data.is_liked;
+        document.getElementById('likesCount').textContent = data.likes_count;
+        updateLikeButton();
+        
+    } catch (error) {
+        console.error('Error toggling like:', error);
+    }
+}
+
+async function toggleReplyLike(replyId) {
+    try {
+        await apiRequest(`/api/discussions/replies/${replyId}/like/`, {
+            method: 'POST'
+        });
+        loadThread();
+    } catch (error) {
+        console.error('Error toggling reply like:', error);
+    }
+}
+
+async function toggleSubscribe() {
+    try {
+        const threadId = getThreadIdFromUrl();
+        const data = await apiRequest(`/api/discussions/${threadId}/subscribe/`, {
+            method: 'POST'
+        });
+        
+        isSubscribed = data.is_subscribed;
+        updateSubscribeButton();
+        showAlert(isSubscribed ? 'Subscribed to notifications' : 'Unsubscribed', 'success');
+        
+    } catch (error) {
+        console.error('Error toggling subscription:', error);
+    }
+}
+
+function updateSubscribeButton() {
+    const btn = document.getElementById('subscribeBtn');
+    if (isSubscribed) {
+        btn.innerHTML = '<i class="fas fa-bell mr-2"></i>Subscribed';
+        btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+        btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+    } else {
+        btn.innerHTML = '<i class="far fa-bell mr-2"></i>Subscribe';
+        btn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+    }
+}
+
+function updateLikeButton() {
+    const icon = document.getElementById('likeIcon');
+    if (isLiked) {
+        icon.classList.remove('far');
+        icon.classList.add('fas', 'text-red-500');
+    } else {
+        icon.classList.remove('fas', 'text-red-500');
+        icon.classList.add('far');
+    }
+}
+
+function shareThread() {
+    navigator.clipboard.writeText(window.location.href);
+    showAlert('Link copied to clipboard!', 'success');
+}
+
+function reportThread() {
+    if (confirm('Report this discussion for violating community guidelines?')) {
+        showAlert('Report submitted. Thank you!', 'success');
+    }
+}
+
+function replyToReply(replyId) {
+    document.getElementById('replyContent').focus();
+    showAlert('Reply feature would mention the user', 'info');
+}
+
+// Sort replies
+document.getElementById('sortReplies').addEventListener('change', () => {
+    loadThread();
+});
+
+// Load thread on page load
+loadThread();
+</script>
+{% endblock %}

@@ -1,0 +1,411 @@
+{% extends 'base.html' %}
+
+{% block title %}Course Discussions - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex items-center text-sm text-gray-400 mb-4">
+                        <a href="/courses/" class="hover:text-white">Courses</a>
+                        <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                        <a href="#" id="courseTitle" class="hover:text-white">Loading...</a>
+                        <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                        <span class="text-white">Discussions</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold text-white mb-2">
+                                <i class="fas fa-comments text-blue-500 mr-3"></i>Course Discussions
+                            </h1>
+                            <p class="text-gray-400">Ask questions, share insights, and collaborate with peers</p>
+                        </div>
+                        <button onclick="createThread()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                            <i class="fas fa-plus mr-2"></i>New Discussion
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="flex gap-2 mb-6 border-b border-gray-800">
+                    <button onclick="switchTab('discussions')" class="tab-btn active px-6 py-3 font-medium transition-all">
+                        <i class="fas fa-comments mr-2"></i>All Discussions
+                    </button>
+                    <button onclick="switchTab('questions')" class="tab-btn px-6 py-3 font-medium transition-all">
+                        <i class="fas fa-question-circle mr-2"></i>Q&A
+                    </button>
+                    <button onclick="switchTab('announcements')" class="tab-btn px-6 py-3 font-medium transition-all">
+                        <i class="fas fa-bullhorn mr-2"></i>Announcements
+                    </button>
+                    <button onclick="switchTab('my-posts')" class="tab-btn px-6 py-3 font-medium transition-all">
+                        <i class="fas fa-user mr-2"></i>My Posts
+                    </button>
+                </div>
+
+                <!-- Filters & Search -->
+                <div class="bg-[#1a1f2e] rounded-xl p-4 border border-gray-800 mb-6">
+                    <div class="flex items-center justify-between flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <input type="text" id="searchThreads" placeholder="Search discussions..." class="bg-[#0f1419] text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none w-80">
+                                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                            <select id="sortBy" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                                <option value="recent">Most Recent</option>
+                                <option value="popular">Most Popular</option>
+                                <option value="unanswered">Unanswered</option>
+                                <option value="active">Most Active</option>
+                            </select>
+                            <select id="filterCategory" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                                <option value="all">All Topics</option>
+                                <option value="general">General</option>
+                                <option value="assignments">Assignments</option>
+                                <option value="technical">Technical Issues</option>
+                                <option value="resources">Resources</option>
+                            </select>
+                        </div>
+                        <div class="text-gray-400 text-sm" id="threadCount">0 discussions</div>
+                    </div>
+                </div>
+
+                <!-- Discussions List -->
+                <div id="threadsList" class="space-y-4">
+                    <!-- Loading state -->
+                    <div class="flex items-center justify-center py-12">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div class="flex items-center justify-center gap-2 mt-8">
+                    <button onclick="previousPage()" class="px-4 py-2 bg-[#1a1f2e] text-white rounded-lg border border-gray-800 hover:border-blue-500 transition-colors">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="flex items-center gap-2" id="pagination">
+                        <!-- Pages will be added here -->
+                    </div>
+                    <button onclick="nextPage()" class="px-4 py-2 bg-[#1a1f2e] text-white rounded-lg border border-gray-800 hover:border-blue-500 transition-colors">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Thread Modal -->
+<div id="createThreadModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-[#1a1f2e] rounded-xl p-8 max-w-3xl w-full mx-4 border border-gray-800 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold text-white">Start a Discussion</h2>
+            <button onclick="closeCreateModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label class="block text-gray-400 mb-2">Title *</label>
+                <input type="text" id="threadTitle" placeholder="Enter discussion title..." class="w-full bg-[#0f1419] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-400 mb-2">Category *</label>
+                    <select id="threadCategory" class="w-full bg-[#0f1419] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                        <option value="general">General</option>
+                        <option value="assignments">Assignments</option>
+                        <option value="technical">Technical Issues</option>
+                        <option value="resources">Resources</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-2">Type *</label>
+                    <select id="threadType" class="w-full bg-[#0f1419] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                        <option value="discussion">Discussion</option>
+                        <option value="question">Question</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-gray-400 mb-2">Content *</label>
+                <textarea id="threadContent" rows="8" placeholder="Share your thoughts, ask a question..." class="w-full bg-[#0f1419] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none resize-none"></textarea>
+            </div>
+
+            <div>
+                <label class="flex items-center text-gray-400">
+                    <input type="checkbox" id="subscribeThread" checked class="mr-2 w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                    Subscribe to email notifications for replies
+                </label>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3 mt-6">
+            <button onclick="closeCreateModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors">
+                Cancel
+            </button>
+            <button onclick="submitThread()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                <i class="fas fa-paper-plane mr-2"></i>Post Discussion
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+.tab-btn {
+    color: #9ca3af;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+    color: #fff;
+}
+
+.tab-btn.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+}
+</style>
+
+<script>
+let currentTab = 'discussions';
+let currentPage = 1;
+let allThreads = [];
+
+async function loadThreads() {
+    const courseId = getCourseIdFromUrl();
+    
+    try {
+        const data = await apiRequest(`/api/courses/${courseId}/discussions/?tab=${currentTab}&page=${currentPage}`);
+        
+        allThreads = data.threads;
+        
+        document.getElementById('courseTitle').textContent = data.course_name;
+        document.getElementById('threadCount').textContent = `${data.total_count} discussions`;
+        
+        renderThreads(allThreads);
+        renderPagination(data.total_pages);
+        
+    } catch (error) {
+        console.error('Error loading threads:', error);
+        showAlert('Failed to load discussions', 'error');
+    }
+}
+
+function getCourseIdFromUrl() {
+    const path = window.location.pathname;
+    const match = path.match(/\/courses\/(\d+)\/discussions/);
+    return match ? match[1] : null;
+}
+
+function renderThreads(threads) {
+    const container = document.getElementById('threadsList');
+    
+    if (!threads || threads.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-comments text-gray-600 text-6xl mb-4"></i>
+                <p class="text-gray-400 mb-4">No discussions yet</p>
+                <button onclick="createThread()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                    <i class="fas fa-plus mr-2"></i>Start the First Discussion
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = threads.map(thread => `
+        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800 hover:border-blue-500 transition-all">
+            <div class="flex items-start gap-4">
+                <!-- Author Avatar -->
+                <div class="flex-shrink-0">
+                    <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">${thread.author.name[0]}</span>
+                    </div>
+                </div>
+                
+                <!-- Thread Content -->
+                <div class="flex-1">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                ${thread.is_pinned ? '<i class="fas fa-thumbtack text-yellow-500"></i>' : ''}
+                                ${thread.type === 'question' ? '<span class="px-2 py-1 bg-purple-500/10 text-purple-500 rounded text-xs font-medium">Question</span>' : ''}
+                                <span class="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">${thread.category}</span>
+                                ${thread.is_answered ? '<span class="px-2 py-1 bg-green-500/10 text-green-500 rounded text-xs font-medium"><i class="fas fa-check mr-1"></i>Answered</span>' : ''}
+                            </div>
+                            <a href="/courses/${getCourseIdFromUrl()}/discussions/${thread.id}/" class="text-white text-lg font-semibold hover:text-blue-500 transition-colors">
+                                ${thread.title}
+                            </a>
+                            <p class="text-gray-400 text-sm mt-2 line-clamp-2">${thread.preview}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Thread Meta -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-4 text-sm text-gray-400">
+                            <div class="flex items-center">
+                                <span class="font-medium text-white">${thread.author.name}</span>
+                                ${thread.author.is_instructor ? '<span class="ml-2 px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs">Instructor</span>' : ''}
+                            </div>
+                            <span>•</span>
+                            <span>${formatTimeAgo(thread.created_at)}</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-4 text-sm">
+                            <div class="flex items-center text-gray-400">
+                                <i class="fas fa-comment mr-1"></i>
+                                <span class="text-white font-medium">${thread.replies_count}</span>
+                            </div>
+                            <div class="flex items-center text-gray-400">
+                                <i class="fas fa-eye mr-1"></i>
+                                <span>${thread.views_count}</span>
+                            </div>
+                            <div class="flex items-center text-gray-400">
+                                <i class="fas fa-heart mr-1"></i>
+                                <span>${thread.likes_count}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Last Reply -->
+                    ${thread.last_reply ? `
+                        <div class="mt-3 pt-3 border-t border-gray-800">
+                            <div class="flex items-center text-xs text-gray-400">
+                                <span>Last reply by</span>
+                                <span class="mx-1 text-white font-medium">${thread.last_reply.author}</span>
+                                <span>${formatTimeAgo(thread.last_reply.created_at)}</span>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderPagination(totalPages) {
+    const container = document.getElementById('pagination');
+    const pages = [];
+    
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+            pages.push(i);
+        } else if (pages[pages.length - 1] !== '...') {
+            pages.push('...');
+        }
+    }
+    
+    container.innerHTML = pages.map(page => {
+        if (page === '...') {
+            return '<span class="px-3 py-2 text-gray-500">...</span>';
+        }
+        return `
+            <button onclick="goToPage(${page})" class="px-4 py-2 ${page === currentPage ? 'bg-blue-500 text-white' : 'bg-[#1a1f2e] text-gray-400 hover:text-white'} rounded-lg border ${page === currentPage ? 'border-blue-500' : 'border-gray-800 hover:border-blue-500'} transition-colors">
+                ${page}
+            </button>
+        `;
+    }).join('');
+}
+
+function formatTimeAgo(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return date.toLocaleDateString();
+}
+
+function switchTab(tab) {
+    currentTab = tab;
+    currentPage = 1;
+    
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    loadThreads();
+}
+
+function createThread() {
+    document.getElementById('createThreadModal').classList.remove('hidden');
+}
+
+function closeCreateModal() {
+    document.getElementById('createThreadModal').classList.add('hidden');
+    document.getElementById('threadTitle').value = '';
+    document.getElementById('threadContent').value = '';
+}
+
+async function submitThread() {
+    const title = document.getElementById('threadTitle').value;
+    const content = document.getElementById('threadContent').value;
+    const category = document.getElementById('threadCategory').value;
+    const type = document.getElementById('threadType').value;
+    const subscribe = document.getElementById('subscribeThread').checked;
+    
+    if (!title || !content) {
+        showAlert('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        const courseId = getCourseIdFromUrl();
+        await apiRequest(`/api/courses/${courseId}/discussions/`, {
+            method: 'POST',
+            body: JSON.stringify({ title, content, category, type, subscribe })
+        });
+        
+        showAlert('Discussion created successfully!', 'success');
+        closeCreateModal();
+        loadThreads();
+        
+    } catch (error) {
+        console.error('Error creating thread:', error);
+        showAlert('Failed to create discussion', 'error');
+    }
+}
+
+function goToPage(page) {
+    currentPage = page;
+    loadThreads();
+}
+
+function previousPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        loadThreads();
+    }
+}
+
+function nextPage() {
+    currentPage++;
+    loadThreads();
+}
+
+// Search & Filter
+document.getElementById('searchThreads').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allThreads.filter(t => 
+        t.title.toLowerCase().includes(term) || 
+        t.preview.toLowerCase().includes(term)
+    );
+    renderThreads(filtered);
+});
+
+document.getElementById('sortBy').addEventListener('change', loadThreads);
+document.getElementById('filterCategory').addEventListener('change', loadThreads);
+
+// Load threads on page load
+loadThreads();
+</script>
+{% endblock %}

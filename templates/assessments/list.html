@@ -1,0 +1,271 @@
+{% extends 'base.html' %}
+
+{% block title %}Assessments - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Assessments & Exams</h1>
+            <p class="text-gray-400">Test your knowledge and track your progress</p>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-2 border-b border-dark-border">
+        <button class="assessment-tab px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-400" data-tab="available">
+            Available
+        </button>
+        <button class="assessment-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="completed">
+            Completed
+        </button>
+        <button class="assessment-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="pending">
+            In Progress
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-4">
+        <div class="flex flex-wrap gap-4">
+            <input type="text" id="search-assessments" placeholder="Search assessments..."
+                class="flex-1 min-w-[200px] px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="filter-type" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">All Types</option>
+                <option value="quiz">Quiz</option>
+                <option value="exam">Exam</option>
+                <option value="assignment">Assignment</option>
+                <option value="practice">Practice Test</option>
+            </select>
+            <select id="filter-difficulty" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">All Difficulty</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Assessments Grid -->
+    <div id="assessments-container" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Loading skeletons -->
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentTab = 'available';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/assessments/';
+        return;
+    }
+
+    loadAssessments();
+
+    // Tab switching
+    document.querySelectorAll('.assessment-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            currentTab = this.dataset.tab;
+            document.querySelectorAll('.assessment-tab').forEach(t => {
+                t.classList.remove('border-blue-600', 'text-blue-400');
+                t.classList.add('border-transparent', 'text-gray-400');
+            });
+            this.classList.remove('border-transparent', 'text-gray-400');
+            this.classList.add('border-blue-600', 'text-blue-400');
+            loadAssessments();
+        });
+    });
+
+    // Search and filters
+    document.getElementById('search-assessments').addEventListener('input', debounce(loadAssessments, 500));
+    document.getElementById('filter-type').addEventListener('change', loadAssessments);
+    document.getElementById('filter-difficulty').addEventListener('change', loadAssessments);
+});
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+async function loadAssessments() {
+    const container = document.getElementById('assessments-container');
+    container.innerHTML = '<div class="col-span-3 flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
+
+    try {
+        const search = document.getElementById('search-assessments').value;
+        const type = document.getElementById('filter-type').value;
+        const difficulty = document.getElementById('filter-difficulty').value;
+
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (type) params.append('assessment_type', type);
+        if (difficulty) params.append('difficulty', difficulty);
+
+        // Different endpoint based on tab
+        if (currentTab === 'completed') {
+            params.append('status', 'completed');
+        } else if (currentTab === 'pending') {
+            params.append('status', 'in_progress');
+        }
+
+        const response = await apiRequest(`/api/assessments/?${params.toString()}`);
+        
+        if (response && response.results && response.results.length > 0) {
+            container.innerHTML = response.results.map(assessment => renderAssessmentCard(assessment)).join('');
+        } else {
+            container.innerHTML = `
+                <div class="col-span-3 text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No assessments found</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading assessments:', error);
+        container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load assessments</div>';
+    }
+}
+
+function renderAssessmentCard(assessment) {
+    const typeColors = {
+        quiz: 'bg-blue-900/50 text-blue-400',
+        exam: 'bg-red-900/50 text-red-400',
+        assignment: 'bg-green-900/50 text-green-400',
+        practice: 'bg-purple-900/50 text-purple-400'
+    };
+
+    const difficultyColors = {
+        beginner: 'bg-green-900/30 text-green-400',
+        intermediate: 'bg-yellow-900/30 text-yellow-400',
+        advanced: 'bg-red-900/30 text-red-400'
+    };
+
+    const typeColor = typeColors[assessment.assessment_type] || 'bg-gray-900/50 text-gray-400';
+    const difficultyColor = difficultyColors[assessment.difficulty] || 'bg-gray-900/30 text-gray-400';
+
+    // Check if user has attempts
+    const hasAttempt = assessment.user_attempts && assessment.user_attempts.length > 0;
+    const latestAttempt = hasAttempt ? assessment.user_attempts[0] : null;
+
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+            <div class="flex items-start justify-between mb-4">
+                <span class="px-3 py-1 text-xs rounded-full ${typeColor} capitalize">
+                    ${assessment.assessment_type}
+                </span>
+                <span class="px-3 py-1 text-xs rounded-full ${difficultyColor} capitalize">
+                    ${assessment.difficulty || 'N/A'}
+                </span>
+            </div>
+            
+            <h3 class="text-xl font-semibold mb-2">${assessment.title}</h3>
+            <p class="text-sm text-gray-400 mb-4 line-clamp-2">${assessment.description || 'No description'}</p>
+            
+            <div class="space-y-2 mb-4 text-sm text-gray-400">
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>${assessment.total_questions || 0} Questions</span>
+                    </span>
+                </div>
+                ${assessment.time_limit ? `
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>${assessment.time_limit} minutes</span>
+                    </div>
+                ` : ''}
+                ${assessment.passing_score ? `
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>Pass: ${assessment.passing_score}%</span>
+                    </div>
+                ` : ''}
+            </div>
+
+            ${latestAttempt ? `
+                <div class="mb-4 p-3 bg-dark-bg rounded border border-dark-border">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-400">Latest Score:</span>
+                        <span class="font-semibold ${latestAttempt.score >= assessment.passing_score ? 'text-green-400' : 'text-red-400'}">
+                            ${latestAttempt.score}%
+                        </span>
+                    </div>
+                    ${latestAttempt.status === 'completed' ? `
+                        <a href="/assessments/${assessment.id}/results/${latestAttempt.id}/" class="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
+                            View Results →
+                        </a>
+                    ` : ''}
+                </div>
+            ` : ''}
+
+            ${renderActionButton(assessment, latestAttempt)}
+        </div>
+    `;
+}
+
+function renderActionButton(assessment, latestAttempt) {
+    // Check if assessment has attempts remaining
+    const maxAttempts = assessment.max_attempts || Infinity;
+    const attemptCount = assessment.user_attempts?.length || 0;
+    const hasAttemptsRemaining = attemptCount < maxAttempts;
+
+    if (latestAttempt && latestAttempt.status === 'in_progress') {
+        return `
+            <a href="/assessments/${assessment.id}/attempt/${latestAttempt.id}/" 
+                class="block w-full text-center px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-semibold transition-colors">
+                Continue Attempt
+            </a>
+        `;
+    }
+
+    if (!hasAttemptsRemaining) {
+        return `
+            <button disabled class="w-full px-4 py-3 bg-gray-700 text-gray-400 rounded-lg font-semibold cursor-not-allowed">
+                No Attempts Remaining
+            </button>
+        `;
+    }
+
+    if (latestAttempt && latestAttempt.score >= assessment.passing_score) {
+        return `
+            <a href="/assessments/${assessment.id}/results/${latestAttempt.id}/" 
+                class="block w-full text-center px-4 py-3 bg-green-700 hover:bg-green-800 text-white rounded-lg font-semibold transition-colors">
+                View Results (Passed)
+            </a>
+        `;
+    }
+
+    return `
+        <a href="/assessments/${assessment.id}/attempt/" 
+            class="block w-full text-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+            ${latestAttempt ? 'Retake Assessment' : 'Start Assessment'}
+        </a>
+    `;
+}
+</script>
+{% endblock %}

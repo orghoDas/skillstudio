@@ -333,7 +333,6 @@ This document summarizes the complete implementation of the Events and Social ap
 - Refund processing
 - Content moderation AI
 - Badge system
-- Leaderboards
 
 ## Conclusion
 

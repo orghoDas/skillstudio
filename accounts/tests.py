@@ -44,16 +44,51 @@ class UserModelTest(TestCase):
 
 class RegistrationAPITest(APITestCase):
     def test_register_user(self):
-        """Test user registration"""
+        """Test user registration defaults to student"""
         data = {
             'email': 'newuser@example.com',
             'username': 'newuser',
             'password': 'TestPass123!',
             'password2': 'TestPass123!'
         }
-        response = self.client.post('/accounts/api/register/', data)
+        response = self.client.post('/api/accounts/api/register/', data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email='newuser@example.com').exists())
+        
+        # Verify default role is student
+        user = User.objects.get(email='newuser@example.com')
+        self.assertEqual(user.role, User.Role.STUDENT)
+        self.assertEqual(response.data['user']['role'], 'student')
+
+    def test_register_as_instructor(self):
+        """Test user can register as instructor"""
+        data = {
+            'email': 'instructor@example.com',
+            'username': 'instructor',
+            'password': 'TestPass123!',
+            'password2': 'TestPass123!',
+            'role': 'instructor'
+        }
+        response = self.client.post('/api/accounts/api/register/', data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify role is instructor
+        user = User.objects.get(email='instructor@example.com')
+        self.assertEqual(user.role, User.Role.INSTRUCTOR)
+        self.assertEqual(response.data['user']['role'], 'instructor')
+
+    def test_register_with_invalid_role(self):
+        """Test registration fails with admin role"""
+        data = {
+            'email': 'admin@example.com',
+            'username': 'admin',
+            'password': 'TestPass123!',
+            'password2': 'TestPass123!',
+            'role': 'admin'
+        }
+        response = self.client.post('/api/accounts/api/register/', data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('role', response.data)
 
     def test_register_with_mismatched_passwords(self):
         """Test registration fails with mismatched passwords"""
@@ -62,7 +97,7 @@ class RegistrationAPITest(APITestCase):
             'password': 'TestPass123!',
             'password2': 'DifferentPass123!'
         }
-        response = self.client.post('/accounts/api/register/', data)
+        response = self.client.post('/api/accounts/api/register/', data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
@@ -79,7 +114,7 @@ class AuthenticationAPITest(APITestCase):
             'email': 'test@example.com',
             'password': 'testpass123'
         }
-        response = self.client.post('/accounts/api/token/', data)
+        response = self.client.post('/api/accounts/api/token/', data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
@@ -95,7 +130,7 @@ class ProfileAPITest(APITestCase):
 
     def test_get_profile(self):
         """Test retrieving user profile"""
-        response = self.client.get('/accounts/api/profile/')
+        response = self.client.get('/api/accounts/api/profile/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_update_profile(self):
@@ -104,7 +139,7 @@ class ProfileAPITest(APITestCase):
             'full_name': 'Test User',
             'bio': 'This is my bio'
         }
-        response = self.client.patch('/accounts/api/profile/', data)
+        response = self.client.patch('/api/accounts/api/profile/', data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.profile.refresh_from_db()
         self.assertEqual(self.user.profile.full_name, 'Test User')
@@ -125,7 +160,7 @@ class PasswordManagementTest(APITestCase):
             'new_password': 'NewPass123!',
             'new_password2': 'NewPass123!'
         }
-        response = self.client.post('/accounts/api/change-password/', data)
+        response = self.client.post('/api/accounts/api/change-password/', data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('NewPass123!'))
@@ -142,7 +177,7 @@ class APIKeyTest(APITestCase):
     def test_create_api_key(self):
         """Test creating an API key"""
         data = {'label': 'My API Key'}
-        response = self.client.post('/accounts/api/api-keys/', data)
+        response = self.client.post('/api/accounts/api/api-keys/', data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(APIKey.objects.filter(user=self.user, label='My API Key').exists())
 
@@ -150,7 +185,7 @@ class APIKeyTest(APITestCase):
         """Test listing user's API keys"""
         APIKey.objects.create(user=self.user, label='Key 1')
         APIKey.objects.create(user=self.user, label='Key 2')
-        response = self.client.get('/accounts/api/api-keys/')
+        response = self.client.get('/api/accounts/api/api-keys/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 2)
 
@@ -177,27 +212,27 @@ class PermissionsTest(APITestCase):
         """Test instructor-only endpoint access"""
         # Student should be denied
         self.client.force_authenticate(user=self.student)
-        response = self.client.get('/accounts/api/instructor-only/')
+        response = self.client.get('/api/accounts/api/instructor-only/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         # Instructor should have access
         self.client.force_authenticate(user=self.instructor)
-        response = self.client.get('/accounts/api/instructor-only/')
+        response = self.client.get('/api/accounts/api/instructor-only/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Admin should have access
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get('/accounts/api/instructor-only/')
+        response = self.client.get('/api/accounts/api/instructor-only/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_admin_only_user_list(self):
         """Test admin-only user list access"""
         # Student should be denied
         self.client.force_authenticate(user=self.student)
-        response = self.client.get('/accounts/api/users/')
+        response = self.client.get('/api/accounts/api/users/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         # Admin should have access
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get('/accounts/api/users/')
+        response = self.client.get('/api/accounts/api/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)

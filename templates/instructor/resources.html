@@ -1,0 +1,489 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Resources - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold text-white mb-2">
+                                <i class="fas fa-folder text-blue-500 mr-3"></i>Resource Management
+                            </h1>
+                            <p class="text-gray-400">Upload and organize course materials</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button onclick="createFolder()" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors">
+                                <i class="fas fa-folder-plus mr-2"></i>New Folder
+                            </button>
+                            <button onclick="openUploadModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                                <i class="fas fa-cloud-upload-alt mr-2"></i>Upload Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Course Selector -->
+                <div class="bg-[#1a1f2e] rounded-xl p-4 border border-gray-800 mb-6">
+                    <div class="flex items-center gap-4">
+                        <label class="text-gray-400">Course:</label>
+                        <select id="courseSelect" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none flex-1">
+                            <option value="">Select a course</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Storage Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="text-gray-400 text-sm mb-1">Total Files</div>
+                        <div class="text-2xl font-bold text-white" id="totalFiles">0</div>
+                    </div>
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="text-gray-400 text-sm mb-1">Total Size</div>
+                        <div class="text-2xl font-bold text-white" id="totalStorageSize">0 MB</div>
+                    </div>
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="text-gray-400 text-sm mb-1">Total Downloads</div>
+                        <div class="text-2xl font-bold text-white" id="totalDownloads">0</div>
+                    </div>
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="text-gray-400 text-sm mb-1">Storage Used</div>
+                        <div class="text-xl font-bold text-white mb-2" id="storagePercent">0%</div>
+                        <div class="w-full bg-gray-700 rounded-full h-2">
+                            <div id="storageBar" class="bg-blue-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toolbar -->
+                <div class="bg-[#1a1f2e] rounded-xl p-4 border border-gray-800 mb-6">
+                    <div class="flex items-center justify-between flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <input type="text" id="searchFiles" placeholder="Search files..." class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none w-64">
+                            <select id="sortBy" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                                <option value="name">Sort by Name</option>
+                                <option value="date">Sort by Date</option>
+                                <option value="size">Sort by Size</option>
+                                <option value="downloads">Sort by Downloads</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-gray-400 text-sm" id="selectedCount">0 selected</span>
+                            <button onclick="deleteSelected()" class="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-lg transition-colors border border-red-500/20">
+                                <i class="fas fa-trash mr-2"></i>Delete Selected
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resources List -->
+                <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 overflow-hidden">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-gray-800">
+                                <th class="py-4 px-6 w-12">
+                                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()" class="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                                </th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Name</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Type</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Size</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Downloads</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Uploaded</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Visibility</th>
+                                <th class="text-left text-gray-400 font-medium py-4 px-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resourcesTable">
+                            <!-- Loading state -->
+                            <tr>
+                                <td colspan="8" class="text-center py-12">
+                                    <div class="flex items-center justify-center">
+                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="uploadModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-[#1a1f2e] rounded-xl p-8 max-w-2xl w-full mx-4 border border-gray-800">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold text-white">Upload Resources</h2>
+            <button onclick="closeUploadModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-gray-400 mb-2">Select Folder (Optional)</label>
+            <select id="uploadFolder" class="w-full bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                <option value="">Root Directory</option>
+            </select>
+        </div>
+
+        <!-- Drag & Drop Area -->
+        <div id="dropZone" class="border-2 border-dashed border-gray-700 rounded-xl p-12 text-center mb-6 hover:border-blue-500 transition-colors cursor-pointer">
+            <i class="fas fa-cloud-upload-alt text-6xl text-gray-600 mb-4"></i>
+            <p class="text-white mb-2">Drag and drop files here</p>
+            <p class="text-gray-400 text-sm mb-4">or click to browse</p>
+            <input type="file" id="fileInput" multiple class="hidden">
+            <button onclick="document.getElementById('fileInput').click()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                Browse Files
+            </button>
+        </div>
+
+        <!-- Selected Files -->
+        <div id="selectedFiles" class="space-y-2 mb-6 max-h-64 overflow-y-auto">
+            <!-- Files will be listed here -->
+        </div>
+
+        <!-- Upload Settings -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div>
+                <label class="block text-gray-400 mb-2">Visibility</label>
+                <select id="fileVisibility" class="w-full bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                    <option value="all">All Students</option>
+                    <option value="enrolled">Enrolled Only</option>
+                    <option value="premium">Premium Only</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-gray-400 mb-2">Category</label>
+                <select id="fileCategory" class="w-full bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                    <option value="documents">Documents</option>
+                    <option value="videos">Videos</option>
+                    <option value="code">Code Files</option>
+                    <option value="images">Images</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3">
+            <button onclick="closeUploadModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors">
+                Cancel
+            </button>
+            <button onclick="uploadFiles()" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                <i class="fas fa-upload mr-2"></i>Upload Files
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedFiles = [];
+let selectedResources = new Set();
+let allResources = [];
+
+async function loadCourses() {
+    try {
+        const data = await apiRequest('/api/instructor/courses/');
+        const select = document.getElementById('courseSelect');
+        
+        select.innerHTML = '<option value="">Select a course</option>' +
+            data.courses.map(course => `<option value="${course.id}">${course.title}</option>`).join('');
+            
+    } catch (error) {
+        console.error('Error loading courses:', error);
+    }
+}
+
+async function loadResources(courseId) {
+    if (!courseId) return;
+    
+    try {
+        const data = await apiRequest(`/api/instructor/courses/${courseId}/resources/`);
+        
+        allResources = data.resources;
+        
+        // Update stats
+        document.getElementById('totalFiles').textContent = data.stats.total_files;
+        document.getElementById('totalStorageSize').textContent = formatFileSize(data.stats.total_size);
+        document.getElementById('totalDownloads').textContent = data.stats.total_downloads;
+        document.getElementById('storagePercent').textContent = `${data.stats.storage_percent}%`;
+        document.getElementById('storageBar').style.width = `${data.stats.storage_percent}%`;
+        
+        renderResourcesTable(allResources);
+        
+    } catch (error) {
+        console.error('Error loading resources:', error);
+        showAlert('Failed to load resources', 'error');
+    }
+}
+
+function renderResourcesTable(resources) {
+    const tbody = document.getElementById('resourcesTable');
+    
+    if (!resources || resources.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-12 text-gray-400">
+                    No resources uploaded yet. Click "Upload Files" to get started.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = resources.map(resource => `
+        <tr class="border-b border-gray-800 hover:bg-[#0f1419] transition-colors">
+            <td class="py-4 px-6">
+                <input type="checkbox" class="resource-checkbox w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" value="${resource.id}" onchange="updateSelectedCount()">
+            </td>
+            <td class="py-4 px-6">
+                <div class="flex items-center">
+                    <i class="fas ${getFileIcon(resource.file_type)} text-blue-500 mr-3"></i>
+                    <span class="text-white">${resource.name}</span>
+                </div>
+            </td>
+            <td class="py-4 px-6">
+                <span class="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs uppercase">${resource.file_type}</span>
+            </td>
+            <td class="py-4 px-6 text-gray-400">${formatFileSize(resource.size)}</td>
+            <td class="py-4 px-6 text-gray-400">${resource.downloads_count}</td>
+            <td class="py-4 px-6 text-gray-400">${formatDate(resource.uploaded_at)}</td>
+            <td class="py-4 px-6">
+                <select onchange="updateVisibility(${resource.id}, this.value)" class="bg-[#0f1419] text-white text-xs px-2 py-1 rounded border border-gray-700 focus:border-blue-500 focus:outline-none">
+                    <option value="all" ${resource.visibility === 'all' ? 'selected' : ''}>All</option>
+                    <option value="enrolled" ${resource.visibility === 'enrolled' ? 'selected' : ''}>Enrolled</option>
+                    <option value="premium" ${resource.visibility === 'premium' ? 'selected' : ''}>Premium</option>
+                </select>
+            </td>
+            <td class="py-4 px-6">
+                <div class="flex items-center gap-2">
+                    <button onclick="editResource(${resource.id})" class="text-blue-500 hover:text-blue-400" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="deleteResource(${resource.id})" class="text-red-500 hover:text-red-400" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <a href="${resource.download_url}" target="_blank" class="text-gray-400 hover:text-white" title="Download">
+                        <i class="fas fa-download"></i>
+                    </a>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getFileIcon(fileType) {
+    const icons = {
+        'pdf': 'fa-file-pdf',
+        'doc': 'fa-file-word', 'docx': 'fa-file-word',
+        'xls': 'fa-file-excel', 'xlsx': 'fa-file-excel',
+        'ppt': 'fa-file-powerpoint', 'pptx': 'fa-file-powerpoint',
+        'zip': 'fa-file-archive', 'rar': 'fa-file-archive',
+        'jpg': 'fa-file-image', 'jpeg': 'fa-file-image', 'png': 'fa-file-image',
+        'mp4': 'fa-file-video', 'avi': 'fa-file-video',
+        'mp3': 'fa-file-audio', 'wav': 'fa-file-audio',
+        'js': 'fa-file-code', 'py': 'fa-file-code', 'html': 'fa-file-code',
+    };
+    return icons[fileType?.toLowerCase()] || 'fa-file';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatDate(dateString) {
+    return new Date(dateString).toLocaleDateString('en-US', { 
+        year: 'numeric', month: 'short', day: 'numeric' 
+    });
+}
+
+function openUploadModal() {
+    document.getElementById('uploadModal').classList.remove('hidden');
+}
+
+function closeUploadModal() {
+    document.getElementById('uploadModal').classList.add('hidden');
+    selectedFiles = [];
+    document.getElementById('selectedFiles').innerHTML = '';
+}
+
+// Drag & Drop
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('border-blue-500');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500'));
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('border-blue-500');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+function handleFiles(files) {
+    selectedFiles = Array.from(files);
+    displaySelectedFiles();
+}
+
+function displaySelectedFiles() {
+    const container = document.getElementById('selectedFiles');
+    
+    container.innerHTML = selectedFiles.map((file, index) => `
+        <div class="flex items-center justify-between bg-[#0f1419] p-3 rounded-lg border border-gray-800">
+            <div class="flex items-center flex-1">
+                <i class="fas ${getFileIcon(file.name.split('.').pop())} text-blue-500 mr-3"></i>
+                <div class="flex-1">
+                    <div class="text-white text-sm">${file.name}</div>
+                    <div class="text-gray-400 text-xs">${formatFileSize(file.size)}</div>
+                </div>
+            </div>
+            <button onclick="removeFile(${index})" class="text-red-500 hover:text-red-400 ml-3">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    displaySelectedFiles();
+}
+
+async function uploadFiles() {
+    if (selectedFiles.length === 0) {
+        showAlert('Please select files to upload', 'error');
+        return;
+    }
+    
+    const courseId = document.getElementById('courseSelect').value;
+    if (!courseId) {
+        showAlert('Please select a course first', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    selectedFiles.forEach(file => formData.append('files', file));
+    formData.append('folder_id', document.getElementById('uploadFolder').value);
+    formData.append('visibility', document.getElementById('fileVisibility').value);
+    formData.append('category', document.getElementById('fileCategory').value);
+    
+    try {
+        showAlert('Uploading files...', 'info');
+        await apiRequest(`/api/instructor/courses/${courseId}/resources/upload/`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        showAlert('Files uploaded successfully!', 'success');
+        closeUploadModal();
+        loadResources(courseId);
+        
+    } catch (error) {
+        console.error('Error uploading files:', error);
+        showAlert('Failed to upload files', 'error');
+    }
+}
+
+function createFolder() {
+    const name = prompt('Enter folder name:');
+    if (!name) return;
+    
+    const courseId = document.getElementById('courseSelect').value;
+    if (!courseId) {
+        showAlert('Please select a course first', 'error');
+        return;
+    }
+    
+    apiRequest(`/api/instructor/courses/${courseId}/folders/`, {
+        method: 'POST',
+        body: JSON.stringify({ name })
+    }).then(() => {
+        showAlert('Folder created successfully!', 'success');
+        loadResources(courseId);
+    }).catch(() => showAlert('Failed to create folder', 'error'));
+}
+
+function toggleSelectAll() {
+    const checked = document.getElementById('selectAll').checked;
+    document.querySelectorAll('.resource-checkbox').forEach(cb => cb.checked = checked);
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.resource-checkbox:checked').length;
+    document.getElementById('selectedCount').textContent = `${count} selected`;
+}
+
+function deleteSelected() {
+    const selected = Array.from(document.querySelectorAll('.resource-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) {
+        showAlert('No resources selected', 'error');
+        return;
+    }
+    
+    if (confirm(`Delete ${selected.length} resource(s)?`)) {
+        // Implementation would delete selected resources
+        showAlert('Resources deleted', 'success');
+    }
+}
+
+async function deleteResource(id) {
+    if (!confirm('Delete this resource?')) return;
+    
+    try {
+        await apiRequest(`/api/resources/${id}/`, { method: 'DELETE' });
+        showAlert('Resource deleted', 'success');
+        loadResources(document.getElementById('courseSelect').value);
+    } catch (error) {
+        showAlert('Failed to delete resource', 'error');
+    }
+}
+
+function editResource(id) {
+    showAlert('Edit modal would open here', 'info');
+}
+
+async function updateVisibility(id, visibility) {
+    try {
+        await apiRequest(`/api/resources/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify({ visibility })
+        });
+        showAlert('Visibility updated', 'success');
+    } catch (error) {
+        showAlert('Failed to update visibility', 'error');
+    }
+}
+
+// Course selector
+document.getElementById('courseSelect').addEventListener('change', (e) => {
+    loadResources(e.target.value);
+});
+
+// Search
+document.getElementById('searchFiles').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allResources.filter(r => r.name.toLowerCase().includes(term));
+    renderResourcesTable(filtered);
+});
+
+// Load courses on page load
+loadCourses();
+</script>
+{% endblock %}

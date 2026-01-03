@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+
+{% block title %}Payment History - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Payment History</h1>
+            <p class="text-gray-400">View all your transactions and download invoices</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <select id="filter-status" onchange="loadTransactions()" 
+                class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">All Transactions</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+                <option value="refunded">Refunded</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="grid md:grid-cols-4 gap-6">
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm text-gray-400">Total Spent</p>
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <p class="text-2xl font-bold text-blue-400" id="total-spent">$0.00</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm text-gray-400">Successful</p>
+                <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <p class="text-2xl font-bold" id="successful-count">0</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm text-gray-400">Pending</p>
+                <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <p class="text-2xl font-bold" id="pending-count">0</p>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm text-gray-400">This Month</p>
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <p class="text-2xl font-bold text-purple-400" id="month-spent">$0.00</p>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-dark-bg border-b border-dark-border">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Transaction ID</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Date</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Course</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Amount</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Payment Method</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Status</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="transactions-tbody" class="divide-y divide-dark-border">
+                    <!-- Loading rows -->
+                    <tr class="animate-pulse">
+                        <td colspan="7" class="px-6 py-8">
+                            <div class="space-y-3">
+                                <div class="h-4 bg-dark-bg rounded w-full"></div>
+                                <div class="h-4 bg-dark-bg rounded w-full"></div>
+                                <div class="h-4 bg-dark-bg rounded w-full"></div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allTransactions = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/payments/history/';
+        return;
+    }
+
+    loadTransactions();
+});
+
+async function loadTransactions() {
+    const filterStatus = document.getElementById('filter-status').value;
+    const tbody = document.getElementById('transactions-tbody');
+
+    try {
+        let url = '/api/payments/transactions/';
+        if (filterStatus) {
+            url += `?status=${filterStatus}`;
+        }
+
+        const response = await apiRequest(url);
+        allTransactions = response.results || response;
+
+        // Update stats
+        updateStats(allTransactions);
+
+        if (allTransactions.length > 0) {
+            tbody.innerHTML = allTransactions.map(tx => renderTransaction(tx)).join('');
+        } else {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="px-6 py-16 text-center">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        <p class="text-gray-400 mb-2">No transactions found</p>
+                        <p class="text-sm text-gray-500">Your payment history will appear here</p>
+                    </td>
+                </tr>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading transactions:', error);
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="px-6 py-16 text-center text-red-400">
+                    Failed to load transactions
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function updateStats(transactions) {
+    const completed = transactions.filter(tx => tx.status === 'completed');
+    const pending = transactions.filter(tx => tx.status === 'pending');
+    
+    const totalSpent = completed.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+    
+    // Calculate this month's spending
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonth = completed.filter(tx => new Date(tx.created_at) >= monthStart);
+    const monthSpent = thisMonth.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+    document.getElementById('total-spent').textContent = `$${totalSpent.toFixed(2)}`;
+    document.getElementById('successful-count').textContent = completed.length;
+    document.getElementById('pending-count').textContent = pending.length;
+    document.getElementById('month-spent').textContent = `$${monthSpent.toFixed(2)}`;
+}
+
+function renderTransaction(tx) {
+    const date = new Date(tx.created_at);
+    const statusColors = {
+        completed: 'bg-green-900/50 text-green-400 border-green-500',
+        pending: 'bg-yellow-900/50 text-yellow-400 border-yellow-500',
+        failed: 'bg-red-900/50 text-red-400 border-red-500',
+        refunded: 'bg-blue-900/50 text-blue-400 border-blue-500'
+    };
+
+    const statusIcons = {
+        completed: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+        pending: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        failed: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>',
+        refunded: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>'
+    };
+
+    const paymentMethodIcons = {
+        card: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>',
+        paypal: '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8.32 21.97a.546.546 0 01-.26-.32c-.03-.15-.01-.3.07-.43l2.52-5.6c.07-.15.18-.27.32-.34s.29-.08.44-.04l2.53.56c.88.19 1.75-.36 1.94-1.24.19-.88-.36-1.75-1.24-1.94l-2.53-.56a.546.546 0 01-.39-.67l.83-3.77c.19-.88-.36-1.75-1.24-1.94l-2.53-.56a.546.546 0 01-.39-.67l.56-2.53c.19-.88-.36-1.75-1.24-1.94C7.89 1.81 7 2.37 6.81 3.25l-.56 2.53c-.04.15-.13.29-.26.38s-.29.13-.44.1L3.02 5.7c-.88-.19-1.75.36-1.94 1.24-.19.88.36 1.75 1.24 1.94l2.53.56c.15.03.29.13.38.26s.13.29.1.44l-.83 3.77a.546.546 0 01-.67.39l-2.53-.56c-.88-.19-1.75.36-1.94 1.24-.19.88.36 1.75 1.24 1.94l2.53.56c.15.03.29.13.38.26s.13.29.1.44l-.56 2.53c-.19.88.36 1.75 1.24 1.94.11.02.22.04.33.04.76 0 1.43-.54 1.61-1.28z"/></svg>',
+        wallet: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>'
+    };
+
+    return `
+        <tr class="hover:bg-dark-bg/50 transition-colors">
+            <td class="px-6 py-4">
+                <span class="font-mono text-sm text-gray-400">#${tx.transaction_id || tx.id}</span>
+            </td>
+            <td class="px-6 py-4">
+                <div class="text-sm">
+                    <div class="font-medium">${date.toLocaleDateString()}</div>
+                    <div class="text-gray-500 text-xs">${date.toLocaleTimeString()}</div>
+                </div>
+            </td>
+            <td class="px-6 py-4">
+                <div class="max-w-xs">
+                    <p class="font-medium truncate">${tx.course_title || 'Course'}</p>
+                    ${tx.course_slug ? `<a href="/courses/${tx.course_slug}/" class="text-xs text-blue-400 hover:underline">View Course</a>` : ''}
+                </div>
+            </td>
+            <td class="px-6 py-4">
+                <span class="font-semibold text-lg">\$${parseFloat(tx.amount || 0).toFixed(2)}</span>
+            </td>
+            <td class="px-6 py-4">
+                <div class="flex items-center space-x-2">
+                    ${paymentMethodIcons[tx.payment_method] || ''}
+                    <span class="capitalize text-sm">${tx.payment_method || 'Card'}</span>
+                </div>
+            </td>
+            <td class="px-6 py-4">
+                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium border ${statusColors[tx.status] || statusColors.pending}">
+                    ${statusIcons[tx.status] || statusIcons.pending}
+                    <span class="capitalize">${tx.status || 'Pending'}</span>
+                </span>
+            </td>
+            <td class="px-6 py-4">
+                <div class="flex items-center space-x-2">
+                    ${tx.status === 'completed' ? `
+                        <button onclick="downloadInvoice('${tx.id}')" class="p-2 hover:bg-blue-900/50 rounded-lg transition-colors" title="Download Invoice">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                        </button>
+                        <button onclick="viewReceipt('${tx.id}')" class="p-2 hover:bg-green-900/50 rounded-lg transition-colors" title="View Receipt">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                        </button>
+                    ` : ''}
+                    ${tx.status === 'failed' ? `
+                        <button onclick="retryPayment('${tx.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-semibold transition-colors">
+                            Retry
+                        </button>
+                    ` : ''}
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+async function downloadInvoice(transactionId) {
+    try {
+        const response = await apiRequest(`/api/payments/transactions/${transactionId}/invoice/`);
+        if (response.download_url) {
+            window.open(response.download_url, '_blank');
+            showAlert('Invoice downloaded successfully!', 'success');
+        }
+    } catch (error) {
+        console.error('Error downloading invoice:', error);
+        showAlert('Failed to download invoice', 'error');
+    }
+}
+
+async function viewReceipt(transactionId) {
+    try {
+        const response = await apiRequest(`/api/payments/transactions/${transactionId}/`);
+        // In a real app, this would open a modal with receipt details
+        showAlert('Receipt details loaded', 'success');
+        console.log('Receipt:', response);
+    } catch (error) {
+        console.error('Error viewing receipt:', error);
+        showAlert('Failed to load receipt', 'error');
+    }
+}
+
+async function retryPayment(transactionId) {
+    try {
+        const response = await apiRequest(`/api/payments/transactions/${transactionId}/retry/`, {
+            method: 'POST'
+        });
+        showAlert('Payment retry initiated', 'success');
+        loadTransactions(); // Reload to show updated status
+    } catch (error) {
+        console.error('Error retrying payment:', error);
+        showAlert('Failed to retry payment', 'error');
+    }
+}
+</script>
+{% endblock %}

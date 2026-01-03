@@ -11,6 +11,7 @@
 
 ### 2. **User Registration & Verification**
 - ✅ User registration endpoint
+- ✅ Role selection during registration (student or instructor)
 - ✅ Email verification with UUID tokens
 - ✅ Resend verification email
 - ✅ Automatic profile creation on user signup

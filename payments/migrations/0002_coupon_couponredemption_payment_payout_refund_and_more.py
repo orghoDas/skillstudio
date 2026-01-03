@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('courses', '0002_category_tag_remove_courseenrollment_course_and_more'),
-        ('live', '0001_initial'),
+        ('events', '0001_initial'),
         ('payments', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
                 ('course', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='courses.course')),
-                ('event', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='live.event')),
+                ('event', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='events.event')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='payments', to=settings.AUTH_USER_MODEL)),
             ],
         ),

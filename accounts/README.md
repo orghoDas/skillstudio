@@ -88,15 +88,44 @@ All custom permissions automatically grant access to admin users.
 ## Example Usage
 
 ### Registration
+
+**Register as Student (default):**
 ```json
 POST /accounts/api/register/
 {
-  "email": "user@example.com",
-  "username": "username",
+  "email": "student@example.com",
+  "username": "student123",
   "password": "SecurePass123!",
   "password2": "SecurePass123!"
 }
 ```
+
+**Register as Instructor:**
+```json
+POST /accounts/api/register/
+{
+  "email": "instructor@example.com",
+  "username": "instructor123",
+  "password": "SecurePass123!",
+  "password2": "SecurePass123!",
+  "role": "instructor"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "User registered successfully. Please check your email for verification.",
+  "user": {
+    "id": 1,
+    "email": "instructor@example.com",
+    "username": "instructor123",
+    "role": "instructor"
+  }
+}
+```
+
+**Note:** Only `student` or `instructor` roles are allowed during registration. Admin roles can only be assigned by existing admins.
 
 ### Login
 ```json

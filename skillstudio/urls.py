@@ -16,22 +16,28 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
+    path('', include('core.urls')),
     path('admin/', admin.site.urls),
-    path("accounts/", include("accounts.urls")),
-    path("courses/", include("courses.urls")),
+    path("api/accounts/", include("accounts.urls")),
+    path("api/courses/", include("courses.urls")),
     path("api/enrollments/", include("enrollments.urls")),
     path("api/assessments/", include("assessments.urls")),
     path("api/exams/", include("exams.urls")),
     path("api/analytics/", include("analytics.urls")),
-    path("students/", include("students.urls")),
-    path("certificates/", include("certificates.urls")),
-    path('instructors/', include('instructors.urls')),
+    path("api/students/", include("students.urls")),
+    path("api/certificates/", include("certificates.urls")),
+    path('api/instructors/', include('instructors.urls')),
     path('api/events/', include('events.urls')),
     path('api/social/', include('social.urls')),
     path('api/adminpanel/', include('adminpanel.urls')),
-    path('api/payments/', include('payments.urls')),  # Payments
-    path('api/ai-recommender/', include('ai_recommender.urls')),  # AI Recommender
-    path('api/live/', include('live.urls')),  # Live Streaming
+    path('api/payments/', include('payments.urls')),
+    path('api/ai-recommender/', include('ai_recommender.urls')),
+    path('api/live/', include('live.urls')),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -39,8 +39,4 @@ urlpatterns = [
     
     # Test endpoints
     path("api/instructor-only/", views.InstructorOnlyView.as_view(), name="instructor_only"),
-    
-    # Template views
-    path("login/", views.login_page, name="login"),
-    path("register/", views.register_page, name="register"),
 ]

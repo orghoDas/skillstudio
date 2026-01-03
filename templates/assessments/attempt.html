@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+
+{% block title %}Take Assessment - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div id="assessment-container">
+    <!-- Loading State -->
+    <div class="flex justify-center items-center py-20">
+        <div class="animate-spin h-16 w-16 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let assessmentId;
+let attemptId;
+let currentQuestionIndex = 0;
+let questions = [];
+let answers = {};
+let timeRemaining = 0;
+let timerInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get IDs from URL
+    const pathParts = window.location.pathname.split('/');
+    assessmentId = pathParts[2];
+    attemptId = pathParts[4];
+    
+    loadAssessment();
+});
+
+async function loadAssessment() {
+    try {
+        // Start or resume attempt
+        let attempt;
+        if (attemptId) {
+            // Resume existing attempt
+            attempt = await apiRequest(`/api/assessments/attempts/${attemptId}/`);
+        } else {
+            // Create new attempt
+            attempt = await apiRequest(`/api/assessments/${assessmentId}/start-attempt/`, {
+                method: 'POST'
+            });
+            // Update URL with attempt ID
+            window.history.replaceState({}, '', `/assessments/${assessmentId}/attempt/${attempt.id}/`);
+            attemptId = attempt.id;
+        }
+
+        // Load questions
+        const response = await apiRequest(`/api/assessments/${assessmentId}/questions/`);
+        questions = response.results || response;
+
+        // Load saved answers if resuming
+        if (attempt.answers) {
+            answers = attempt.answers;
+        }
+
+        // Set up timer if time limit exists
+        if (attempt.assessment.time_limit && attempt.started_at) {
+            const timeLimit = attempt.assessment.time_limit * 60; // Convert to seconds
+            const elapsed = Math.floor((Date.now() - new Date(attempt.started_at)) / 1000);
+            timeRemaining = Math.max(0, timeLimit - elapsed);
+            
+            if (timeRemaining > 0) {
+                startTimer();
+            } else {
+                autoSubmit();
+                return;
+            }
+        }
+
+        renderAssessment(attempt);
+        renderQuestion();
+    } catch (error) {
+        console.error('Error loading assessment:', error);
+        document.getElementById('assessment-container').innerHTML = `
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-12 text-center">
+                <svg class="w-20 h-20 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <p class="text-xl font-semibold mb-2">Error Loading Assessment</p>
+                <p class="text-gray-400 mb-6">${error.message || 'Failed to load assessment'}</p>
+                <a href="/assessments/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Back to Assessments
+                </a>
+            </div>
+        `;
+    }
+}
+
+function renderAssessment(attempt) {
+    const container = document.getElementById('assessment-container');
+    container.innerHTML = `
+        <!-- Header -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-2xl font-bold">${attempt.assessment.title}</h1>
+                ${timeRemaining > 0 ? `
+                    <div id="timer" class="px-4 py-2 bg-red-900/30 border border-red-500/50 rounded-lg">
+                        <div class="flex items-center space-x-2 text-red-400">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span id="timer-display" class="font-mono font-semibold text-lg">00:00</span>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-dark-bg rounded-full h-2 mb-2">
+                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+            </div>
+            <p class="text-sm text-gray-400">
+                Question <span id="current-question">1</span> of ${questions.length}
+            </p>
+        </div>
+
+        <!-- Question Container -->
+        <div id="question-container" class="bg-dark-surface border border-dark-border rounded-lg p-8 mb-6">
+            <!-- Question will be rendered here -->
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex items-center justify-between">
+            <button id="prev-btn" onclick="previousQuestion()" 
+                class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                ← Previous
+            </button>
+            
+            <div class="flex space-x-3">
+                <button onclick="saveAndExit()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                    Save & Exit
+                </button>
+                <button id="next-btn" onclick="nextQuestion()" 
+                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Next →
+                </button>
+                <button id="submit-btn" onclick="submitAssessment()" 
+                    class="hidden px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                    Submit Assessment
+                </button>
+            </div>
+        </div>
+
+        <!-- Question Navigation Grid -->
+        <div class="mt-6 bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h3 class="text-sm font-semibold mb-3 text-gray-400">Question Navigation</h3>
+            <div id="question-nav" class="grid grid-cols-10 gap-2">
+                <!-- Navigation buttons will be rendered here -->
+            </div>
+        </div>
+    `;
+
+    updateQuestionNav();
+}
+
+function renderQuestion() {
+    if (questions.length === 0) return;
+    
+    const question = questions[currentQuestionIndex];
+    const container = document.getElementById('question-container');
+    
+    container.innerHTML = `
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4">Question ${currentQuestionIndex + 1}</h2>
+            <p class="text-lg text-gray-300 mb-6">${question.question_text}</p>
+        </div>
+
+        <div class="space-y-3">
+            ${renderAnswerOptions(question)}
+        </div>
+    `;
+
+    // Update navigation buttons
+    document.getElementById('prev-btn').disabled = currentQuestionIndex === 0;
+    document.getElementById('next-btn').classList.toggle('hidden', currentQuestionIndex === questions.length - 1);
+    document.getElementById('submit-btn').classList.toggle('hidden', currentQuestionIndex !== questions.length - 1);
+    
+    // Update progress
+    const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+    document.getElementById('progress-bar').style.width = `${progress}%`;
+    document.getElementById('current-question').textContent = currentQuestionIndex + 1;
+    
+    updateQuestionNav();
+}
+
+function renderAnswerOptions(question) {
+    const savedAnswer = answers[question.id];
+    
+    if (question.question_type === 'multiple_choice' || question.question_type === 'single_choice') {
+        return question.options.map((option, index) => `
+            <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.id ? 'border-blue-500 bg-blue-900/20' : ''}">
+                <input type="radio" name="answer" value="${option.id}" 
+                    ${savedAnswer === option.id ? 'checked' : ''}
+                    onchange="saveAnswer(${question.id}, this.value)"
+                    class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
+                <span class="flex-1">${option.option_text}</span>
+            </label>
+        `).join('');
+    } else if (question.question_type === 'true_false') {
+        return ['True', 'False'].map(option => `
+            <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.toLowerCase() ? 'border-blue-500 bg-blue-900/20' : ''}">
+                <input type="radio" name="answer" value="${option.toLowerCase()}" 
+                    ${savedAnswer === option.toLowerCase() ? 'checked' : ''}
+                    onchange="saveAnswer(${question.id}, this.value)"
+                    class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
+                <span class="flex-1">${option}</span>
+            </label>
+        `).join('');
+    } else if (question.question_type === 'text') {
+        return `
+            <textarea name="answer" rows="6" 
+                onchange="saveAnswer(${question.id}, this.value)"
+                class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Type your answer here...">${savedAnswer || ''}</textarea>
+        `;
+    }
+}
+
+function saveAnswer(questionId, answer) {
+    answers[questionId] = answer;
+    updateQuestionNav();
+}
+
+function updateQuestionNav() {
+    const nav = document.getElementById('question-nav');
+    if (!nav) return;
+    
+    nav.innerHTML = questions.map((q, index) => `
+        <button onclick="goToQuestion(${index})" 
+            class="w-10 h-10 rounded-lg font-semibold transition-colors ${
+                index === currentQuestionIndex ? 'bg-blue-600 text-white' :
+                answers[q.id] ? 'bg-green-700 text-white' :
+                'bg-dark-bg border border-dark-border text-gray-400 hover:border-blue-500'
+            }">
+            ${index + 1}
+        </button>
+    `).join('');
+}
+
+function goToQuestion(index) {
+    currentQuestionIndex = index;
+    renderQuestion();
+}
+
+function previousQuestion() {
+    if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        renderQuestion();
+    }
+}
+
+function nextQuestion() {
+    if (currentQuestionIndex < questions.length - 1) {
+        currentQuestionIndex++;
+        renderQuestion();
+    }
+}
+
+function startTimer() {
+    updateTimerDisplay();
+    timerInterval = setInterval(() => {
+        timeRemaining--;
+        updateTimerDisplay();
+        
+        if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            autoSubmit();
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(timeRemaining / 60);
+    const seconds = timeRemaining % 60;
+    const display = document.getElementById('timer-display');
+    if (display) {
+        display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        // Warning color when under 5 minutes
+        if (timeRemaining < 300) {
+            display.classList.add('text-red-500');
+        }
+    }
+}
+
+async function saveAndExit() {
+    try {
+        await apiRequest(`/api/assessments/attempts/${attemptId}/save/`, {
+            method: 'POST',
+            body: JSON.stringify({ answers })
+        });
+        showAlert('Progress saved successfully', 'success');
+        setTimeout(() => {
+            window.location.href = '/assessments/';
+        }, 1500);
+    } catch (error) {
+        console.error('Error saving:', error);
+        showAlert('Failed to save progress', 'error');
+    }
+}
+
+async function submitAssessment() {
+    // Check if all questions answered
+    const unanswered = questions.filter(q => !answers[q.id]);
+    if (unanswered.length > 0) {
+        if (!confirm(`You have ${unanswered.length} unanswered question(s). Submit anyway?`)) {
+            return;
+        }
+    }
+
+    if (!confirm('Are you sure you want to submit? You cannot change your answers after submission.')) {
+        return;
+    }
+
+    try {
+        if (timerInterval) clearInterval(timerInterval);
+        
+        const result = await apiRequest(`/api/assessments/attempts/${attemptId}/submit/`, {
+            method: 'POST',
+            body: JSON.stringify({ answers })
+        });
+
+        showAlert('Assessment submitted successfully!', 'success');
+        setTimeout(() => {
+            window.location.href = `/assessments/${assessmentId}/results/${attemptId}/`;
+        }, 1500);
+    } catch (error) {
+        console.error('Error submitting:', error);
+        showAlert('Failed to submit assessment', 'error');
+    }
+}
+
+async function autoSubmit() {
+    showAlert('Time is up! Auto-submitting assessment...', 'warning');
+    await submitAssessment();
+}
+
+// Prevent accidental page close
+window.addEventListener('beforeunload', function(e) {
+    if (Object.keys(answers).length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+</script>
+{% endblock %}

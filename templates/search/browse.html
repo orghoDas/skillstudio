@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+
+{% block title %}Browse Courses - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div>
+        <h1 class="text-3xl font-bold mb-2">Browse Courses</h1>
+        <p class="text-gray-400">Explore courses by category and topic</p>
+    </div>
+
+    <!-- Categories Grid -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <a href="/search/?category=programming" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+            <div class="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-600 transition-colors">
+                <svg class="w-6 h-6 text-blue-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Programming</h3>
+            <p class="text-gray-400 text-sm mb-4">Web development, mobile apps, software engineering</p>
+            <div class="flex items-center text-sm text-blue-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+
+        <a href="/search/?category=design" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-purple-500 transition-all hover:shadow-lg hover:shadow-purple-500/10">
+            <div class="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-purple-600 transition-colors">
+                <svg class="w-6 h-6 text-purple-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Design</h3>
+            <p class="text-gray-400 text-sm mb-4">UI/UX, graphic design, product design</p>
+            <div class="flex items-center text-sm text-purple-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+
+        <a href="/search/?category=business" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-green-500 transition-all hover:shadow-lg hover:shadow-green-500/10">
+            <div class="w-12 h-12 bg-green-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-green-600 transition-colors">
+                <svg class="w-6 h-6 text-green-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Business</h3>
+            <p class="text-gray-400 text-sm mb-4">Entrepreneurship, management, finance</p>
+            <div class="flex items-center text-sm text-green-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+
+        <a href="/search/?category=marketing" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-orange-500 transition-all hover:shadow-lg hover:shadow-orange-500/10">
+            <div class="w-12 h-12 bg-orange-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-orange-600 transition-colors">
+                <svg class="w-6 h-6 text-orange-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Marketing</h3>
+            <p class="text-gray-400 text-sm mb-4">Digital marketing, SEO, social media</p>
+            <div class="flex items-center text-sm text-orange-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+
+        <a href="/search/?category=data-science" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-cyan-500 transition-all hover:shadow-lg hover:shadow-cyan-500/10">
+            <div class="w-12 h-12 bg-cyan-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-cyan-600 transition-colors">
+                <svg class="w-6 h-6 text-cyan-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Data Science</h3>
+            <p class="text-gray-400 text-sm mb-4">Machine learning, data analysis, AI</p>
+            <div class="flex items-center text-sm text-cyan-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+
+        <a href="/search/?category=personal-development" class="group bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-pink-500 transition-all hover:shadow-lg hover:shadow-pink-500/10">
+            <div class="w-12 h-12 bg-pink-900/50 rounded-lg flex items-center justify-center mb-4 group-hover:bg-pink-600 transition-colors">
+                <svg class="w-6 h-6 text-pink-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Personal Development</h3>
+            <p class="text-gray-400 text-sm mb-4">Productivity, leadership, communication</p>
+            <div class="flex items-center text-sm text-pink-400 font-medium">
+                <span>Explore courses</span>
+                <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </a>
+    </div>
+
+    <!-- Browse by Instructor -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-semibold">Featured Instructors</h2>
+            <a href="/instructors/" class="text-blue-400 hover:text-blue-300 text-sm font-medium">View All →</a>
+        </div>
+        <div id="instructors-container" class="grid md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <!-- Loading -->
+            <div class="animate-pulse bg-dark-bg rounded-lg h-48"></div>
+            <div class="animate-pulse bg-dark-bg rounded-lg h-48"></div>
+            <div class="animate-pulse bg-dark-bg rounded-lg h-48"></div>
+            <div class="animate-pulse bg-dark-bg rounded-lg h-48"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadFeaturedInstructors();
+});
+
+async function loadFeaturedInstructors() {
+    const container = document.getElementById('instructors-container');
+    
+    try {
+        const response = await apiRequest('/api/instructors/featured/');
+        const instructors = response.results || response;
+
+        if (instructors.length > 0) {
+            container.innerHTML = instructors.map(instructor => `
+                <a href="/instructors/${instructor.id}/" class="block bg-dark-bg rounded-lg p-6 hover:bg-dark-surface border border-transparent hover:border-blue-500 transition-all text-center">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-900 to-purple-900 rounded-full flex items-center justify-center text-2xl font-bold">
+                        ${instructor.first_name ? instructor.first_name[0] : instructor.username[0]}
+                    </div>
+                    <h4 class="font-semibold mb-1">${instructor.first_name || ''} ${instructor.last_name || ''}</h4>
+                    <p class="text-sm text-gray-400 mb-3">${instructor.title || 'Instructor'}</p>
+                    <div class="flex items-center justify-center space-x-4 text-xs text-gray-500">
+                        <span>${instructor.courses_count || 0} courses</span>
+                        <span>${instructor.students_count || 0} students</span>
+                    </div>
+                </a>
+            `).join('');
+        } else {
+            container.innerHTML = '<div class="col-span-4 text-center py-8 text-gray-400">No instructors found</div>';
+        }
+    } catch (error) {
+        console.error('Error loading instructors:', error);
+        container.innerHTML = '<div class="col-span-4 text-center py-8 text-red-400">Failed to load instructors</div>';
+    }
+}
+</script>
+{% endblock %}

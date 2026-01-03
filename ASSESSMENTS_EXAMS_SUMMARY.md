@@ -222,7 +222,6 @@ The exams app currently has basic models but needs integration with assessments:
 5. **Certificates Integration**
    - Auto-certificate on passing exams
    - Exam completion badges
-   - Leaderboards
 
 ## 📝 Usage Examples
 

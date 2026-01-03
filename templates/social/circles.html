@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+
+{% block title %}Learning Circles - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Learning Circles</h1>
+            <p class="text-gray-400">Join study groups and learn together</p>
+        </div>
+        <button id="create-circle-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>Create Circle</span>
+        </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-2 border-b border-dark-border">
+        <button class="circle-tab px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-400" data-tab="all">
+            All Circles
+        </button>
+        <button class="circle-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="my">
+            My Circles
+        </button>
+        <button class="circle-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="discover">
+            Discover
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-4">
+        <div class="flex flex-wrap gap-4">
+            <input type="text" id="search-circles" placeholder="Search circles..."
+                class="flex-1 min-w-[200px] px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="filter-status" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="completed">Completed</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Circles Grid -->
+    <div id="circles-container" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Loading skeletons -->
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+    </div>
+</div>
+
+<!-- Create Circle Modal -->
+<div id="create-circle-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+    <div class="bg-dark-surface border border-dark-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b border-dark-border flex items-center justify-between">
+            <h2 class="text-2xl font-bold">Create Learning Circle</h2>
+            <button id="close-modal" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <form id="create-circle-form" class="p-6 space-y-6">
+            <div>
+                <label for="circle-name" class="block text-sm font-medium mb-2">Circle Name</label>
+                <input type="text" id="circle-name" required
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="circle-description" class="block text-sm font-medium mb-2">Description</label>
+                <textarea id="circle-description" rows="4" required
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+            <div>
+                <label for="circle-course" class="block text-sm font-medium mb-2">Related Course (Optional)</label>
+                <select id="circle-course" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select a course...</option>
+                </select>
+            </div>
+            <div>
+                <label for="max-members" class="block text-sm font-medium mb-2">Max Members</label>
+                <input type="number" id="max-members" min="2" max="50" value="10"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex space-x-3">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
+                    Create Circle
+                </button>
+                <button type="button" id="cancel-create" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentTab = 'all';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/social/circles/';
+        return;
+    }
+
+    loadCircles();
+
+    // Tab switching
+    document.querySelectorAll('.circle-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            currentTab = this.dataset.tab;
+            document.querySelectorAll('.circle-tab').forEach(t => {
+                t.classList.remove('border-blue-600', 'text-blue-400');
+                t.classList.add('border-transparent', 'text-gray-400');
+            });
+            this.classList.remove('border-transparent', 'text-gray-400');
+            this.classList.add('border-blue-600', 'text-blue-400');
+            loadCircles();
+        });
+    });
+
+    // Search and filters
+    document.getElementById('search-circles').addEventListener('input', debounce(loadCircles, 500));
+    document.getElementById('filter-status').addEventListener('change', loadCircles);
+
+    // Modal handlers
+    document.getElementById('create-circle-btn').addEventListener('click', openCreateModal);
+    document.getElementById('close-modal').addEventListener('click', closeCreateModal);
+    document.getElementById('cancel-create').addEventListener('click', closeCreateModal);
+    document.getElementById('create-circle-form').addEventListener('submit', handleCreateCircle);
+});
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+async function loadCircles() {
+    const container = document.getElementById('circles-container');
+    container.innerHTML = '<div class="col-span-3 flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
+
+    try {
+        const search = document.getElementById('search-circles').value;
+        const status = document.getElementById('filter-status').value;
+        
+        let endpoint = '/api/social/circles/';
+        if (currentTab === 'my') {
+            endpoint = '/api/social/circles/my-circles/';
+        }
+
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (status) params.append('status', status);
+
+        const response = await apiRequest(`${endpoint}?${params.toString()}`);
+        
+        if (response && response.results && response.results.length > 0) {
+            container.innerHTML = response.results.map(circle => `
+                <a href="/social/circles/${circle.id}/" class="block bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-purple-500 transition-all hover:shadow-lg hover:shadow-purple-500/10">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
+                            <span class="text-xl font-bold">${circle.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <span class="px-3 py-1 text-xs rounded-full ${getStatusClass(circle.status)}">
+                            ${circle.status}
+                        </span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">${circle.name}</h3>
+                    <p class="text-sm text-gray-400 mb-4 line-clamp-2">${circle.description || 'No description'}</p>
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center space-x-2 text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                            </svg>
+                            <span>${circle.members_count || 0}/${circle.max_members || 10} members</span>
+                        </div>
+                        ${circle.course_title ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded">${circle.course_title}</span>` : ''}
+                    </div>
+                </a>
+            `).join('');
+        } else {
+            container.innerHTML = `
+                <div class="col-span-3 text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No learning circles found</p>
+                    <button onclick="document.getElementById('create-circle-btn').click()" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">
+                        Create Your First Circle
+                    </button>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading circles:', error);
+        container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load circles</div>';
+    }
+}
+
+function getStatusClass(status) {
+    const classes = {
+        active: 'bg-green-900/50 text-green-400',
+        pending: 'bg-yellow-900/50 text-yellow-400',
+        completed: 'bg-gray-900/50 text-gray-400'
+    };
+    return classes[status] || classes.active;
+}
+
+async function openCreateModal() {
+    document.getElementById('create-circle-modal').classList.remove('hidden');
+    
+    // Load courses for dropdown
+    try {
+        const response = await apiRequest('/api/courses/?status=published&limit=100');
+        if (response && response.results) {
+            const select = document.getElementById('circle-course');
+            select.innerHTML = '<option value="">Select a course...</option>' + 
+                response.results.map(course => `<option value="${course.id}">${course.title}</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Error loading courses:', error);
+    }
+}
+
+function closeCreateModal() {
+    document.getElementById('create-circle-modal').classList.add('hidden');
+    document.getElementById('create-circle-form').reset();
+}
+
+async function handleCreateCircle(e) {
+    e.preventDefault();
+    
+    const formData = {
+        name: document.getElementById('circle-name').value,
+        description: document.getElementById('circle-description').value,
+        course: document.getElementById('circle-course').value || null,
+        max_members: parseInt(document.getElementById('max-members').value)
+    };
+
+    try {
+        const response = await apiRequest('/api/social/circles/', {
+            method: 'POST',
+            body: JSON.stringify(formData)
+        });
+
+        if (response) {
+            showAlert('Learning circle created successfully!', 'success');
+            closeCreateModal();
+            loadCircles();
+        }
+    } catch (error) {
+        console.error('Error creating circle:', error);
+        showAlert(error.message || 'Failed to create circle', 'error');
+    }
+}
+</script>
+{% endblock %}

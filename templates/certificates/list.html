@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+
+{% block title %}My Certificates - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div>
+        <h1 class="text-3xl font-bold mb-2">My Certificates</h1>
+        <p class="text-gray-400">View and download your earned certificates</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid md:grid-cols-3 gap-6">
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-green-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="total-certificates">0</p>
+                    <p class="text-sm text-gray-400">Total Certificates</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="completed-courses">0</p>
+                    <p class="text-sm text-gray-400">Completed Courses</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="latest-date">-</p>
+                    <p class="text-sm text-gray-400">Latest Certificate</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Certificates Grid -->
+    <div id="certificates-container" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Loading skeletons -->
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/certificates/';
+        return;
+    }
+
+    loadCertificates();
+});
+
+async function loadCertificates() {
+    const container = document.getElementById('certificates-container');
+    
+    try {
+        const response = await apiRequest('/api/certificates/');
+        const certificates = response.results || response;
+
+        // Update stats
+        document.getElementById('total-certificates').textContent = certificates.length;
+        document.getElementById('completed-courses').textContent = certificates.length;
+        
+        if (certificates.length > 0) {
+            const latestDate = new Date(certificates[0].issued_date);
+            document.getElementById('latest-date').textContent = latestDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        if (certificates.length > 0) {
+            container.innerHTML = certificates.map(cert => renderCertificate(cert)).join('');
+        } else {
+            container.innerHTML = `
+                <div class="col-span-3 text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No certificates earned yet</p>
+                    <p class="text-gray-500 mb-6">Complete courses to earn certificates</p>
+                    <a href="/courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        Browse Courses
+                    </a>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading certificates:', error);
+        container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load certificates</div>';
+    }
+}
+
+function renderCertificate(cert) {
+    const issuedDate = new Date(cert.issued_date);
+    
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-green-500 transition-all hover:shadow-lg hover:shadow-green-500/10">
+            <!-- Certificate Preview -->
+            <div class="relative bg-gradient-to-br from-green-900/30 to-blue-900/30 p-8 border-b border-dark-border">
+                <div class="absolute top-4 right-4">
+                    <svg class="w-12 h-12 text-green-400 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div class="text-center">
+                    <svg class="w-16 h-16 mx-auto mb-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <h3 class="text-sm font-semibold mb-2 text-green-400">Certificate of Completion</h3>
+                    <p class="text-xs text-gray-400">SkillStudio</p>
+                </div>
+            </div>
+
+            <!-- Certificate Details -->
+            <div class="p-6">
+                <h4 class="font-semibold mb-2 line-clamp-2">${cert.course_title || 'Course Certificate'}</h4>
+                <div class="space-y-2 text-sm text-gray-400 mb-4">
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span>Issued: ${issuedDate.toLocaleDateString()}</span>
+                    </div>
+                    ${cert.certificate_id ? `
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                            </svg>
+                            <span class="font-mono text-xs">${cert.certificate_id}</span>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- Actions -->
+                <div class="flex space-x-2">
+                    <button onclick="downloadCertificate('${cert.id}')" 
+                        class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        <span>Download</span>
+                    </button>
+                    <button onclick="shareCertificate('${cert.id}')" 
+                        class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-sm rounded-lg transition-colors" title="Share">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function downloadCertificate(certId) {
+    try {
+        const response = await apiRequest(`/api/certificates/${certId}/download/`);
+        if (response.download_url) {
+            window.open(response.download_url, '_blank');
+            showAlert('Certificate downloaded successfully!', 'success');
+        } else {
+            showAlert('Certificate is being generated. Please try again in a moment.', 'info');
+        }
+    } catch (error) {
+        console.error('Error downloading certificate:', error);
+        showAlert('Failed to download certificate', 'error');
+    }
+}
+
+function shareCertificate(certId) {
+    const shareUrl = `${window.location.origin}/certificates/verify/${certId}/`;
+    
+    if (navigator.share) {
+        navigator.share({
+            title: 'My Certificate',
+            text: 'Check out my certificate from SkillStudio!',
+            url: shareUrl
+        }).catch(err => console.log('Share failed:', err));
+    } else {
+        // Fallback: copy to clipboard
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            showAlert('Certificate link copied to clipboard!', 'success');
+        }).catch(() => {
+            showAlert('Failed to copy link', 'error');
+        });
+    }
+}
+</script>
+{% endblock %}

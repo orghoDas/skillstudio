@@ -416,7 +416,6 @@ Test coverage includes:
 - [ ] Badge system for helpful community members
 - [ ] Advanced search in forums
 - [ ] Thread subscription/following
-- [ ] Circle leaderboards
 - [ ] Resource voting/rating
 - [ ] Calendar integration for circle events
 - [ ] Video chat integration

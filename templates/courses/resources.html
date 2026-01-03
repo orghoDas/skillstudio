@@ -1,0 +1,454 @@
+{% extends 'base.html' %}
+
+{% block title %}Course Resources - SkillStudio{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-[#0f1419]">
+    {% include 'components/sidebar.html' %}
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex items-center text-sm text-gray-400 mb-4">
+                        <a href="/courses/" class="hover:text-white">Courses</a>
+                        <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                        <a href="#" id="courseTitle" class="hover:text-white">Loading...</a>
+                        <i class="fas fa-chevron-right mx-2 text-xs"></i>
+                        <span class="text-white">Resources</span>
+                    </div>
+                    <h1 class="text-3xl font-bold text-white mb-2">
+                        <i class="fas fa-folder-open text-blue-500 mr-3"></i>Course Resources
+                    </h1>
+                    <p class="text-gray-400">Access all downloadable materials and resources</p>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-gray-400 text-sm mb-1">Total Resources</div>
+                                <div class="text-2xl font-bold text-white" id="totalResources">0</div>
+                            </div>
+                            <div class="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-file text-blue-500 text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-gray-400 text-sm mb-1">Downloaded</div>
+                                <div class="text-2xl font-bold text-white" id="downloadedCount">0</div>
+                            </div>
+                            <div class="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-download text-green-500 text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-gray-400 text-sm mb-1">Total Size</div>
+                                <div class="text-2xl font-bold text-white" id="totalSize">0 MB</div>
+                            </div>
+                            <div class="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-database text-purple-500 text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-gray-400 text-sm mb-1">Folders</div>
+                                <div class="text-2xl font-bold text-white" id="foldersCount">0</div>
+                            </div>
+                            <div class="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-folder text-orange-500 text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toolbar -->
+                <div class="bg-[#1a1f2e] rounded-xl p-4 border border-gray-800 mb-6">
+                    <div class="flex items-center justify-between flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <input type="text" id="searchResources" placeholder="Search resources..." class="bg-[#0f1419] text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none w-64">
+                                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                            <select id="categoryFilter" class="bg-[#0f1419] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                                <option value="all">All Categories</option>
+                                <option value="documents">Documents</option>
+                                <option value="videos">Videos</option>
+                                <option value="code">Code Files</option>
+                                <option value="images">Images</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleView('grid')" id="gridViewBtn" class="view-btn active p-2 rounded-lg transition-colors">
+                                <i class="fas fa-th"></i>
+                            </button>
+                            <button onclick="toggleView('list')" id="listViewBtn" class="view-btn p-2 rounded-lg transition-colors">
+                                <i class="fas fa-list"></i>
+                            </button>
+                            <button onclick="downloadAll()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
+                                <i class="fas fa-download mr-2"></i>Download All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Breadcrumb Navigation -->
+                <div class="bg-[#1a1f2e] rounded-xl p-4 border border-gray-800 mb-6">
+                    <div class="flex items-center gap-2" id="breadcrumb">
+                        <button onclick="navigateToFolder(null)" class="text-blue-500 hover:text-blue-400 transition-colors">
+                            <i class="fas fa-home mr-2"></i>Root
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resources Grid/List -->
+                <div id="resourcesContainer">
+                    <!-- Loading state -->
+                    <div class="flex items-center justify-center py-12">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.view-btn {
+    background-color: transparent;
+    color: #9ca3af;
+    border: 1px solid #374151;
+}
+
+.view-btn:hover {
+    color: #fff;
+    border-color: #3b82f6;
+}
+
+.view-btn.active {
+    background-color: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
+}
+</style>
+
+<script>
+let currentView = 'grid';
+let currentFolder = null;
+let allResources = [];
+
+async function loadResources() {
+    const courseId = getCourseIdFromUrl();
+    
+    try {
+        const data = await apiRequest(`/api/courses/${courseId}/resources/`);
+        
+        allResources = data.resources;
+        
+        // Update course title
+        document.getElementById('courseTitle').textContent = data.course_name;
+        
+        // Update stats
+        document.getElementById('totalResources').textContent = data.stats.total_resources;
+        document.getElementById('downloadedCount').textContent = data.stats.downloaded_count;
+        document.getElementById('totalSize').textContent = formatFileSize(data.stats.total_size);
+        document.getElementById('foldersCount').textContent = data.stats.folders_count;
+        
+        // Render resources
+        renderResources(allResources);
+        
+    } catch (error) {
+        console.error('Error loading resources:', error);
+        showAlert('Failed to load resources', 'error');
+    }
+}
+
+function getCourseIdFromUrl() {
+    const path = window.location.pathname;
+    const match = path.match(/\/courses\/(\d+)\/resources/);
+    return match ? match[1] : null;
+}
+
+function renderResources(resources) {
+    const container = document.getElementById('resourcesContainer');
+    
+    // Filter by current folder
+    const filteredResources = currentFolder 
+        ? resources.filter(r => r.folder_id === currentFolder)
+        : resources.filter(r => !r.folder_id);
+    
+    if (!filteredResources || filteredResources.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-folder-open text-gray-600 text-6xl mb-4"></i>
+                <p class="text-gray-400">No resources in this folder</p>
+            </div>
+        `;
+        return;
+    }
+    
+    if (currentView === 'grid') {
+        renderGridView(filteredResources, container);
+    } else {
+        renderListView(filteredResources, container);
+    }
+}
+
+function renderGridView(resources, container) {
+    container.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            ${resources.map(resource => {
+                if (resource.type === 'folder') {
+                    return `
+                        <div onclick="navigateToFolder(${resource.id})" class="bg-[#1a1f2e] rounded-xl p-6 border border-gray-800 hover:border-blue-500 transition-all cursor-pointer group">
+                            <div class="flex flex-col items-center">
+                                <div class="w-20 h-20 bg-orange-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-orange-500/20 transition-colors">
+                                    <i class="fas fa-folder text-orange-500 text-4xl"></i>
+                                </div>
+                                <h3 class="text-white font-medium text-center mb-2">${resource.name}</h3>
+                                <p class="text-gray-400 text-xs">${resource.items_count} items</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 hover:border-blue-500 transition-all group overflow-hidden">
+                            <div class="p-6">
+                                <div class="flex items-center justify-center mb-4">
+                                    <div class="w-20 h-20 bg-blue-500/10 rounded-lg flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                                        <i class="fas ${getFileIcon(resource.file_type)} text-blue-500 text-4xl"></i>
+                                    </div>
+                                </div>
+                                <h3 class="text-white font-medium text-center mb-2 text-sm line-clamp-2">${resource.name}</h3>
+                                <div class="flex items-center justify-center gap-2 text-xs text-gray-400 mb-4">
+                                    <span>${resource.file_type.toUpperCase()}</span>
+                                    <span>•</span>
+                                    <span>${formatFileSize(resource.size)}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="downloadResource(${resource.id})" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors text-sm">
+                                        <i class="fas fa-download mr-1"></i>Download
+                                    </button>
+                                    <button onclick="previewResource(${resource.id})" class="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderListView(resources, container) {
+    container.innerHTML = `
+        <div class="bg-[#1a1f2e] rounded-xl border border-gray-800 overflow-hidden">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-gray-800">
+                        <th class="text-left text-gray-400 font-medium py-4 px-6">Name</th>
+                        <th class="text-left text-gray-400 font-medium py-4 px-6">Type</th>
+                        <th class="text-left text-gray-400 font-medium py-4 px-6">Size</th>
+                        <th class="text-left text-gray-400 font-medium py-4 px-6">Modified</th>
+                        <th class="text-left text-gray-400 font-medium py-4 px-6">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${resources.map(resource => {
+                        if (resource.type === 'folder') {
+                            return `
+                                <tr class="border-b border-gray-800 hover:bg-[#0f1419] transition-colors cursor-pointer" onclick="navigateToFolder(${resource.id})">
+                                    <td class="py-4 px-6">
+                                        <div class="flex items-center">
+                                            <i class="fas fa-folder text-orange-500 mr-3 text-lg"></i>
+                                            <span class="text-white font-medium">${resource.name}</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-6 text-gray-400">Folder</td>
+                                    <td class="py-4 px-6 text-gray-400">${resource.items_count} items</td>
+                                    <td class="py-4 px-6 text-gray-400">${formatDate(resource.modified_at)}</td>
+                                    <td class="py-4 px-6">
+                                        <button class="text-blue-500 hover:text-blue-400">
+                                            <i class="fas fa-folder-open"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        } else {
+                            return `
+                                <tr class="border-b border-gray-800 hover:bg-[#0f1419] transition-colors">
+                                    <td class="py-4 px-6">
+                                        <div class="flex items-center">
+                                            <i class="fas ${getFileIcon(resource.file_type)} text-blue-500 mr-3"></i>
+                                            <span class="text-white">${resource.name}</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-6">
+                                        <span class="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs uppercase">${resource.file_type}</span>
+                                    </td>
+                                    <td class="py-4 px-6 text-gray-400">${formatFileSize(resource.size)}</td>
+                                    <td class="py-4 px-6 text-gray-400">${formatDate(resource.modified_at)}</td>
+                                    <td class="py-4 px-6">
+                                        <div class="flex items-center gap-2">
+                                            <button onclick="downloadResource(${resource.id})" class="text-blue-500 hover:text-blue-400" title="Download">
+                                                <i class="fas fa-download"></i>
+                                            </button>
+                                            <button onclick="previewResource(${resource.id})" class="text-gray-400 hover:text-white" title="Preview">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function getFileIcon(fileType) {
+    const icons = {
+        'pdf': 'fa-file-pdf',
+        'doc': 'fa-file-word',
+        'docx': 'fa-file-word',
+        'xls': 'fa-file-excel',
+        'xlsx': 'fa-file-excel',
+        'ppt': 'fa-file-powerpoint',
+        'pptx': 'fa-file-powerpoint',
+        'zip': 'fa-file-archive',
+        'rar': 'fa-file-archive',
+        'jpg': 'fa-file-image',
+        'jpeg': 'fa-file-image',
+        'png': 'fa-file-image',
+        'gif': 'fa-file-image',
+        'mp4': 'fa-file-video',
+        'avi': 'fa-file-video',
+        'mp3': 'fa-file-audio',
+        'wav': 'fa-file-audio',
+        'txt': 'fa-file-alt',
+        'js': 'fa-file-code',
+        'py': 'fa-file-code',
+        'html': 'fa-file-code',
+        'css': 'fa-file-code',
+    };
+    return icons[fileType?.toLowerCase()] || 'fa-file';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function toggleView(view) {
+    currentView = view;
+    
+    document.getElementById('gridViewBtn').classList.toggle('active', view === 'grid');
+    document.getElementById('listViewBtn').classList.toggle('active', view === 'list');
+    
+    renderResources(allResources);
+}
+
+function navigateToFolder(folderId) {
+    currentFolder = folderId;
+    updateBreadcrumb(folderId);
+    renderResources(allResources);
+}
+
+function updateBreadcrumb(folderId) {
+    const breadcrumb = document.getElementById('breadcrumb');
+    
+    if (!folderId) {
+        breadcrumb.innerHTML = `
+            <button onclick="navigateToFolder(null)" class="text-blue-500 hover:text-blue-400 transition-colors">
+                <i class="fas fa-home mr-2"></i>Root
+            </button>
+        `;
+        return;
+    }
+    
+    // Find folder path (simplified - in real app would traverse folder tree)
+    const folder = allResources.find(r => r.id === folderId);
+    
+    breadcrumb.innerHTML = `
+        <button onclick="navigateToFolder(null)" class="text-blue-500 hover:text-blue-400 transition-colors">
+            <i class="fas fa-home mr-2"></i>Root
+        </button>
+        <i class="fas fa-chevron-right text-gray-600 mx-2"></i>
+        <span class="text-white">${folder?.name || 'Unknown'}</span>
+    `;
+}
+
+async function downloadResource(resourceId) {
+    try {
+        const response = await apiRequest(`/api/resources/${resourceId}/download/`, { 
+            method: 'POST' 
+        });
+        
+        // In a real implementation, this would trigger file download
+        window.open(response.download_url, '_blank');
+        showAlert('Download started', 'success');
+        
+    } catch (error) {
+        console.error('Error downloading resource:', error);
+        showAlert('Failed to download resource', 'error');
+    }
+}
+
+function previewResource(resourceId) {
+    // In a real implementation, this would open a preview modal
+    showAlert('Preview modal would open here', 'info');
+}
+
+function downloadAll() {
+    showAlert('Preparing all resources for download...', 'info');
+    // In a real implementation, this would create a zip file and download
+}
+
+// Search functionality
+document.getElementById('searchResources').addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    const filtered = allResources.filter(r => 
+        r.name.toLowerCase().includes(searchTerm)
+    );
+    renderResources(filtered);
+});
+
+// Category filter
+document.getElementById('categoryFilter').addEventListener('change', (e) => {
+    const category = e.target.value;
+    const filtered = category === 'all' 
+        ? allResources 
+        : allResources.filter(r => r.category === category);
+    renderResources(filtered);
+});
+
+// Load resources on page load
+loadResources();
+</script>
+{% endblock %}

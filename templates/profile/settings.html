@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-8">Settings</h1>
+
+    <!-- Settings Tabs -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
+        <div class="flex border-b border-dark-border overflow-x-auto">
+            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-blue-600 text-blue-400" data-tab="account">
+                Account
+            </button>
+            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="security">
+                Security
+            </button>
+            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="notifications">
+                Notifications
+            </button>
+            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="privacy">
+                Privacy
+            </button>
+        </div>
+
+        <!-- Account Tab -->
+        <div class="settings-content p-6" data-content="account">
+            <h2 class="text-xl font-bold mb-6">Account Settings</h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email Address</label>
+                    <input type="email" id="account-email" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg disabled:opacity-50">
+                    <p class="text-xs text-gray-500 mt-1">Contact support to change your email</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Account Role</label>
+                    <input type="text" id="account-role" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg disabled:opacity-50 capitalize">
+                </div>
+
+                <div class="border-t border-dark-border pt-6">
+                    <h3 class="text-lg font-semibold text-red-400 mb-3">Danger Zone</h3>
+                    <button class="px-4 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-600 text-red-400 rounded-lg transition-colors">
+                        Delete Account
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2">Once you delete your account, there is no going back.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Tab -->
+        <div class="settings-content p-6 hidden" data-content="security">
+            <h2 class="text-xl font-bold mb-6">Security Settings</h2>
+            
+            <form id="password-form" class="space-y-6">
+                <div>
+                    <label for="current-password" class="block text-sm font-medium mb-2">Current Password</label>
+                    <input type="password" id="current-password" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="new-password" class="block text-sm font-medium mb-2">New Password</label>
+                    <input type="password" id="new-password" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">At least 8 characters</p>
+                </div>
+
+                <div>
+                    <label for="confirm-password" class="block text-sm font-medium mb-2">Confirm New Password</label>
+                    <input type="password" id="confirm-password" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Update Password
+                </button>
+            </form>
+
+            <div class="border-t border-dark-border mt-8 pt-6">
+                <h3 class="text-lg font-semibold mb-4">Two-Factor Authentication</h3>
+                <p class="text-gray-400 mb-4">Add an extra layer of security to your account</p>
+                <button class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border rounded-lg transition-colors">
+                    Enable 2FA
+                </button>
+            </div>
+        </div>
+
+        <!-- Notifications Tab -->
+        <div class="settings-content p-6 hidden" data-content="notifications">
+            <h2 class="text-xl font-bold mb-6">Notification Preferences</h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="font-semibold mb-4">Email Notifications</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Course Updates</p>
+                                <p class="text-sm text-gray-400">Get notified about new courses and updates</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Enrollment Notifications</p>
+                                <p class="text-sm text-gray-400">Updates about your enrolled courses</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Events & Webinars</p>
+                                <p class="text-sm text-gray-400">Upcoming events and live sessions</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Marketing Emails</p>
+                                <p class="text-sm text-gray-400">Promotional content and special offers</p>
+                            </div>
+                            <input type="checkbox" class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="border-t border-dark-border pt-6">
+                    <h3 class="font-semibold mb-4">Push Notifications</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Browser Notifications</p>
+                                <p class="text-sm text-gray-400">Receive notifications in your browser</p>
+                            </div>
+                            <input type="checkbox" class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+                    </div>
+                </div>
+
+                <button class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Save Preferences
+                </button>
+            </div>
+        </div>
+
+        <!-- Privacy Tab -->
+        <div class="settings-content p-6 hidden" data-content="privacy">
+            <h2 class="text-xl font-bold mb-6">Privacy Settings</h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="font-semibold mb-4">Profile Visibility</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Public Profile</p>
+                                <p class="text-sm text-gray-400">Make your profile visible to everyone</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Show Enrolled Courses</p>
+                                <p class="text-sm text-gray-400">Display your course enrollments</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
+                            <div>
+                                <p class="font-medium">Show Certificates</p>
+                                <p class="text-sm text-gray-400">Display your earned certificates</p>
+                            </div>
+                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="border-t border-dark-border pt-6">
+                    <h3 class="font-semibold mb-4">Data & Privacy</h3>
+                    <div class="space-y-3">
+                        <a href="#" class="block p-3 bg-dark-bg hover:bg-dark-hover rounded-lg transition-colors">
+                            <p class="font-medium">Download Your Data</p>
+                            <p class="text-sm text-gray-400">Get a copy of your data</p>
+                        </a>
+                        <a href="#" class="block p-3 bg-dark-bg hover:bg-dark-hover rounded-lg transition-colors">
+                            <p class="font-medium">Privacy Policy</p>
+                            <p class="text-sm text-gray-400">Review our privacy policy</p>
+                        </a>
+                    </div>
+                </div>
+
+                <button class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Save Privacy Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/settings/';
+        return;
+    }
+
+    // Load account info
+    await loadAccountInfo();
+
+    // Tab switching
+    const tabs = document.querySelectorAll('.settings-tab');
+    const contents = document.querySelectorAll('.settings-content');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetTab = this.dataset.tab;
+            
+            // Update tabs
+            tabs.forEach(t => {
+                t.classList.remove('border-blue-600', 'text-blue-400');
+                t.classList.add('border-transparent', 'text-gray-400');
+            });
+            this.classList.remove('border-transparent', 'text-gray-400');
+            this.classList.add('border-blue-600', 'text-blue-400');
+            
+            // Update content
+            contents.forEach(c => c.classList.add('hidden'));
+            document.querySelector(`[data-content="${targetTab}"]`).classList.remove('hidden');
+        });
+    });
+
+    // Password form
+    document.getElementById('password-form').addEventListener('submit', handlePasswordChange);
+});
+
+async function loadAccountInfo() {
+    try {
+        const response = await apiRequest('/api/accounts/me/');
+        if (response) {
+            document.getElementById('account-email').value = response.email;
+            document.getElementById('account-role').value = response.role || 'student';
+        }
+    } catch (error) {
+        console.error('Error loading account info:', error);
+    }
+}
+
+async function handlePasswordChange(e) {
+    e.preventDefault();
+    
+    const currentPassword = document.getElementById('current-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+    
+    if (newPassword !== confirmPassword) {
+        showAlert('Passwords do not match', 'error');
+        return;
+    }
+    
+    try {
+        const response = await apiRequest('/api/accounts/change-password/', {
+            method: 'POST',
+            body: JSON.stringify({
+                old_password: currentPassword,
+                new_password: newPassword
+            })
+        });
+        
+        if (response) {
+            showAlert('Password updated successfully!', 'success');
+            document.getElementById('password-form').reset();
+        }
+    } catch (error) {
+        console.error('Error changing password:', error);
+        showAlert(error.message || 'Failed to update password', 'error');
+    }
+}
+</script>
+{% endblock %}

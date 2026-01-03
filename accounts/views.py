@@ -1,4 +1,4 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
@@ -353,11 +353,3 @@ class InstructorOnlyView(APIView):
             'user': request.user.email
         })
 
-
-# Template views for frontend
-def login_page(request):
-    return render(request, "auth/login.html")
-
-
-def register_page(request):
-    return render(request, "auth/register.html")

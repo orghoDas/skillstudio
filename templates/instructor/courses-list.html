@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+
+{% block title %}My Courses - Instructor - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">My Courses</h1>
+            <p class="text-gray-400">Manage your courses and content</p>
+        </div>
+        <a href="/instructor/courses/create/" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>Create Course</span>
+        </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid md:grid-cols-4 gap-6">
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="total-courses">0</p>
+                    <p class="text-sm text-gray-400">Total Courses</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-green-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="total-students">0</p>
+                    <p class="text-sm text-gray-400">Total Students</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="published-courses">0</p>
+                    <p class="text-sm text-gray-400">Published</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-yellow-900/50 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold" id="draft-courses">0</p>
+                    <p class="text-sm text-gray-400">Drafts</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-4">
+        <div class="flex flex-wrap gap-4">
+            <input type="text" id="search-courses" placeholder="Search courses..."
+                class="flex-1 min-w-[200px] px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="filter-status" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">All Status</option>
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
+            </select>
+            <select id="sort-by" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="-created_at">Newest First</option>
+                <option value="created_at">Oldest First</option>
+                <option value="title">Title (A-Z)</option>
+                <option value="-enrollments_count">Most Students</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Courses List -->
+    <div id="courses-container" class="space-y-4">
+        <!-- Loading skeleton -->
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-32"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-32"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-32"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication and role
+    const accessToken = localStorage.getItem('access_token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    if (!accessToken || user.role !== 'instructor') {
+        window.location.href = '/auth/login/';
+        return;
+    }
+
+    loadStats();
+    loadCourses();
+
+    // Filters
+    document.getElementById('search-courses').addEventListener('input', debounce(loadCourses, 500));
+    document.getElementById('filter-status').addEventListener('change', loadCourses);
+    document.getElementById('sort-by').addEventListener('change', loadCourses);
+});
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+async function loadStats() {
+    try {
+        const stats = await apiRequest('/api/instructors/stats/');
+        document.getElementById('total-courses').textContent = stats.total_courses || 0;
+        document.getElementById('total-students').textContent = stats.total_students || 0;
+        document.getElementById('published-courses').textContent = stats.published_courses || 0;
+        document.getElementById('draft-courses').textContent = stats.draft_courses || 0;
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadCourses() {
+    const container = document.getElementById('courses-container');
+    container.innerHTML = '<div class="flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
+
+    try {
+        const search = document.getElementById('search-courses').value;
+        const status = document.getElementById('filter-status').value;
+        const sortBy = document.getElementById('sort-by').value;
+
+        const params = new URLSearchParams();
+        params.append('instructor', 'me');
+        if (search) params.append('search', search);
+        if (status) params.append('status', status);
+        if (sortBy) params.append('ordering', sortBy);
+
+        const response = await apiRequest(`/api/courses/?${params.toString()}`);
+        
+        if (response && response.results && response.results.length > 0) {
+            container.innerHTML = response.results.map(course => renderCourseCard(course)).join('');
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No courses found</p>
+                    <a href="/instructor/courses/create/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        Create Your First Course
+                    </a>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading courses:', error);
+        container.innerHTML = '<div class="text-center py-16 text-red-400">Failed to load courses</div>';
+    }
+}
+
+function renderCourseCard(course) {
+    const statusColors = {
+        published: 'bg-green-900/50 text-green-400',
+        draft: 'bg-yellow-900/50 text-yellow-400',
+        archived: 'bg-gray-900/50 text-gray-400'
+    };
+
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-blue-500 transition-all">
+            <div class="flex items-start space-x-6">
+                <!-- Thumbnail -->
+                <div class="flex-shrink-0">
+                    ${course.thumbnail ? `
+                        <img src="${course.thumbnail}" alt="${course.title}" class="w-48 h-32 object-cover rounded-lg">
+                    ` : `
+                        <div class="w-48 h-32 bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-12 h-12 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                        </div>
+                    `}
+                </div>
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2">${course.title}</h3>
+                            <p class="text-sm text-gray-400 line-clamp-2">${course.short_description || 'No description'}</p>
+                        </div>
+                        <span class="ml-4 px-3 py-1 text-xs rounded-full ${statusColors[course.status] || statusColors.draft} capitalize">
+                            ${course.status}
+                        </span>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-6 text-sm text-gray-400 mb-4">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                            </svg>
+                            <span>${course.enrollments_count || 0} students</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                            </svg>
+                            <span>${course.level || 'N/A'}</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                            </svg>
+                            <span>${course.average_rating || 0} (${course.reviews_count || 0})</span>
+                        </div>
+                        ${course.price ? `
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>$${course.price}</span>
+                            </div>
+                        ` : '<span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded">Free</span>'}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex space-x-3">
+                        <a href="/instructor/courses/${course.slug}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                            Edit Course
+                        </a>
+                        <a href="/instructor/courses/${course.slug}/content/" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                            Manage Content
+                        </a>
+                        <a href="/instructor/courses/${course.slug}/students/" class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-semibold transition-colors">
+                            Students
+                        </a>
+                        <a href="/courses/${course.slug}/" target="_blank" class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-white text-sm rounded-lg font-semibold transition-colors">
+                            Preview
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

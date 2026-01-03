@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Course - Instructor - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">Create New Course</h1>
+        <p class="text-gray-400">Fill in the details to create your course</p>
+    </div>
+
+    <form id="course-form" class="space-y-6">
+        <!-- Basic Information -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">Basic Information</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label for="title" class="block text-sm font-medium mb-2">Course Title *</label>
+                    <input type="text" id="title" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="short_description" class="block text-sm font-medium mb-2">Short Description *</label>
+                    <textarea id="short_description" rows="3" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="A brief summary of your course (max 200 characters)"></textarea>
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium mb-2">Full Description *</label>
+                    <textarea id="description" rows="8" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Detailed description of what students will learn"></textarea>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="category" class="block text-sm font-medium mb-2">Category *</label>
+                        <select id="category" required
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select category...</option>
+                            <option value="programming">Programming</option>
+                            <option value="design">Design</option>
+                            <option value="business">Business</option>
+                            <option value="marketing">Marketing</option>
+                            <option value="data_science">Data Science</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="level" class="block text-sm font-medium mb-2">Level *</label>
+                        <select id="level" required
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select level...</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="language" class="block text-sm font-medium mb-2">Language *</label>
+                        <input type="text" id="language" value="English" required
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label for="duration" class="block text-sm font-medium mb-2">Duration (hours)</label>
+                        <input type="number" id="duration" min="0" step="0.5"
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">Pricing</h2>
+            
+            <div class="space-y-4">
+                <div class="flex items-center space-x-3">
+                    <input type="checkbox" id="is_free" 
+                        class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                    <label for="is_free" class="text-sm font-medium">This is a free course</label>
+                </div>
+
+                <div id="price-field">
+                    <label for="price" class="block text-sm font-medium mb-2">Price (USD)</label>
+                    <input type="number" id="price" min="0" step="0.01"
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Learning Outcomes -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">What Students Will Learn</h2>
+            
+            <div id="outcomes-container" class="space-y-3 mb-4">
+                <div class="flex items-center space-x-3">
+                    <input type="text" class="outcome-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Learning outcome 1">
+                    <button type="button" onclick="removeOutcome(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <button type="button" onclick="addOutcome()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                + Add Outcome
+            </button>
+        </div>
+
+        <!-- Requirements -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">Requirements</h2>
+            
+            <div id="requirements-container" class="space-y-3 mb-4">
+                <div class="flex items-center space-x-3">
+                    <input type="text" class="requirement-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Requirement 1">
+                    <button type="button" onclick="removeRequirement(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <button type="button" onclick="addRequirement()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                + Add Requirement
+            </button>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-between">
+            <a href="/instructor/courses/" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors">
+                Cancel
+            </a>
+            <div class="flex space-x-3">
+                <button type="button" onclick="saveDraft()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                    Save as Draft
+                </button>
+                <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Create & Publish
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication and role
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role !== 'instructor') {
+        window.location.href = '/';
+        return;
+    }
+
+    // Handle free course toggle
+    document.getElementById('is_free').addEventListener('change', function() {
+        const priceField = document.getElementById('price-field');
+        if (this.checked) {
+            priceField.style.display = 'none';
+            document.getElementById('price').value = '0';
+        } else {
+            priceField.style.display = 'block';
+        }
+    });
+
+    // Form submission
+    document.getElementById('course-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createCourse('published');
+    });
+});
+
+function addOutcome() {
+    const container = document.getElementById('outcomes-container');
+    const div = document.createElement('div');
+    div.className = 'flex items-center space-x-3';
+    div.innerHTML = `
+        <input type="text" class="outcome-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Learning outcome ${container.children.length + 1}">
+        <button type="button" onclick="removeOutcome(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+function removeOutcome(btn) {
+    btn.parentElement.remove();
+}
+
+function addRequirement() {
+    const container = document.getElementById('requirements-container');
+    const div = document.createElement('div');
+    div.className = 'flex items-center space-x-3';
+    div.innerHTML = `
+        <input type="text" class="requirement-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Requirement ${container.children.length + 1}">
+        <button type="button" onclick="removeRequirement(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+function removeRequirement(btn) {
+    btn.parentElement.remove();
+}
+
+function getFormData(status) {
+    const outcomes = Array.from(document.querySelectorAll('.outcome-input'))
+        .map(input => input.value.trim())
+        .filter(v => v);
+    
+    const requirements = Array.from(document.querySelectorAll('.requirement-input'))
+        .map(input => input.value.trim())
+        .filter(v => v);
+
+    return {
+        title: document.getElementById('title').value,
+        short_description: document.getElementById('short_description').value,
+        description: document.getElementById('description').value,
+        category: document.getElementById('category').value,
+        level: document.getElementById('level').value,
+        language: document.getElementById('language').value,
+        duration: parseFloat(document.getElementById('duration').value) || null,
+        price: document.getElementById('is_free').checked ? 0 : parseFloat(document.getElementById('price').value) || 0,
+        learning_outcomes: outcomes,
+        requirements: requirements,
+        status: status
+    };
+}
+
+async function createCourse(status) {
+    try {
+        const courseData = getFormData(status);
+        const response = await apiRequest('/api/courses/', {
+            method: 'POST',
+            body: JSON.stringify(courseData)
+        });
+
+        showAlert(`Course ${status === 'published' ? 'created and published' : 'saved as draft'} successfully!`, 'success');
+        setTimeout(() => {
+            window.location.href = `/instructor/courses/${response.slug}/content/`;
+        }, 1500);
+    } catch (error) {
+        console.error('Error creating course:', error);
+        showAlert(error.message || 'Failed to create course', 'error');
+    }
+}
+
+function saveDraft() {
+    createCourse('draft');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+
+{% block title %}My Learning - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div>
+        <h1 class="text-3xl font-bold mb-2">My Learning</h1>
+        <p class="text-gray-400">Continue where you left off</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-2 border-b border-dark-border">
+        <button class="learning-tab px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-400" data-tab="all">
+            All Courses
+        </button>
+        <button class="learning-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="in-progress">
+            In Progress
+        </button>
+        <button class="learning-tab px-4 py-2 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="completed">
+            Completed
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-4">
+        <div class="flex flex-wrap gap-4">
+            <input type="text" id="search-courses" placeholder="Search my courses..."
+                class="flex-1 min-w-[200px] px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="sort-by" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="-enrolled_at">Recently Enrolled</option>
+                <option value="-last_accessed">Recently Accessed</option>
+                <option value="title">Title (A-Z)</option>
+                <option value="-progress">Most Progress</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Courses Grid -->
+    <div id="courses-container" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Loading skeletons -->
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-80"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-80"></div>
+        <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-80"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentTab = 'all';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/my-courses/';
+        return;
+    }
+
+    loadCourses();
+
+    // Tab switching
+    document.querySelectorAll('.learning-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            currentTab = this.dataset.tab;
+            document.querySelectorAll('.learning-tab').forEach(t => {
+                t.classList.remove('border-blue-600', 'text-blue-400');
+                t.classList.add('border-transparent', 'text-gray-400');
+            });
+            this.classList.remove('border-transparent', 'text-gray-400');
+            this.classList.add('border-blue-600', 'text-blue-400');
+            loadCourses();
+        });
+    });
+
+    // Filters
+    document.getElementById('search-courses').addEventListener('input', debounce(loadCourses, 500));
+    document.getElementById('sort-by').addEventListener('change', loadCourses);
+});
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+async function loadCourses() {
+    const container = document.getElementById('courses-container');
+    container.innerHTML = '<div class="col-span-3 flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
+
+    try {
+        const search = document.getElementById('search-courses').value;
+        const sortBy = document.getElementById('sort-by').value;
+
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (sortBy) params.append('ordering', sortBy);
+
+        // Filter by progress status
+        if (currentTab === 'in-progress') {
+            params.append('progress_min', '1');
+            params.append('progress_max', '99');
+        } else if (currentTab === 'completed') {
+            params.append('completed', 'true');
+        }
+
+        const response = await apiRequest(`/api/enrollments/?${params.toString()}`);
+        
+        if (response && response.results && response.results.length > 0) {
+            container.innerHTML = response.results.map(enrollment => renderCourseCard(enrollment)).join('');
+        } else {
+            container.innerHTML = `
+                <div class="col-span-3 text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No enrolled courses found</p>
+                    <a href="/courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        Browse Courses
+                    </a>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading courses:', error);
+        container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load courses</div>';
+    }
+}
+
+function renderCourseCard(enrollment) {
+    const course = enrollment.course;
+    const progress = enrollment.progress_percentage || 0;
+    const isCompleted = progress >= 100;
+
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+            <!-- Thumbnail -->
+            <div class="relative">
+                ${course.thumbnail ? `
+                    <img src="${course.thumbnail}" alt="${course.title}" class="w-full h-48 object-cover">
+                ` : `
+                    <div class="w-full h-48 bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center">
+                        <svg class="w-16 h-16 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>
+                `}
+                ${isCompleted ? `
+                    <div class="absolute top-3 right-3 px-3 py-1 bg-green-600 text-white text-xs rounded-full font-semibold flex items-center space-x-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>Completed</span>
+                    </div>
+                ` : ''}
+            </div>
+
+            <!-- Content -->
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-2 line-clamp-2">${course.title}</h3>
+                <p class="text-sm text-gray-400 mb-4 line-clamp-2">${course.short_description || 'No description'}</p>
+
+                <!-- Progress Bar -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-gray-400">${isCompleted ? 'Completed' : 'Progress'}</span>
+                        <span class="text-xs font-semibold ${isCompleted ? 'text-green-400' : 'text-blue-400'}">${Math.round(progress)}%</span>
+                    </div>
+                    <div class="w-full bg-dark-bg rounded-full h-2">
+                        <div class="h-2 rounded-full transition-all ${isCompleted ? 'bg-green-600' : 'bg-blue-600'}" style="width: ${progress}%"></div>
+                    </div>
+                </div>
+
+                <!-- Meta Info -->
+                <div class="flex items-center justify-between text-xs text-gray-500 mb-4">
+                    <span>${enrollment.completed_lessons_count || 0} / ${enrollment.total_lessons_count || 0} lessons</span>
+                    ${enrollment.last_accessed ? `
+                        <span>Last: ${new Date(enrollment.last_accessed).toLocaleDateString()}</span>
+                    ` : ''}
+                </div>
+
+                <!-- Actions -->
+                <div class="flex space-x-2">
+                    <a href="/learn/${course.slug}/" class="flex-1 text-center px-4 py-3 ${isCompleted ? 'bg-green-700 hover:bg-green-800' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg font-semibold transition-colors">
+                        ${isCompleted ? 'Review Course' : (progress > 0 ? 'Continue Learning' : 'Start Learning')}
+                    </a>
+                    ${isCompleted && enrollment.certificate_available ? `
+                        <button onclick="downloadCertificate('${enrollment.id}')" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function downloadCertificate(enrollmentId) {
+    try {
+        const response = await apiRequest(`/api/enrollments/${enrollmentId}/certificate/`);
+        if (response.certificate_url) {
+            window.open(response.certificate_url, '_blank');
+        } else {
+            showAlert('Certificate is being generated. Please try again in a moment.', 'info');
+        }
+    } catch (error) {
+        console.error('Error downloading certificate:', error);
+        showAlert('Failed to download certificate', 'error');
+    }
+}
+</script>
+{% endblock %}

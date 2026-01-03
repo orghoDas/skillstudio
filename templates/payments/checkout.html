@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+
+{% block title %}Checkout - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">Checkout</h1>
+        <p class="text-gray-400">Complete your purchase</p>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-8">
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Course Details -->
+            <div id="course-details" class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <!-- Loading -->
+                <div class="animate-pulse space-y-4">
+                    <div class="h-6 bg-dark-bg rounded w-3/4"></div>
+                    <div class="h-4 bg-dark-bg rounded w-1/2"></div>
+                </div>
+            </div>
+
+            <!-- Payment Method -->
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <h2 class="text-xl font-semibold mb-6">Payment Method</h2>
+                
+                <div class="space-y-4">
+                    <label class="flex items-center p-4 border-2 border-blue-600 bg-blue-900/20 rounded-lg cursor-pointer">
+                        <input type="radio" name="payment_method" value="card" checked
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border">
+                        <div class="ml-3 flex items-center space-x-3">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                            </svg>
+                            <span class="font-medium">Credit/Debit Card</span>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-4 border-2 border-dark-border bg-dark-bg rounded-lg cursor-pointer hover:border-blue-500">
+                        <input type="radio" name="payment_method" value="paypal"
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border">
+                        <div class="ml-3 flex items-center space-x-3">
+                            <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8.32 21.97a.546.546 0 01-.26-.32c-.03-.15-.01-.3.07-.43l2.52-5.6c.07-.15.18-.27.32-.34s.29-.08.44-.04l2.53.56c.88.19 1.75-.36 1.94-1.24.19-.88-.36-1.75-1.24-1.94l-2.53-.56a.546.546 0 01-.39-.67l.83-3.77c.19-.88-.36-1.75-1.24-1.94l-2.53-.56a.546.546 0 01-.39-.67l.56-2.53c.19-.88-.36-1.75-1.24-1.94C7.89 1.81 7 2.37 6.81 3.25l-.56 2.53c-.04.15-.13.29-.26.38s-.29.13-.44.1L3.02 5.7c-.88-.19-1.75.36-1.94 1.24-.19.88.36 1.75 1.24 1.94l2.53.56c.15.03.29.13.38.26s.13.29.1.44l-.83 3.77a.546.546 0 01-.67.39l-2.53-.56c-.88-.19-1.75.36-1.94 1.24-.19.88.36 1.75 1.24 1.94l2.53.56c.15.03.29.13.38.26s.13.29.1.44l-.56 2.53c-.19.88.36 1.75 1.24 1.94.11.02.22.04.33.04.76 0 1.43-.54 1.61-1.28z"/>
+                            </svg>
+                            <span class="font-medium">PayPal</span>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-4 border-2 border-dark-border bg-dark-bg rounded-lg cursor-pointer hover:border-blue-500">
+                        <input type="radio" name="payment_method" value="wallet"
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border">
+                        <div class="ml-3 flex items-center space-x-3">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="font-medium">Wallet Balance</span>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Card Details (shown when card is selected) -->
+                <div id="card-details" class="mt-6 space-y-4">
+                    <div>
+                        <label for="card-number" class="block text-sm font-medium mb-2">Card Number</label>
+                        <input type="text" id="card-number" placeholder="1234 5678 9012 3456"
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="expiry" class="block text-sm font-medium mb-2">Expiry Date</label>
+                            <input type="text" id="expiry" placeholder="MM/YY"
+                                class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label for="cvv" class="block text-sm font-medium mb-2">CVV</label>
+                            <input type="text" id="cvv" placeholder="123"
+                                class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="card-name" class="block text-sm font-medium mb-2">Cardholder Name</label>
+                        <input type="text" id="card-name" placeholder="John Doe"
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Summary Sidebar -->
+        <div class="lg:col-span-1">
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6 sticky top-6">
+                <h2 class="text-xl font-semibold mb-6">Order Summary</h2>
+                
+                <div id="order-summary" class="space-y-4 mb-6">
+                    <!-- Loading -->
+                    <div class="animate-pulse space-y-3">
+                        <div class="h-4 bg-dark-bg rounded"></div>
+                        <div class="h-4 bg-dark-bg rounded"></div>
+                    </div>
+                </div>
+
+                <div class="border-t border-dark-border pt-4 mb-6">
+                    <div class="flex items-center justify-between text-lg font-semibold">
+                        <span>Total</span>
+                        <span id="total-amount" class="text-2xl text-blue-400">$0.00</span>
+                    </div>
+                </div>
+
+                <button id="checkout-btn" onclick="processPayment()" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    <span>Complete Payment</span>
+                </button>
+
+                <div class="mt-4 text-center">
+                    <p class="text-xs text-gray-500">
+                        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                        Secure payment processing
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseSlug;
+let courseData;
+
+document.addEventListener('DOMContentLoads', function() {
+    // Get course slug from URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    courseSlug = urlParams.get('course');
+
+    if (!courseSlug) {
+        window.location.href = '/courses/';
+        return;
+    }
+
+    loadCourseDetails();
+
+    // Toggle payment method fields
+    document.querySelectorAll('input[name="payment_method"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('card-details').style.display = 
+                this.value === 'card' ? 'block' : 'none';
+        });
+    });
+});
+
+async function loadCourseDetails() {
+    try {
+        courseData = await apiRequest(`/api/courses/${courseSlug}/`);
+
+        // Render course details
+        document.getElementById('course-details').innerHTML = `
+            <div class="flex items-start space-x-4">
+                ${courseData.thumbnail ? `
+                    <img src="${courseData.thumbnail}" alt="${courseData.title}" class="w-24 h-24 object-cover rounded-lg">
+                ` : `
+                    <div class="w-24 h-24 bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg flex items-center justify-center">
+                        <svg class="w-10 h-10 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>
+                `}
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold mb-2">${courseData.title}</h3>
+                    <p class="text-sm text-gray-400 mb-3">${courseData.short_description || ''}</p>
+                    <div class="flex items-center space-x-4 text-sm text-gray-500">
+                        <span class="capitalize">${courseData.level || 'All Levels'}</span>
+                        ${courseData.duration ? `<span>${courseData.duration} hours</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Render order summary
+        const price = parseFloat(courseData.price) || 0;
+        const tax = price * 0.1; // 10% tax
+        const total = price + tax;
+
+        document.getElementById('order-summary').innerHTML = `
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-400">Course Price</span>
+                    <span class="font-semibold">$${price.toFixed(2)}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-400">Tax (10%)</span>
+                    <span class="font-semibold">$${tax.toFixed(2)}</span>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('total-amount').textContent = `$${total.toFixed(2)}`;
+    } catch (error) {
+        console.error('Error loading course:', error);
+        showAlert('Failed to load course details', 'error');
+    }
+}
+
+async function processPayment() {
+    const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+    
+    // Validate card details if card payment
+    if (paymentMethod === 'card') {
+        const cardNumber = document.getElementById('card-number').value;
+        const expiry = document.getElementById('expiry').value;
+        const cvv = document.getElementById('cvv').value;
+        const cardName = document.getElementById('card-name').value;
+
+        if (!cardNumber || !expiry || !cvv || !cardName) {
+            showAlert('Please fill in all card details', 'error');
+            return;
+        }
+    }
+
+    const btn = document.getElementById('checkout-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>';
+
+    try {
+        const response = await apiRequest('/api/payments/checkout/', {
+            method: 'POST',
+            body: JSON.stringify({
+                course_id: courseData.id,
+                payment_method: paymentMethod
+            })
+        });
+
+        showAlert('Payment successful! Enrolling you in the course...', 'success');
+        
+        setTimeout(() => {
+            window.location.href = `/learn/${courseSlug}/`;
+        }, 2000);
+    } catch (error) {
+        console.error('Payment error:', error);
+        showAlert(error.message || 'Payment failed. Please try again.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            <span>Complete Payment</span>
+        `;
+    }
+}
+</script>
+{% endblock %}
