@@ -170,15 +170,9 @@ A personalized hub for each learner.
 - Category filters  
 - Difficulty level  
 - Price filter  
-- Popularity & rating sorting  
+- Popularity & rating sorting   
 
-### **2. Notification System**
-- Email, SMS, and in-app notifications  
-- Course recommendations  
-- Event reminders  
-- Exam deadlines  
-
-### **3. Security & Authentication**
+### **2. Security & Authentication**
 - Role-based access  
 - JWT authentication  
 - Password reset  
