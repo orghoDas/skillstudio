@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
 
 from .models import Submission, Assignment
-from .services_grading import (
+from .grading_services import (
     grade_submission,
     grade_submission_with_rubric
 )

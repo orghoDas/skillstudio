@@ -1,8 +1,22 @@
 from django.urls import path
-from .views import DownloadCertificateView, MyCertificateView, VerifyCertificateView
+from .views import (
+    MyCertificatesListView,
+    MyCertificateDetailView,
+    DownloadCertificateView,
+    VerifyCertificateView,
+    regenerate_certificate
+)
 
 urlpatterns = [
-    path('my/<int:course_id>/', MyCertificateView.as_view()),
-    path('verify/<uuid:code>/', VerifyCertificateView.as_view()),
-    path('download/<int:course_id>/', DownloadCertificateView.as_view()),
+    # User certificate endpoints
+    path('my/', MyCertificatesListView.as_view(), name='my-certificates'),
+    path('my/<int:course_id>/', MyCertificateDetailView.as_view(), name='my-certificate-detail'),
+    path('download/<int:course_id>/', DownloadCertificateView.as_view(), name='download-certificate'),
+    
+    # Public verification
+    path('verify/<str:code>/', VerifyCertificateView.as_view(), name='verify-certificate'),
+    
+    # Admin operations
+    path('regenerate/<int:course_id>/', regenerate_certificate, name='regenerate-certificate'),
 ]
+

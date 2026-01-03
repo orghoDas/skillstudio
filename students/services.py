@@ -1,10 +1,18 @@
 from itertools import chain
-from django.db.models import Value, CharField, Count, Q, Max
-from accounts import models
+from datetime import timedelta
+from decimal import Decimal
+from django.db import models, transaction
+from django.db.models import Value, CharField, Count, Q, Max, Sum
+from django.db.models.functions import TruncDate
+from django.utils import timezone
+from django.core.exceptions import ValidationError, PermissionDenied
+from django.contrib.auth import get_user_model
+
 from certificates.models import Certificate
-from courses.models import Lesson
+from courses.models import Lesson, Course
 from enrollments.models import Enrollment, LessonProgress
 from enrollments.services import get_resume_lesson
+from .models import StudentProfile, StudentNote, StudentBookmark
 from .constants import (
     ACHIEVEMENTS,
     LESSON_STARTED,
@@ -13,9 +21,7 @@ from .constants import (
     CERTIFICATE_ISSUED,
 )
 
-from datetime import timedelta
-from django.utils import timezone
-from django.db.models.functions import TruncDate
+User = get_user_model()
 
 def get_student_activity_feed(user, limit=20):
     activities = []
@@ -275,10 +281,281 @@ def get_weekly_learning_progress(user):
     )
 
     total_watch_time = weekly_progress.aggregate(
-        total=models.Sum('watch_time')
+        total=Sum('watch_time')
     )['total'] or 0
 
     return {
         "active_days": active_days,
         "total_watch_time": total_watch_time
     }
+
+
+@transaction.atomic
+def get_or_create_student_profile(user):
+    """
+    Get or create student profile for a user.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        StudentProfile instance
+    """
+    profile, created = StudentProfile.objects.get_or_create(
+        user=user,
+        defaults={}
+    )
+    
+    if created:
+        # Initialize statistics
+        profile.update_statistics()
+    
+    return profile
+
+
+@transaction.atomic
+def update_student_profile(user, **kwargs):
+    """
+    Update student profile.
+    
+    Args:
+        user: User instance
+        **kwargs: Fields to update
+    
+    Returns:
+        Updated StudentProfile instance
+    
+    Raises:
+        ValidationError: If user doesn't have a profile
+    """
+    try:
+        profile = StudentProfile.objects.get(user=user)
+    except StudentProfile.DoesNotExist:
+        raise ValidationError("Student profile not found.")
+    
+    # Only allow updating certain fields
+    allowed_fields = [
+        'preferred_learning_style',
+        'learning_goals',
+        'interests',
+        'weekly_study_hours',
+        'preferred_study_time',
+    ]
+    
+    for field, value in kwargs.items():
+        if field in allowed_fields:
+            setattr(profile, field, value)
+    
+    profile.save()
+    return profile
+
+
+@transaction.atomic
+def create_student_note(user, lesson_id, content, timestamp=0, tags=None):
+    """
+    Create a note for a lesson.
+    
+    Args:
+        user: User instance
+        lesson_id: Lesson ID
+        content: Note content
+        timestamp: Video timestamp in seconds
+        tags: List of tags
+    
+    Returns:
+        StudentNote instance
+    
+    Raises:
+        ValidationError: If lesson not found or user not enrolled
+    """
+    try:
+        lesson = Lesson.objects.get(id=lesson_id)
+    except Lesson.DoesNotExist:
+        raise ValidationError("Lesson not found.")
+    
+    # Verify user is enrolled in the course
+    course = lesson.module.course
+    if not Enrollment.objects.filter(user=user, course=course, status='active').exists():
+        raise ValidationError("You must be enrolled in this course to take notes.")
+    
+    note = StudentNote.objects.create(
+        user=user,
+        lesson=lesson,
+        content=content,
+        timestamp=timestamp,
+        tags=tags or []
+    )
+    
+    return note
+
+
+@transaction.atomic
+def update_student_note(note_id, user, **kwargs):
+    """
+    Update a student note.
+    
+    Args:
+        note_id: Note UUID
+        user: User instance
+        **kwargs: Fields to update
+    
+    Returns:
+        Updated StudentNote instance
+    
+    Raises:
+        ValidationError: If note not found
+        PermissionDenied: If user doesn't own the note
+    """
+    try:
+        note = StudentNote.objects.get(id=note_id)
+    except StudentNote.DoesNotExist:
+        raise ValidationError("Note not found.")
+    
+    if note.user != user:
+        raise PermissionDenied("You can only update your own notes.")
+    
+    allowed_fields = ['content', 'timestamp', 'is_pinned', 'tags']
+    
+    for field, value in kwargs.items():
+        if field in allowed_fields:
+            setattr(note, field, value)
+    
+    note.save()
+    return note
+
+
+@transaction.atomic
+def delete_student_note(note_id, user):
+    """
+    Delete a student note.
+    
+    Args:
+        note_id: Note UUID
+        user: User instance
+    
+    Raises:
+        ValidationError: If note not found
+        PermissionDenied: If user doesn't own the note
+    """
+    try:
+        note = StudentNote.objects.get(id=note_id)
+    except StudentNote.DoesNotExist:
+        raise ValidationError("Note not found.")
+    
+    if note.user != user:
+        raise PermissionDenied("You can only delete your own notes.")
+    
+    note.delete()
+
+
+@transaction.atomic
+def create_bookmark(user, course_id=None, lesson_id=None, note=""):
+    """
+    Create a bookmark for a course or lesson.
+    
+    Args:
+        user: User instance
+        course_id: Course ID (optional)
+        lesson_id: Lesson ID (optional)
+        note: Bookmark note
+    
+    Returns:
+        StudentBookmark instance
+    
+    Raises:
+        ValidationError: If neither course nor lesson provided, or both provided
+    """
+    if not course_id and not lesson_id:
+        raise ValidationError("Either course_id or lesson_id must be provided.")
+    
+    if course_id and lesson_id:
+        raise ValidationError("Cannot bookmark both course and lesson simultaneously.")
+    
+    course = None
+    lesson = None
+    
+    if course_id:
+        try:
+            course = Course.objects.get(id=course_id)
+        except Course.DoesNotExist:
+            raise ValidationError("Course not found.")
+    
+    if lesson_id:
+        try:
+            lesson = Lesson.objects.get(id=lesson_id)
+        except Lesson.DoesNotExist:
+            raise ValidationError("Lesson not found.")
+    
+    # Create or update bookmark
+    bookmark, created = StudentBookmark.objects.update_or_create(
+        user=user,
+        course=course,
+        lesson=lesson,
+        defaults={'note': note}
+    )
+    
+    return bookmark
+
+
+@transaction.atomic
+def delete_bookmark(bookmark_id, user):
+    """
+    Delete a bookmark.
+    
+    Args:
+        bookmark_id: Bookmark UUID
+        user: User instance
+    
+    Raises:
+        ValidationError: If bookmark not found
+        PermissionDenied: If user doesn't own the bookmark
+    """
+    try:
+        bookmark = StudentBookmark.objects.get(id=bookmark_id)
+    except StudentBookmark.DoesNotExist:
+        raise ValidationError("Bookmark not found.")
+    
+    if bookmark.user != user:
+        raise PermissionDenied("You can only delete your own bookmarks.")
+    
+    bookmark.delete()
+
+
+def get_student_notes(user, lesson_id=None, course_id=None):
+    """
+    Get student notes, optionally filtered by lesson or course.
+    
+    Args:
+        user: User instance
+        lesson_id: Lesson ID (optional)
+        course_id: Course ID (optional)
+    
+    Returns:
+        QuerySet of StudentNote instances
+    """
+    notes = StudentNote.objects.filter(user=user).select_related(
+        'lesson', 'lesson__module__course'
+    )
+    
+    if lesson_id:
+        notes = notes.filter(lesson_id=lesson_id)
+    
+    if course_id:
+        notes = notes.filter(lesson__module__course_id=course_id)
+    
+    return notes.order_by('-is_pinned', '-created_at')
+
+
+def get_student_bookmarks(user):
+    """
+    Get all student bookmarks.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        QuerySet of StudentBookmark instances
+    """
+    return StudentBookmark.objects.filter(user=user).select_related(
+        'course', 'lesson', 'lesson__module__course'
+    ).order_by('-created_at')

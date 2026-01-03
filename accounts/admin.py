@@ -1,10 +1,38 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Profile, EmailVerificationToken, PasswordResetToken
+from .models import User, Profile, EmailVerificationToken, PasswordResetToken, APIKey
 
-admin.site.register(Profile)
-admin.site.register(EmailVerificationToken)
-admin.site.register(PasswordResetToken)
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'full_name', 'created_at', 'updated_at')
+    search_fields = ('full_name', 'user__email')
+    list_filter = ('created_at',)
+
+
+@admin.register(EmailVerificationToken)
+class EmailVerificationTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'token', 'created_at', 'expires_at', 'is_used')
+    search_fields = ('user__email', 'token')
+    list_filter = ('is_used', 'created_at', 'expires_at')
+    readonly_fields = ('token', 'created_at')
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'token', 'created_at', 'expires_at')
+    search_fields = ('user__email', 'token')
+    list_filter = ('created_at', 'expires_at')
+    readonly_fields = ('token', 'created_at')
+
+
+@admin.register(APIKey)
+class APIKeyAdmin(admin.ModelAdmin):
+    list_display = ('user', 'label', 'key', 'created_at', 'is_active')
+    search_fields = ('user__email', 'label', 'key')
+    list_filter = ('is_active', 'created_at')
+    readonly_fields = ('key', 'created_at')
+
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):

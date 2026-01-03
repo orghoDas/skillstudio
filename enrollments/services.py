@@ -46,7 +46,7 @@ def check_and_complete_course(enrollment):
             ])
 
             # 🎓 Issue certificate automatically
-            issue_certificate(enrollment)
+            issue_certificate(enrollment.user, enrollment.course)
 
         return True
 

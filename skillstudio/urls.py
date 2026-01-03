@@ -21,9 +21,17 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("courses/", include("courses.urls")),
-    path("enrollments/", include("enrollments.urls")),
-    path("analytics/", include("analytics.urls")),
+    path("api/enrollments/", include("enrollments.urls")),
+    path("api/assessments/", include("assessments.urls")),
+    path("api/exams/", include("exams.urls")),
+    path("api/analytics/", include("analytics.urls")),
     path("students/", include("students.urls")),
     path("certificates/", include("certificates.urls")),
     path('instructors/', include('instructors.urls')),
+    path('api/events/', include('events.urls')),
+    path('api/social/', include('social.urls')),
+    path('api/adminpanel/', include('adminpanel.urls')),
+    path('api/payments/', include('payments.urls')),  # Payments
+    path('api/ai-recommender/', include('ai_recommender.urls')),  # AI Recommender
+    path('api/live/', include('live.urls')),  # Live Streaming
 ]

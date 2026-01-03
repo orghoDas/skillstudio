@@ -47,14 +47,11 @@ def generate_certificate_pdf(certificate):
     c.drawCentredString(
         width / 2,
         120,
-        f"Verification Code: {certificate.certificate_code}"
+        f"Verification Code: {certificate.verification_code}"
     )
 
     # 🔗 QR → BACKEND VERIFY URL
-    verify_url = (
-        f"{settings.BACKEND_URL}/certificates/verify/"
-        f"{certificate.certificate_code}/"
-    )
+    verify_url = certificate.verification_url
 
     qr_img = qrcode.make(verify_url)
     qr_buffer = BytesIO()

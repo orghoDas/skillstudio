@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from certificates.services import issue_certificate_if_eligible
+# from certificates.services import issue_certificate_if_eligible
 
 from .models import Quiz, QuizAttempt
 from .services_timer import auto_submit_attempt
@@ -80,15 +80,15 @@ class SubmitQuizAttemptView(APIView):
         else:
             calculate_quiz_score(attempt)
 
-        certificate = issue_certificate_if_eligible(attempt)
+        # certificate = issue_certificate_if_eligible(attempt)
 
         return Response({
             "score": attempt.score,
             "auto_submitted": attempt.is_auto_submitted,
-            "certificate_issued": bool(certificate),
-            "certificate_code": (
-                str(certificate.certificate_code)
-                if certificate else None
-            )
+            # "certificate_issued": bool(certificate),
+            # "certificate_code": (
+            #     str(certificate.certificate_code)
+            #     if certificate else None
+            # )
         })
 

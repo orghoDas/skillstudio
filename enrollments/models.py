@@ -26,7 +26,7 @@ class Enrollment(models.Model):
                    models.Index(fields=['course', 'status'])]
 
     def __str__(self):
-        return f"{self.user} - {self.course.title}"
+        return f"{self.user.email} - {self.course.title}"
 
 
 class LessonProgress(models.Model):

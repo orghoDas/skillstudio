@@ -43,7 +43,7 @@ class QuizDetailSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "time_limit_minutes",
-            "passing_percentage",
+            "total_marks",
             "questions"
         ]
 
