@@ -21,7 +21,9 @@ urlpatterns = [
     
     # Profile pages
     path('profile/', views.profile_page, name='profile_page'),
+    path('instructor/profile/', views.instructor_profile_page, name='instructor_profile_page'),
     path('settings/', views.settings_page, name='settings_page'),
+    path('settings/profile/', views.profile_page, name='settings_profile_page'),  # Alias for profile
     path('social/circles/', views.circles_list, name='circles_list'),
     path('social/circles/<int:circle_id>/', views.circle_detail, name='circle_detail'),
     path('events/', views.events_list, name='events_list'),
@@ -33,6 +35,8 @@ urlpatterns = [
     path('instructor/courses/', views.instructor_courses_list, name='instructor_courses_list'),
     path('instructor/courses/create/', views.instructor_course_create, name='instructor_course_create'),
     path('instructor/courses/<slug:slug>/content/', views.instructor_course_content, name='instructor_course_content'),
+    path('instructor/students/', views.instructor_students, name='instructor_students'),
+    path('instructor/analytics/', views.analytics_instructor, name='instructor_analytics'),
     path('my-courses/', views.my_courses, name='my_courses'),
     path('learn/<slug:slug>/', views.learn_course, name='learn_course'),
     
@@ -43,6 +47,7 @@ urlpatterns = [
     
     # Live Sessions
     path('live/', views.live_schedule, name='live_schedule'),
+    path('live/sessions/', views.live_schedule, name='live_sessions'),  # Alias
     path('live/room/<int:session_id>/', views.live_room, name='live_room'),
     
     # Admin Panel

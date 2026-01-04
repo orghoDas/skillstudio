@@ -47,8 +47,12 @@ def course_detail(request, slug):
 
 # Profile views
 def profile_page(request):
-    """User profile page"""
-    return render(request, 'profile/profile.html')
+    """Student profile page"""
+    return render(request, 'profile/student-profile.html')
+
+def instructor_profile_page(request):
+    """Instructor profile page"""
+    return render(request, 'profile/instructor-profile.html')
 
 def settings_page(request):
     """Settings page"""
@@ -93,6 +97,10 @@ def instructor_course_create(request):
 def instructor_course_content(request, slug):
     """Instructor course content management page"""
     return render(request, 'instructor/course-content.html')
+
+def instructor_students(request):
+    """Instructor students list page"""
+    return render(request, 'instructor/students-list.html')
 
 def my_courses(request):
     """Student's enrolled courses page"""

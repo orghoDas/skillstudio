@@ -231,25 +231,16 @@ function removeRequirement(btn) {
 }
 
 function getFormData(status) {
-    const outcomes = Array.from(document.querySelectorAll('.outcome-input'))
-        .map(input => input.value.trim())
-        .filter(v => v);
+    const categoryValue = document.getElementById('category').value;
+    const isFree = document.getElementById('is_free').checked;
     
-    const requirements = Array.from(document.querySelectorAll('.requirement-input'))
-        .map(input => input.value.trim())
-        .filter(v => v);
-
     return {
         title: document.getElementById('title').value,
-        short_description: document.getElementById('short_description').value,
         description: document.getElementById('description').value,
-        category: document.getElementById('category').value,
+        category: categoryValue ? parseInt(categoryValue) : null,
         level: document.getElementById('level').value,
-        language: document.getElementById('language').value,
-        duration: parseFloat(document.getElementById('duration').value) || null,
-        price: document.getElementById('is_free').checked ? 0 : parseFloat(document.getElementById('price').value) || 0,
-        learning_outcomes: outcomes,
-        requirements: requirements,
+        is_free: isFree,
+        price: isFree ? 0 : parseFloat(document.getElementById('price').value) || 0,
         status: status
     };
 }
@@ -257,17 +248,21 @@ function getFormData(status) {
 async function createCourse(status) {
     try {
         const courseData = getFormData(status);
-        const response = await apiRequest('/api/courses/', {
+        console.log('Creating course with data:', courseData);
+        
+        const response = await apiRequest('/api/courses/create/', {
             method: 'POST',
             body: JSON.stringify(courseData)
         });
 
+        console.log('Course created:', response);
         showAlert(`Course ${status === 'published' ? 'created and published' : 'saved as draft'} successfully!`, 'success');
         setTimeout(() => {
             window.location.href = `/instructor/courses/${response.slug}/content/`;
         }, 1500);
     } catch (error) {
         console.error('Error creating course:', error);
+        console.error('Error details:', error.message);
         showAlert(error.message || 'Failed to create course', 'error');
     }
 }

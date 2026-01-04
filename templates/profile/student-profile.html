@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+
+{% block title %}Student Profile - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <h1 class="text-3xl font-bold">Student Profile</h1>
+        <button id="edit-toggle" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+            Edit Profile
+        </button>
+    </div>
+
+    <!-- Profile Card -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-8">
+        <div class="flex items-start space-x-6 mb-6">
+            <div class="relative">
+                <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-3xl font-bold">
+                    <span id="profile-avatar">S</span>
+                </div>
+            </div>
+            <div class="flex-1">
+                <h2 id="profile-name" class="text-2xl font-bold mb-1"></h2>
+                <p id="profile-email" class="text-sm text-gray-500"></p>
+            </div>
+        </div>
+
+        <!-- Profile Form -->
+        <form id="profile-form" class="space-y-6">
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="first_name" class="block text-sm font-medium mb-2">First Name</label>
+                    <input type="text" id="first_name" name="first_name" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="Enter your first name">
+                </div>
+                <div>
+                    <label for="last_name" class="block text-sm font-medium mb-2">Last Name</label>
+                    <input type="text" id="last_name" name="last_name" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="Enter your last name">
+                </div>
+            </div>
+
+            <div>
+                <label for="phone" class="block text-sm font-medium mb-2">Phone Number</label>
+                <input type="tel" id="phone" name="phone" disabled
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="+1234567890">
+            </div>
+
+            <div>
+                <label for="location" class="block text-sm font-medium mb-2">Location</label>
+                <input type="text" id="location" name="location" disabled
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="City, Country">
+            </div>
+
+            <div>
+                <label for="bio" class="block text-sm font-medium mb-2">Bio</label>
+                <textarea id="bio" name="bio" rows="4" disabled
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="Tell us about yourself..."></textarea>
+            </div>
+
+            <!-- Save Button (hidden by default) -->
+            <div id="save-section" class="hidden flex space-x-3">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
+                    Save Changes
+                </button>
+                <button type="button" id="cancel-edit" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid md:grid-cols-3 gap-6">
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">Courses Enrolled</h3>
+            <p id="stats-enrolled" class="text-3xl font-bold">0</p>
+        </div>
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">Certificates Earned</h3>
+            <p id="stats-certificates" class="text-3xl font-bold">0</p>
+        </div>
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">Member Since</h3>
+            <p id="stats-joined" class="text-lg font-semibold">---</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let isEditing = false;
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/profile/';
+        return;
+    }
+
+    // Verify user is student
+    if (user.role === 'instructor' || user.role === 'admin') {
+        window.location.href = '/instructor/profile/';
+        return;
+    }
+
+    await loadProfile();
+    
+    // Edit toggle
+    document.getElementById('edit-toggle').addEventListener('click', function() {
+        isEditing = !isEditing;
+        toggleEditMode();
+    });
+    
+    // Cancel edit
+    document.getElementById('cancel-edit').addEventListener('click', function() {
+        isEditing = false;
+        toggleEditMode();
+        loadProfile();
+    });
+    
+    // Form submit
+    document.getElementById('profile-form').addEventListener('submit', handleProfileUpdate);
+});
+
+async function loadProfile() {
+    try {
+        // Get user info
+        const userResponse = await apiRequest('/api/accounts/me/');
+        if (!userResponse) return;
+        
+        // Basic info
+        const fullName = `${userResponse.first_name || ''} ${userResponse.last_name || ''}`.trim() || 'Student';
+        document.getElementById('profile-name').textContent = fullName;
+        document.getElementById('profile-email').textContent = userResponse.email;
+        document.getElementById('profile-avatar').textContent = userResponse.email?.charAt(0).toUpperCase() || 'S';
+        
+        // Get profile data
+        const profileResponse = await apiRequest('/api/accounts/profile/');
+        
+        if (profileResponse) {
+            document.getElementById('first_name').value = profileResponse.first_name || '';
+            document.getElementById('last_name').value = profileResponse.last_name || '';
+            document.getElementById('phone').value = profileResponse.phone || '';
+            document.getElementById('location').value = profileResponse.location || '';
+            document.getElementById('bio').value = profileResponse.bio || '';
+            
+            // Stats
+            document.getElementById('stats-enrolled').textContent = profileResponse.enrolled_courses || 0;
+            document.getElementById('stats-certificates').textContent = profileResponse.certificates_earned || 0;
+        }
+        
+        // Member since
+        if (userResponse.created_at) {
+            document.getElementById('stats-joined').textContent = new Date(userResponse.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+    } catch (error) {
+        console.error('Error loading profile:', error);
+        showAlert('Failed to load profile', 'error');
+    }
+}
+
+function toggleEditMode() {
+    const inputs = document.querySelectorAll('#profile-form input, #profile-form textarea');
+    const editBtn = document.getElementById('edit-toggle');
+    const saveSection = document.getElementById('save-section');
+    
+    inputs.forEach(input => {
+        input.disabled = !isEditing;
+    });
+    
+    if (isEditing) {
+        editBtn.textContent = 'Cancel';
+        editBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+        editBtn.classList.add('bg-gray-600', 'hover:bg-gray-700');
+        saveSection.classList.remove('hidden');
+    } else {
+        editBtn.textContent = 'Edit Profile';
+        editBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        editBtn.classList.remove('bg-gray-600', 'hover:bg-gray-700');
+        saveSection.classList.add('hidden');
+    }
+}
+
+async function handleProfileUpdate(e) {
+    e.preventDefault();
+    
+    const formData = {
+        first_name: document.getElementById('first_name').value,
+        last_name: document.getElementById('last_name').value,
+        phone: document.getElementById('phone').value,
+        location: document.getElementById('location').value,
+        bio: document.getElementById('bio').value,
+    };
+    
+    try {
+        const response = await apiRequest('/api/accounts/profile/', {
+            method: 'PUT',
+            body: JSON.stringify(formData)
+        });
+        
+        if (response) {
+            showAlert('Profile updated successfully!', 'success');
+            isEditing = false;
+            toggleEditMode();
+            await loadProfile();
+        }
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        showAlert(error.message || 'Failed to update profile', 'error');
+    }
+}
+</script>
+{% endblock %}

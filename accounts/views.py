@@ -194,13 +194,50 @@ class ChangePasswordView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class ProfileView(generics.RetrieveUpdateAPIView):
-    """Get and update user profile"""
-    serializer_class = ProfileSerializer
+class ProfileView(APIView):
+    """Get and update user profile - returns appropriate profile based on role"""
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get_object(self):
-        return self.request.user.profile
+    def get(self, request):
+        user = request.user
+        
+        # Check if user is instructor
+        if user.role in ['instructor', 'admin']:
+            from instructors.models import InstructorProfile
+            from instructors.serializers import InstructorProfileSerializer
+            
+            # Get or create instructor profile
+            instructor_profile, created = InstructorProfile.objects.get_or_create(user=user)
+            serializer = InstructorProfileSerializer(instructor_profile)
+            return Response(serializer.data)
+        else:
+            # Return student profile
+            profile, created = Profile.objects.get_or_create(user=user)
+            serializer = ProfileSerializer(profile)
+            return Response(serializer.data)
+    
+    def put(self, request):
+        user = request.user
+        
+        # Check if user is instructor
+        if user.role in ['instructor', 'admin']:
+            from instructors.models import InstructorProfile
+            from instructors.serializers import InstructorProfileSerializer
+            
+            instructor_profile, created = InstructorProfile.objects.get_or_create(user=user)
+            serializer = InstructorProfileSerializer(instructor_profile, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            profile, created = Profile.objects.get_or_create(user=user)
+            serializer = ProfileSerializer(profile, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+    
+    def patch(self, request):
+        return self.put(request)
 
 
 class MeView(APIView):
@@ -208,8 +245,32 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = MeSerializer(request.user)
-        return Response(serializer.data)
+        user = request.user
+        serializer = MeSerializer(user)
+        data = serializer.data
+        
+        # Add profile data based on role
+        if user.role in ['instructor', 'admin']:
+            from instructors.models import InstructorProfile
+            instructor_profile, _ = InstructorProfile.objects.get_or_create(user=user)
+            data['bio'] = instructor_profile.bio
+            data['headline'] = instructor_profile.headline
+            data['website'] = instructor_profile.website
+            data['linkedin'] = instructor_profile.linkedin
+            data['twitter'] = instructor_profile.twitter
+            data['expertise'] = ', '.join(instructor_profile.expertise_areas) if instructor_profile.expertise_areas else ''
+            data['teaching_experience'] = instructor_profile.years_of_experience
+        else:
+            # Add student profile data if exists
+            try:
+                profile = user.profile
+                data['bio'] = profile.bio
+                data['full_name'] = profile.full_name
+            except:
+                data['bio'] = ''
+                data['full_name'] = ''
+        
+        return Response(data)
 
     def patch(self, request):
         serializer = MeSerializer(

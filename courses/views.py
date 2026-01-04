@@ -57,9 +57,24 @@ class CourseListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     
     def get_queryset(self):
-        queryset = Course.objects.filter(status='published').select_related(
-            'instructor', 'instructor__profile', 'category'
-        ).prefetch_related('modules', 'enrollments')
+        # Filter by instructor first (including "me" for current user)
+        instructor = self.request.query_params.get('instructor')
+        if instructor == 'me' and self.request.user.is_authenticated:
+            # Show all courses (including drafts) for the logged-in instructor
+            queryset = Course.objects.filter(instructor=self.request.user).select_related(
+                'instructor', 'category'
+            ).prefetch_related('modules', 'enrollments')
+        elif instructor:
+            # Show only published courses for other instructors
+            queryset = Course.objects.filter(
+                instructor__id=instructor,
+                status='published'
+            ).select_related('instructor', 'instructor__profile', 'category').prefetch_related('modules', 'enrollments')
+        else:
+            # Show only published courses for public
+            queryset = Course.objects.filter(status='published').select_related(
+                'instructor', 'instructor__profile', 'category'
+            ).prefetch_related('modules', 'enrollments')
         
         # Search by title or description
         search = self.request.query_params.get('search')
@@ -85,13 +100,14 @@ class CourseListView(generics.ListAPIView):
         elif is_free == 'false':
             queryset = queryset.filter(is_free=False)
         
-        # Filter by instructor
-        instructor = self.request.query_params.get('instructor')
-        if instructor:
-            queryset = queryset.filter(instructor__id=instructor)
+        # Filter by status (only for instructor=me)
+        if instructor == 'me' and self.request.user.is_authenticated:
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
         
         # Sorting
-        sort_by = self.request.query_params.get('sort_by', '-published_at')
+        sort_by = self.request.query_params.get('ordering', '-created_at')
         if sort_by == 'popular':
             queryset = queryset.annotate(
                 enrollment_count=Count('enrollments', filter=Q(enrollments__status='active'))

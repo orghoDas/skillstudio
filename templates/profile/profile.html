@@ -41,19 +41,36 @@
 
         <!-- Profile Form -->
         <form id="profile-form" class="space-y-6">
-            <div class="grid md:grid-cols-2 gap-6">
+            <!-- Student-specific fields -->
+            <div id="student-fields" class="space-y-6">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="first_name" class="block text-sm font-medium mb-2">First Name</label>
+                        <input type="text" id="first_name" name="first_name" disabled
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                    </div>
+                    <div>
+                        <label for="last_name" class="block text-sm font-medium mb-2">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" disabled
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                    </div>
+                </div>
+
                 <div>
-                    <label for="first_name" class="block text-sm font-medium mb-2">First Name</label>
-                    <input type="text" id="first_name" name="first_name" disabled
+                    <label for="phone" class="block text-sm font-medium mb-2">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" disabled
                         class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
                 </div>
+
                 <div>
-                    <label for="last_name" class="block text-sm font-medium mb-2">Last Name</label>
-                    <input type="text" id="last_name" name="last_name" disabled
-                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <label for="location" class="block text-sm font-medium mb-2">Location</label>
+                    <input type="text" id="location" name="location" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="City, Country">
                 </div>
             </div>
 
+            <!-- Common Bio field -->
             <div>
                 <label for="bio" class="block text-sm font-medium mb-2">Bio</label>
                 <textarea id="bio" name="bio" rows="4" disabled
@@ -61,17 +78,28 @@
                     placeholder="Tell us about yourself..."></textarea>
             </div>
 
-            <div>
-                <label for="phone" class="block text-sm font-medium mb-2">Phone Number</label>
-                <input type="tel" id="phone" name="phone" disabled
-                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
-            </div>
+            <!-- Instructor-specific fields -->
+            <div id="instructor-fields" class="hidden space-y-6">
+                <div>
+                    <label for="headline" class="block text-sm font-medium mb-2">Professional Headline</label>
+                    <input type="text" id="headline" name="headline" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="e.g., Full Stack Developer | Tech Educator">
+                </div>
 
-            <div>
-                <label for="location" class="block text-sm font-medium mb-2">Location</label>
-                <input type="text" id="location" name="location" disabled
-                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    placeholder="City, Country">
+                <div>
+                    <label for="expertise" class="block text-sm font-medium mb-2">Areas of Expertise</label>
+                    <input type="text" id="expertise" name="expertise" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="e.g., Web Development, Python, Machine Learning">
+                </div>
+
+                <div>
+                    <label for="teaching_experience" class="block text-sm font-medium mb-2">Years of Teaching Experience</label>
+                    <input type="number" id="teaching_experience" name="teaching_experience" disabled
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="e.g., 5">
+                </div>
             </div>
 
             <div>
@@ -120,14 +148,31 @@
 
     <!-- Stats -->
     <div class="grid md:grid-cols-3 gap-6">
-        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-            <h3 class="text-sm font-semibold text-gray-400 mb-2">Courses Enrolled</h3>
-            <p id="stats-courses" class="text-3xl font-bold">0</p>
+        <!-- Student Stats -->
+        <div id="student-stats" class="contents">
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2">Courses Enrolled</h3>
+                <p id="stats-courses" class="text-3xl font-bold">0</p>
+            </div>
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2">Certificates</h3>
+                <p id="stats-certificates" class="text-3xl font-bold">0</p>
+            </div>
         </div>
-        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-            <h3 class="text-sm font-semibold text-gray-400 mb-2">Certificates</h3>
-            <p id="stats-certificates" class="text-3xl font-bold">0</p>
+
+        <!-- Instructor Stats -->
+        <div id="instructor-stats" class="contents hidden">
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2">Total Courses</h3>
+                <p id="stats-instructor-courses" class="text-3xl font-bold">0</p>
+            </div>
+            <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2">Total Students</h3>
+                <p id="stats-instructor-students" class="text-3xl font-bold">0</p>
+            </div>
         </div>
+
+        <!-- Common Stat -->
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
             <h3 class="text-sm font-semibold text-gray-400 mb-2">Member Since</h3>
             <p id="stats-joined" class="text-lg font-semibold">---</p>
@@ -169,32 +214,91 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function loadProfile() {
     try {
-        const response = await apiRequest('/api/accounts/me/');
-        if (response) {
-            // Basic info
-            document.getElementById('profile-name').textContent = response.email?.split('@')[0] || 'User';
-            document.getElementById('profile-email').textContent = response.email;
-            document.getElementById('profile-role').textContent = response.role || 'student';
-            document.getElementById('profile-avatar').textContent = response.email?.charAt(0).toUpperCase() || 'U';
+        // First get user info to determine role
+        const userResponse = await apiRequest('/api/accounts/me/');
+        if (!userResponse) {
+            console.error('No user response');
+            return;
+        }
+        
+        console.log('User response:', userResponse);
+        const isInstructor = userResponse.role === 'instructor' || userResponse.role === 'admin';
+        console.log('Is instructor:', isInstructor);
+        
+        // Show/hide instructor fields
+        const instructorFields = document.getElementById('instructor-fields');
+        const studentFields = document.getElementById('student-fields');
+        const studentStats = document.getElementById('student-stats');
+        const instructorStats = document.getElementById('instructor-stats');
+        
+        console.log('Elements found:', {
+            instructorFields: !!instructorFields,
+            studentFields: !!studentFields,
+            studentStats: !!studentStats,
+            instructorStats: !!instructorStats
+        });
+        
+        if (isInstructor) {
+            instructorFields?.classList.remove('hidden');
+            studentFields?.classList.add('hidden');
+            studentStats?.classList.add('hidden');
+            instructorStats?.classList.remove('hidden');
+        } else {
+            instructorFields?.classList.add('hidden');
+            studentFields?.classList.remove('hidden');
+            studentStats?.classList.remove('hidden');
+            instructorStats?.classList.add('hidden');
+        }
+        
+        // Basic info from user
+        document.getElementById('profile-name').textContent = userResponse.email?.split('@')[0] || 'User';
+        document.getElementById('profile-email').textContent = userResponse.email;
+        document.getElementById('profile-role').textContent = userResponse.role || 'student';
+        document.getElementById('profile-avatar').textContent = userResponse.email?.charAt(0).toUpperCase() || 'U';
+        
+        // Get profile data
+        console.log('Fetching profile data...');
+        const profileResponse = await apiRequest('/api/accounts/profile/');
+        console.log('Profile response:', profileResponse);
+        
+        if (profileResponse) {
+            // Common fields
+            document.getElementById('bio').value = profileResponse.bio || '';
+            document.getElementById('website').value = profileResponse.website || '';
+            document.getElementById('linkedin').value = profileResponse.linkedin || '';
+            document.getElementById('twitter').value = profileResponse.twitter || '';
             
-            // Form fields
-            document.getElementById('first_name').value = response.first_name || '';
-            document.getElementById('last_name').value = response.last_name || '';
-            document.getElementById('bio').value = response.bio || '';
-            document.getElementById('phone').value = response.phone || '';
-            document.getElementById('location').value = response.location || '';
-            document.getElementById('website').value = response.website || '';
-            document.getElementById('facebook').value = response.facebook || '';
-            document.getElementById('twitter').value = response.twitter || '';
-            document.getElementById('linkedin').value = response.linkedin || '';
-            
-            // Stats
-            if (response.created_at) {
-                document.getElementById('stats-joined').textContent = new Date(response.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            // Instructor-specific fields
+            if (isInstructor) {
+                document.getElementById('headline').value = profileResponse.headline || '';
+                // expertise_areas is an array, join to string
+                const expertiseStr = Array.isArray(profileResponse.expertise_areas) 
+                    ? profileResponse.expertise_areas.join(', ') 
+                    : '';
+                document.getElementById('expertise').value = expertiseStr;
+                document.getElementById('teaching_experience').value = profileResponse.years_of_experience || '';
+                
+                // Load instructor stats from profile
+                document.getElementById('stats-instructor-courses').textContent = profileResponse.total_courses || 0;
+                document.getElementById('stats-instructor-students').textContent = profileResponse.total_students || 0;
+            } else {
+                // Student fields
+                document.getElementById('first_name').value = userResponse.first_name || '';
+                document.getElementById('last_name').value = userResponse.last_name || '';
+                document.getElementById('phone').value = profileResponse.phone || '';
+                document.getElementById('location').value = profileResponse.location || '';
+                document.getElementById('facebook').value = profileResponse.facebook || '';
             }
-            
-            // Load additional stats
-            loadStats();
+        }
+        
+        // Stats
+        if (userResponse.created_at) {
+            document.getElementById('stats-joined').textContent = new Date(userResponse.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+        
+        // Load additional stats for students
+        if (!isInstructor) {
+            loadStats(false);
         }
     } catch (error) {
         console.error('Error loading profile:', error);
@@ -202,19 +306,23 @@ async function loadProfile() {
     }
 }
 
-async function loadStats() {
+async function loadStats(isInstructor) {
     try {
-        const [enrollments, certificates] = await Promise.all([
-            apiRequest('/api/enrollments/'),
-            apiRequest('/api/certificates/')
-        ]);
-        
-        if (enrollments?.results) {
-            document.getElementById('stats-courses').textContent = enrollments.results.length;
+        if (!isInstructor) {
+            // Load student stats
+            const [enrollments, certificates] = await Promise.all([
+                apiRequest('/api/enrollments/'),
+                apiRequest('/api/certificates/')
+            ]);
+            
+            if (enrollments?.results) {
+                document.getElementById('stats-courses').textContent = enrollments.results.length;
+            }
+            if (certificates?.results) {
+                document.getElementById('stats-certificates').textContent = certificates.results.length;
+            }
         }
-        if (certificates?.results) {
-            document.getElementById('stats-certificates').textContent = certificates.results.length;
-        }
+        // Instructor stats are already loaded from profile in loadProfile()
     } catch (error) {
         console.error('Error loading stats:', error);
     }
@@ -248,17 +356,31 @@ function toggleEditMode() {
 async function handleProfileUpdate(e) {
     e.preventDefault();
     
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isInstructor = user.role === 'instructor' || user.role === 'admin';
+    
     const formData = {
-        first_name: document.getElementById('first_name').value,
-        last_name: document.getElementById('last_name').value,
         bio: document.getElementById('bio').value,
-        phone: document.getElementById('phone').value,
-        location: document.getElementById('location').value,
         website: document.getElementById('website').value,
-        facebook: document.getElementById('facebook').value,
+        linkedin: document.getElementById('linkedin').value,
         twitter: document.getElementById('twitter').value,
-        linkedin: document.getElementById('linkedin').value
     };
+    
+    // Add instructor-specific fields
+    if (isInstructor) {
+        formData.headline = document.getElementById('headline').value;
+        // Convert comma-separated string to array
+        const expertiseStr = document.getElementById('expertise').value;
+        formData.expertise_areas = expertiseStr ? expertiseStr.split(',').map(s => s.trim()) : [];
+        formData.years_of_experience = parseInt(document.getElementById('teaching_experience').value) || 0;
+    } else {
+        // Student fields
+        formData.first_name = document.getElementById('first_name').value;
+        formData.last_name = document.getElementById('last_name').value;
+        formData.phone = document.getElementById('phone').value;
+        formData.location = document.getElementById('location').value;
+        formData.facebook = document.getElementById('facebook').value;
+    }
     
     try {
         const response = await apiRequest('/api/accounts/profile/', {
@@ -270,11 +392,7 @@ async function handleProfileUpdate(e) {
             showAlert('Profile updated successfully!', 'success');
             isEditing = false;
             toggleEditMode();
-            
-            // Update localStorage user data
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            Object.assign(user, formData);
-            localStorage.setItem('user', JSON.stringify(user));
+            await loadProfile(); // Reload to show updated data
         }
     } catch (error) {
         console.error('Error updating profile:', error);

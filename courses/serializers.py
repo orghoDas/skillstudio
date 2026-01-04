@@ -162,20 +162,22 @@ class CourseListSerializer(serializers.ModelSerializer):
     instructor_name = serializers.CharField(source='instructor.profile.full_name', read_only=True)
     instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
-    enrollment_count = serializers.SerializerMethodField()
+    enrollments_count = serializers.SerializerMethodField()
     module_count = serializers.SerializerMethodField()
     lesson_count = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
             'is_free', 'status', 'level', 'instructor_name', 'instructor_email',
-            'category_name', 'published_at', 'created_at', 'enrollment_count',
-            'module_count', 'lesson_count'
+            'category_name', 'published_at', 'created_at', 'enrollments_count',
+            'module_count', 'lesson_count', 'average_rating', 'reviews_count'
         ]
 
-    def get_enrollment_count(self, obj):
+    def get_enrollments_count(self, obj):
         return obj.enrollments.filter(status='active').count()
 
     def get_module_count(self, obj):
@@ -183,6 +185,16 @@ class CourseListSerializer(serializers.ModelSerializer):
 
     def get_lesson_count(self, obj):
         return Lesson.objects.filter(module__course=obj).count()
+    
+    def get_average_rating(self, obj):
+        # Return 0 if no reviews exist
+        from social.models import Review
+        avg = Review.objects.filter(course=obj).aggregate(Avg('rating'))['rating__avg']
+        return round(avg, 1) if avg else 0
+    
+    def get_reviews_count(self, obj):
+        from social.models import Review
+        return Review.objects.filter(course=obj).count()
 
 
 class CourseDetailSerializer(serializers.ModelSerializer):
@@ -224,9 +236,10 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = [
-            'title', 'description', 'thumbnail', 'price', 'is_free',
+            'id', 'slug', 'title', 'description', 'thumbnail', 'price', 'is_free',
             'level', 'category', 'tag_ids', 'status'
         ]
+        read_only_fields = ['id', 'slug']
 
     def validate(self, attrs):
         if attrs.get('is_free'):
