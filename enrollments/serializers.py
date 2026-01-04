@@ -57,19 +57,34 @@ class LessonProgressDetailSerializer(serializers.ModelSerializer):
 
 class EnrollmentListSerializer(serializers.ModelSerializer):
     """List serializer for enrollments."""
+    course = serializers.SerializerMethodField()
     course_title = serializers.CharField(source='course.title', read_only=True)
+    course_slug = serializers.CharField(source='course.slug', read_only=True)
     course_thumbnail = serializers.URLField(source='course.thumbnail_url', read_only=True)
     instructor_name = serializers.CharField(source='course.instructor.get_full_name', read_only=True)
     progress_percentage = serializers.SerializerMethodField()
+    completed_lessons = serializers.SerializerMethodField()
+    completed_lessons_count = serializers.SerializerMethodField()
+    total_lessons_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Enrollment
         fields = [
-            'id', 'course', 'course_title', 'course_thumbnail',
+            'id', 'course', 'course_title', 'course_slug', 'course_thumbnail',
             'instructor_name', 'status', 'is_completed',
-            'enrolled_at', 'completed_at', 'progress_percentage'
+            'enrolled_at', 'completed_at', 'progress_percentage',
+            'completed_lessons', 'completed_lessons_count', 'total_lessons_count'
         ]
         read_only_fields = ['enrolled_at', 'completed_at']
+    
+    def get_course(self, obj):
+        """Return minimal course information"""
+        return {
+            'id': obj.course.id,
+            'title': obj.course.title,
+            'slug': obj.course.slug,
+            'thumbnail': obj.course.thumbnail
+        }
     
     def get_progress_percentage(self, obj):
         total_lessons = Lesson.objects.filter(
@@ -82,6 +97,18 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
         
         completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
         return round((completed_lessons / total_lessons) * 100, 2)
+    
+    def get_completed_lessons(self, obj):
+        """Return list of completed lesson IDs"""
+        return list(obj.lesson_progress.filter(is_completed=True).values_list('lesson_id', flat=True))
+    
+    def get_completed_lessons_count(self, obj):
+        """Return count of completed lessons"""
+        return obj.lesson_progress.filter(is_completed=True).count()
+    
+    def get_total_lessons_count(self, obj):
+        """Return total lessons in course"""
+        return Lesson.objects.filter(module__course=obj.course, is_free=False).count()
 
 
 class EnrollmentDetailSerializer(serializers.ModelSerializer):

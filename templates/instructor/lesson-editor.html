@@ -1,0 +1,694 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Lesson - SkillStudio{% endblock %}
+
+{% block extra_css %}
+<style>
+    .editor-toolbar {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(71, 85, 105, 0.3);
+        border-radius: 0.5rem 0.5rem 0 0;
+        padding: 0.5rem;
+        display: flex;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+    }
+    .editor-toolbar button {
+        padding: 0.5rem;
+        background: transparent;
+        color: #94a3b8;
+        border: none;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .editor-toolbar button:hover {
+        background: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+    }
+    .editor-content {
+        background: #0f172a;
+        border: 1px solid rgba(71, 85, 105, 0.3);
+        border-top: none;
+        border-radius: 0 0 0.5rem 0.5rem;
+        padding: 1rem;
+        min-height: 400px;
+        color: #e2e8f0;
+        font-family: inherit;
+    }
+    .editor-content:focus {
+        outline: none;
+        border-color: #3b82f6;
+    }
+    .quiz-question {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(71, 85, 105, 0.3);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .quiz-option {
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid rgba(71, 85, 105, 0.3);
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .quiz-option.correct {
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <a href="#" onclick="history.back()" class="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
+                    ← Back to Course Content
+                </a>
+                <h1 class="text-3xl font-bold" id="lesson-title-display">Edit Lesson</h1>
+                <p class="text-gray-400 mt-2" id="lesson-meta">Loading...</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button onclick="saveDraft()" class="px-6 py-3 bg-dark-surface border border-dark-border hover:bg-dark-hover text-white rounded-lg font-semibold transition-colors">
+                    Save Draft
+                </button>
+                <button onclick="saveContent()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Save & Publish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lesson Basic Info -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Lesson Information</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="lesson-title" class="block text-sm font-medium mb-2">Lesson Title</label>
+                <input type="text" id="lesson-title" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="lesson-type" class="block text-sm font-medium mb-2">Content Type</label>
+                <select id="lesson-type" onchange="switchContentType()" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="video">Video</option>
+                    <option value="text">Article</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="assignment">Assignment</option>
+                </select>
+            </div>
+            <div>
+                <label for="lesson-duration" class="block text-sm font-medium mb-2">Duration (minutes)</label>
+                <input type="number" id="lesson-duration" min="0" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex items-center pt-8">
+                <input type="checkbox" id="lesson-is-free" class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                <label for="lesson-is-free" class="ml-3 text-sm font-medium">Free preview</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Editor (Dynamic based on type) -->
+    <div id="content-editor-container">
+        <!-- Will be populated by JavaScript -->
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let lessonId;
+let lessonData = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get lesson ID from URL
+    const pathParts = window.location.pathname.split('/');
+    lessonId = pathParts[3];
+    
+    loadLessonData();
+});
+
+async function loadLessonData() {
+    try {
+        const response = await apiRequest(`/courses/lessons/${lessonId}/`);
+        lessonData = response;
+        
+        // Populate basic info
+        document.getElementById('lesson-title').value = lessonData.title || '';
+        document.getElementById('lesson-type').value = lessonData.content_type || 'video';
+        document.getElementById('lesson-duration').value = Math.round((lessonData.duration_seconds || 0) / 60);
+        document.getElementById('lesson-is-free').checked = lessonData.is_free || false;
+        
+        // Update header
+        document.getElementById('lesson-title-display').textContent = lessonData.title || 'Edit Lesson';
+        document.getElementById('lesson-meta').textContent = `${lessonData.content_type} · ${Math.round((lessonData.duration_seconds || 0) / 60)} minutes`;
+        
+        // Load content editor based on type
+        switchContentType();
+        
+    } catch (error) {
+        console.error('Error loading lesson:', error);
+        showAlert('Failed to load lesson data', 'error');
+    }
+}
+
+function switchContentType() {
+    const contentType = document.getElementById('lesson-type').value;
+    const container = document.getElementById('content-editor-container');
+    
+    switch(contentType) {
+        case 'video':
+            container.innerHTML = renderVideoEditor();
+            loadVideoContent();
+            break;
+        case 'text':
+            container.innerHTML = renderTextEditor();
+            loadTextContent();
+            break;
+        case 'quiz':
+            container.innerHTML = renderQuizEditor();
+            loadQuizContent();
+            break;
+        case 'assignment':
+            container.innerHTML = renderAssignmentEditor();
+            loadAssignmentContent();
+            break;
+    }
+}
+
+function renderVideoEditor() {
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Video Content</h2>
+            
+            <div class="mb-6">
+                <label for="video-url" class="block text-sm font-medium mb-2">Video URL</label>
+                <input type="url" id="video-url" placeholder="https://www.youtube.com/watch?v=..." 
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-gray-400 mt-2">Supports YouTube, Vimeo, and direct video links</p>
+            </div>
+            
+            <div id="video-preview" class="hidden mb-6">
+                <label class="block text-sm font-medium mb-2">Preview</label>
+                <div class="aspect-video bg-dark-bg border border-dark-border rounded-lg overflow-hidden">
+                    <iframe id="video-iframe" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
+                </div>
+            </div>
+            
+            <div>
+                <label for="video-description" class="block text-sm font-medium mb-2">Description</label>
+                <textarea id="video-description" rows="6" placeholder="Describe what students will learn in this video..."
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+        </div>
+    `;
+}
+
+function renderTextEditor() {
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Article Content</h2>
+            
+            <div class="editor-toolbar">
+                <button onclick="formatText('bold')" title="Bold"><b>B</b></button>
+                <button onclick="formatText('italic')" title="Italic"><i>I</i></button>
+                <button onclick="formatText('underline')" title="Underline"><u>U</u></button>
+                <span class="border-l border-dark-border mx-1"></span>
+                <button onclick="formatText('formatBlock', 'h2')" title="Heading 1">H1</button>
+                <button onclick="formatText('formatBlock', 'h3')" title="Heading 2">H2</button>
+                <button onclick="formatText('formatBlock', 'p')" title="Paragraph">P</button>
+                <span class="border-l border-dark-border mx-1"></span>
+                <button onclick="formatText('insertUnorderedList')" title="Bullet List">• List</button>
+                <button onclick="formatText('insertOrderedList')" title="Numbered List">1. List</button>
+                <span class="border-l border-dark-border mx-1"></span>
+                <button onclick="insertLink()" title="Insert Link">🔗 Link</button>
+                <button onclick="insertImage()" title="Insert Image">🖼 Image</button>
+            </div>
+            <div id="text-editor" contenteditable="true" class="editor-content"></div>
+        </div>
+    `;
+}
+
+function renderQuizEditor() {
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-semibold">Quiz Questions</h2>
+                <button onclick="addQuestion()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    + Add Question
+                </button>
+            </div>
+            
+            <div id="quiz-questions" class="space-y-4">
+                <!-- Questions will be added here -->
+            </div>
+            
+            <div class="mt-6 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+                <h3 class="font-semibold text-blue-400 mb-2">Quiz Settings</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="quiz-passing-score" class="block text-sm mb-2">Passing Score (%)</label>
+                        <input type="number" id="quiz-passing-score" min="0" max="100" value="70" 
+                            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="quiz-time-limit" class="block text-sm mb-2">Time Limit (minutes, 0 for no limit)</label>
+                        <input type="number" id="quiz-time-limit" min="0" value="0" 
+                            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="quiz-attempts" class="block text-sm mb-2">Max Attempts</label>
+                        <input type="number" id="quiz-attempts" min="1" value="3" 
+                            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderAssignmentEditor() {
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Assignment Details</h2>
+            
+            <div class="mb-6">
+                <label for="assignment-title" class="block text-sm font-medium mb-2">Assignment Title</label>
+                <input type="text" id="assignment-title" 
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <div class="mb-6">
+                <label for="assignment-instructions" class="block text-sm font-medium mb-2">Instructions</label>
+                <textarea id="assignment-instructions" rows="8" placeholder="Provide detailed instructions for the assignment..."
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label for="assignment-max-score" class="block text-sm font-medium mb-2">Maximum Score</label>
+                    <input type="number" id="assignment-max-score" min="0" value="100" 
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="assignment-due-days" class="block text-sm font-medium mb-2">Due After (days)</label>
+                    <input type="number" id="assignment-due-days" min="0" value="7" 
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2">Submission Type</label>
+                <div class="space-y-2">
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" name="submission-type" value="text" checked
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
+                        <span class="text-sm">Text Submission</span>
+                    </label>
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" name="submission-type" value="file"
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
+                        <span class="text-sm">File Upload</span>
+                    </label>
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" name="submission-type" value="url"
+                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
+                        <span class="text-sm">URL/Link</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Load content functions
+function loadVideoContent() {
+    if (lessonData.video_url) {
+        document.getElementById('video-url').value = lessonData.video_url;
+        updateVideoPreview();
+    }
+    if (lessonData.content_text) {
+        document.getElementById('video-description').value = lessonData.content_text;
+    }
+    
+    // Add event listener for URL changes
+    document.getElementById('video-url').addEventListener('input', updateVideoPreview);
+}
+
+function updateVideoPreview() {
+    const url = document.getElementById('video-url').value;
+    const preview = document.getElementById('video-preview');
+    const iframe = document.getElementById('video-iframe');
+    
+    if (!url) {
+        preview.classList.add('hidden');
+        return;
+    }
+    
+    let embedUrl = '';
+    
+    // YouTube
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
+        if (videoId) {
+            embedUrl = `https://www.youtube.com/embed/${videoId}`;
+        }
+    }
+    // Vimeo
+    else if (url.includes('vimeo.com')) {
+        const videoId = url.match(/vimeo\.com\/(\d+)/)?.[1];
+        if (videoId) {
+            embedUrl = `https://player.vimeo.com/video/${videoId}`;
+        }
+    }
+    // Direct video URL
+    else if (url.match(/\.(mp4|webm|ogg)$/)) {
+        embedUrl = url;
+    }
+    
+    if (embedUrl) {
+        iframe.src = embedUrl;
+        preview.classList.remove('hidden');
+    } else {
+        preview.classList.add('hidden');
+    }
+}
+
+function loadTextContent() {
+    if (lessonData.content_text) {
+        document.getElementById('text-editor').innerHTML = lessonData.content_text;
+    }
+}
+
+async function loadQuizContent() {
+    try {
+        // Try to fetch quiz from the API
+        const response = await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`);
+        
+        if (response.title) {
+            document.getElementById('lesson-title').value = response.title;
+        }
+        if (response.passing_percentage) {
+            document.getElementById('quiz-passing-score').value = response.passing_percentage;
+        }
+        if (response.time_limit_minutes !== undefined) {
+            document.getElementById('quiz-time-limit').value = response.time_limit_minutes;
+        }
+        
+        const questions = response.questions || [];
+        questions.forEach(q => {
+            addQuestion({
+                text: q.text,
+                options: q.options.map(opt => ({
+                    text: opt.text,
+                    is_correct: opt.is_correct
+                })),
+                explanation: q.explanation || ''
+            });
+        });
+        
+        if (questions.length === 0) {
+            addQuestion();
+        }
+    } catch (error) {
+        console.log('No existing quiz found, starting fresh');
+        addQuestion();
+    }
+}
+
+function loadAssignmentContent() {
+    const metadata = lessonData.metadata || {};
+    
+    if (metadata.title) {
+        document.getElementById('assignment-title').value = metadata.title;
+    }
+    if (lessonData.content_text) {
+        document.getElementById('assignment-instructions').value = lessonData.content_text;
+    }
+    if (metadata.max_score) {
+        document.getElementById('assignment-max-score').value = metadata.max_score;
+    }
+    if (metadata.due_days) {
+        document.getElementById('assignment-due-days').value = metadata.due_days;
+    }
+    if (metadata.submission_types) {
+        metadata.submission_types.forEach(type => {
+            const checkbox = document.querySelector(`input[name="submission-type"][value="${type}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
+}
+
+// Text editor formatting
+function formatText(command, value = null) {
+    document.execCommand(command, false, value);
+    document.getElementById('text-editor').focus();
+}
+
+function insertLink() {
+    const url = prompt('Enter URL:');
+    if (url) {
+        formatText('createLink', url);
+    }
+}
+
+function insertImage() {
+    const url = prompt('Enter image URL:');
+    if (url) {
+        formatText('insertImage', url);
+    }
+}
+
+// Quiz functions
+let questionCount = 0;
+
+function addQuestion(questionData = null) {
+    questionCount++;
+    const container = document.getElementById('quiz-questions');
+    const questionId = questionData?.id || `q${questionCount}`;
+    
+    const questionHtml = `
+        <div class="quiz-question" data-question-id="${questionId}">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold">Question ${questionCount}</h3>
+                <button onclick="removeQuestion('${questionId}')" class="text-red-400 hover:text-red-300">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm mb-2">Question Text</label>
+                <input type="text" class="question-text w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg" 
+                    value="${questionData?.text || ''}" placeholder="Enter your question...">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm mb-2">Options</label>
+                <div class="space-y-2 question-options">
+                    ${renderQuestionOptions(questionData?.options || [])}
+                </div>
+                <button onclick="addOption('${questionId}')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
+                    + Add Option
+                </button>
+            </div>
+            
+            <div>
+                <label class="block text-sm mb-2">Explanation (optional)</label>
+                <textarea class="question-explanation w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg" 
+                    rows="2" placeholder="Explain the correct answer...">${questionData?.explanation || ''}</textarea>
+            </div>
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('beforeend', questionHtml);
+    
+    if (!questionData || !questionData.options || questionData.options.length === 0) {
+        // Add default options
+        addOption(questionId);
+        addOption(questionId);
+        addOption(questionId);
+        addOption(questionId);
+    }
+}
+
+function renderQuestionOptions(options) {
+    return options.map((opt, index) => `
+        <div class="quiz-option ${opt.is_correct ? 'correct' : ''}" data-option-index="${index}">
+            <input type="radio" name="correct-${Date.now()}" ${opt.is_correct ? 'checked' : ''} 
+                onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
+            <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
+                value="${opt.text || ''}" placeholder="Option ${String.fromCharCode(65 + index)}">
+            <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    `).join('');
+}
+
+function addOption(questionId) {
+    const question = document.querySelector(`[data-question-id="${questionId}"]`);
+    const optionsContainer = question.querySelector('.question-options');
+    const optionCount = optionsContainer.children.length;
+    const radioName = `correct-${questionId}`;
+    
+    const optionHtml = `
+        <div class="quiz-option" data-option-index="${optionCount}">
+            <input type="radio" name="${radioName}" onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
+            <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
+                placeholder="Option ${String.fromCharCode(65 + optionCount)}">
+            <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    optionsContainer.insertAdjacentHTML('beforeend', optionHtml);
+}
+
+function removeOption(button) {
+    const option = button.closest('.quiz-option');
+    option.remove();
+}
+
+function markCorrect(radio) {
+    const question = radio.closest('.quiz-question');
+    question.querySelectorAll('.quiz-option').forEach(opt => opt.classList.remove('correct'));
+    radio.closest('.quiz-option').classList.add('correct');
+}
+
+function removeQuestion(questionId) {
+    const question = document.querySelector(`[data-question-id="${questionId}"]`);
+    if (confirm('Remove this question?')) {
+        question.remove();
+    }
+}
+
+// Save functions
+async function saveDraft() {
+    await saveContent(true);
+}
+
+async function saveContent(isDraft = false) {
+    try {
+        const contentType = document.getElementById('lesson-type').value;
+        
+        // Basic lesson data
+        const lessonUpdateData = {
+            title: document.getElementById('lesson-title').value,
+            content_type: contentType,
+            duration_seconds: (parseInt(document.getElementById('lesson-duration').value) || 0) * 60,
+            is_free: document.getElementById('lesson-is-free').checked
+        };
+        
+        // Content based on type
+        switch(contentType) {
+            case 'video':
+                lessonUpdateData.video_url = document.getElementById('video-url').value;
+                lessonUpdateData.content_text = document.getElementById('video-description').value;
+                break;
+                
+            case 'text':
+                lessonUpdateData.content_text = document.getElementById('text-editor').innerHTML;
+                break;
+                
+            case 'quiz':
+                lessonUpdateData.content_text = 'Quiz';
+                // Save quiz via separate API endpoint
+                await saveQuizData();
+                break;
+                
+            case 'assignment':
+                lessonUpdateData.content_text = document.getElementById('assignment-instructions').value;
+                lessonUpdateData.metadata = collectAssignmentData();
+                break;
+        }
+        
+        // Save to server
+        await apiRequest(`/courses/lessons/${lessonId}/`, {
+            method: 'PUT',
+            body: JSON.stringify(lessonUpdateData)
+        });
+        
+        showAlert(isDraft ? 'Draft saved successfully!' : 'Content saved successfully!', 'success');
+        
+        if (!isDraft) {
+            setTimeout(() => history.back(), 1500);
+        }
+        
+    } catch (error) {
+        console.error('Error saving content:', error);
+        showAlert('Failed to save content', 'error');
+    }
+}
+
+async function saveQuizData() {
+    const quizData = collectQuizData();
+    
+    await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`, {
+        method: 'POST',
+        body: JSON.stringify(quizData)
+    });
+}
+
+function collectQuizData() {
+    const questions = [];
+    document.querySelectorAll('.quiz-question').forEach((q, index) => {
+        const options = [];
+        q.querySelectorAll('.quiz-option').forEach(opt => {
+            const optionText = opt.querySelector('.option-text').value.trim();
+            if (optionText) {  // Only add non-empty options
+                options.push({
+                    text: optionText,
+                    is_correct: opt.querySelector('input[type="radio"]').checked
+                });
+            }
+        });
+        
+        const questionText = q.querySelector('.question-text').value.trim();
+        if (questionText && options.length > 0) {  // Only add questions with text and options
+            questions.push({
+                text: questionText,
+                type: 'mcq',  // Multiple choice question
+                marks: 5,  // Default marks per question
+                options: options,
+                explanation: q.querySelector('.question-explanation').value.trim()
+            });
+        }
+    });
+    
+    return {
+        title: document.getElementById('lesson-title').value || 'Quiz',
+        passing_percentage: parseInt(document.getElementById('quiz-passing-score').value) || 70,
+        time_limit_minutes: parseInt(document.getElementById('quiz-time-limit').value) || 0,
+        questions: questions
+    };
+}
+
+function collectAssignmentData() {
+    const submissionTypes = [];
+    document.querySelectorAll('input[name="submission-type"]:checked').forEach(cb => {
+        submissionTypes.push(cb.value);
+    });
+    
+    return {
+        title: document.getElementById('assignment-title').value,
+        max_score: parseInt(document.getElementById('assignment-max-score').value),
+        due_days: parseInt(document.getElementById('assignment-due-days').value),
+        submission_types: submissionTypes
+    };
+}
+</script>
+{% endblock %}

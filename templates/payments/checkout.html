@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoads', function() {
 
 async function loadCourseDetails() {
     try {
-        courseData = await apiRequest(`/api/courses/${courseSlug}/`);
+        courseData = await apiRequest(`/courses/${courseSlug}/`);
 
         // Render course details
         document.getElementById('course-details').innerHTML = `
@@ -236,7 +236,7 @@ async function processPayment() {
     btn.innerHTML = '<div class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>';
 
     try {
-        const response = await apiRequest('/api/payments/checkout/', {
+        const response = await apiRequest('/payments/checkout/', {
             method: 'POST',
             body: JSON.stringify({
                 course_id: courseData.id,

@@ -142,7 +142,7 @@ async function loadFeaturedInstructors() {
     const container = document.getElementById('instructors-container');
     
     try {
-        const response = await apiRequest('/api/instructors/featured/');
+        const response = await apiRequest('/instructors/featured/');
         const instructors = response.results || response;
 
         if (instructors.length > 0) {

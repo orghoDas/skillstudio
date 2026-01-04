@@ -190,7 +190,7 @@ let allResources = [];
 
 async function loadCourses() {
     try {
-        const data = await apiRequest('/api/instructor/courses/');
+        const data = await apiRequest('/instructor/courses/');
         const select = document.getElementById('courseSelect');
         
         select.innerHTML = '<option value="">Select a course</option>' +
@@ -205,7 +205,7 @@ async function loadResources(courseId) {
     if (!courseId) return;
     
     try {
-        const data = await apiRequest(`/api/instructor/courses/${courseId}/resources/`);
+        const data = await apiRequest(`/instructor/courses/${courseId}/resources/`);
         
         allResources = data.resources;
         
@@ -385,7 +385,7 @@ async function uploadFiles() {
     
     try {
         showAlert('Uploading files...', 'info');
-        await apiRequest(`/api/instructor/courses/${courseId}/resources/upload/`, {
+        await apiRequest(`/instructor/courses/${courseId}/resources/upload/`, {
             method: 'POST',
             body: formData
         });
@@ -410,7 +410,7 @@ function createFolder() {
         return;
     }
     
-    apiRequest(`/api/instructor/courses/${courseId}/folders/`, {
+    apiRequest(`/instructor/courses/${courseId}/folders/`, {
         method: 'POST',
         body: JSON.stringify({ name })
     }).then(() => {
@@ -447,7 +447,7 @@ async function deleteResource(id) {
     if (!confirm('Delete this resource?')) return;
     
     try {
-        await apiRequest(`/api/resources/${id}/`, { method: 'DELETE' });
+        await apiRequest(`/resources/${id}/`, { method: 'DELETE' });
         showAlert('Resource deleted', 'success');
         loadResources(document.getElementById('courseSelect').value);
     } catch (error) {
@@ -461,7 +461,7 @@ function editResource(id) {
 
 async function updateVisibility(id, visibility) {
     try {
-        await apiRequest(`/api/resources/${id}/`, {
+        await apiRequest(`/resources/${id}/`, {
             method: 'PATCH',
             body: JSON.stringify({ visibility })
         });

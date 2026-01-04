@@ -192,15 +192,24 @@
                         localStorage.setItem('access_token', data.access);
                         // Retry original request
                         headers['Authorization'] = `Bearer ${data.access}`;
-                        return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+                        const retryResponse = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+                        if (!retryResponse.ok) {
+                            throw new Error(`HTTP error! status: ${retryResponse.status}`);
+                        }
+                        return retryResponse.json();
                     } else {
                         // Refresh failed, logout
                         logout();
+                        return null;
                     }
                 }
             }
             
-            return response;
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return response.json();
         }
         
         // Logout helper

@@ -153,7 +153,7 @@ let progressChart, activityChart;
 
 async function loadAnalytics() {
     try {
-        const data = await apiRequest('/api/analytics/student/');
+        const data = await apiRequest('/analytics/student/');
         
         // Update overview stats
         document.getElementById('totalCourses').textContent = data.overview.total_courses;
@@ -390,7 +390,7 @@ function addGoal() {
 
 function toggleGoal(goalId) {
     // Implementation would toggle goal completion
-    apiRequest(`/api/analytics/goals/${goalId}/toggle/`, { method: 'POST' })
+    apiRequest(`/analytics/goals/${goalId}/toggle/`, { method: 'POST' })
         .then(() => loadAnalytics())
         .catch(error => showAlert('Failed to update goal', 'error'));
 }
@@ -398,7 +398,7 @@ function toggleGoal(goalId) {
 // Course filter
 document.getElementById('courseFilter').addEventListener('change', async (e) => {
     const filter = e.target.value;
-    const data = await apiRequest(`/api/analytics/student/?filter=${filter}`);
+    const data = await apiRequest(`/analytics/student/?filter=${filter}`);
     renderCoursesList(data.courses);
 });
 

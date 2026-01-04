@@ -89,3 +89,47 @@ class SubmitAssignmentView(APIView):
         )
 
         return Response(SubmissionSerializer(submission).data)
+
+
+class SubmitAssignmentByLessonView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, lesson_id):
+        from courses.models import Lesson
+        
+        lesson = get_object_or_404(Lesson, id=lesson_id)
+        require_active_enrollment(request.user, lesson.module.course)
+        
+        # Get or create assignment for this lesson
+        assignment, created = Assignment.objects.get_or_create(
+            lesson=lesson,
+            defaults={
+                'title': f"Assignment - {lesson.title}",
+                'instructions': lesson.content_text or ''
+            }
+        )
+        
+        # Handle file upload if present
+        file_url = None
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file:
+            # Save file and get URL
+            from django.core.files.storage import default_storage
+            file_path = f'assignments/{request.user.id}/{lesson_id}/{uploaded_file.name}'
+            saved_path = default_storage.save(file_path, uploaded_file)
+            file_url = default_storage.url(saved_path)
+        
+        # Get text submission
+        text = request.data.get('text', '') or request.data.get('comments', '')
+        
+        submission = submit_assignment(
+            request.user,
+            assignment,
+            file_url=file_url,
+            text=text
+        )
+
+        return Response({
+            'message': 'Assignment submitted successfully',
+            'submission': SubmissionSerializer(submission).data
+        })

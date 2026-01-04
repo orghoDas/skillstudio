@@ -35,6 +35,7 @@ urlpatterns = [
     # ===========================
     # 🎓 Enrollment Management
     # ===========================
+    path('', EnrollmentListView.as_view(), name='enrollment-list-root'),
     path('my-enrollments/', EnrollmentListView.as_view(), name='enrollment-list'),
     path('enrollments/<int:pk>/', EnrollmentDetailView.as_view(), name='enrollment-detail'),
     path('enroll/', EnrollCourseView.as_view(), name='enroll-course'),

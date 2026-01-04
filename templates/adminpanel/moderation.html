@@ -100,7 +100,7 @@ async function loadPendingCourses() {
     const container = document.getElementById('courses-container');
     
     try {
-        const response = await apiRequest('/api/admin/courses/pending/');
+        const response = await apiRequest('/admin/courses/pending/');
         const courses = response.results || response;
 
         document.getElementById('pending-courses-badge').textContent = courses.length;
@@ -196,7 +196,7 @@ async function loadReports() {
     const container = document.getElementById('reports-container');
     
     try {
-        const response = await apiRequest('/api/admin/reports/');
+        const response = await apiRequest('/admin/reports/');
         const reports = response.results || response;
 
         document.getElementById('reports-badge').textContent = reports.length;
@@ -264,7 +264,7 @@ async function loadFlaggedReviews() {
     const container = document.getElementById('reviews-container');
     
     try {
-        const response = await apiRequest('/api/admin/reviews/flagged/');
+        const response = await apiRequest('/admin/reviews/flagged/');
         const reviews = response.results || response;
 
         if (reviews.length > 0) {
@@ -318,7 +318,7 @@ function renderFlaggedReview(review) {
 
 async function approveCourse(courseId) {
     try {
-        await apiRequest(`/api/admin/courses/${courseId}/approve/`, { method: 'POST' });
+        await apiRequest(`/admin/courses/${courseId}/approve/`, { method: 'POST' });
         showAlert('Course approved successfully', 'success');
         loadPendingCourses();
     } catch (error) {
@@ -331,7 +331,7 @@ async function rejectCourse(courseId) {
     const reason = prompt('Rejection reason (optional):');
     
     try {
-        await apiRequest(`/api/admin/courses/${courseId}/reject/`, {
+        await apiRequest(`/admin/courses/${courseId}/reject/`, {
             method: 'POST',
             body: JSON.stringify({ reason })
         });
@@ -345,7 +345,7 @@ async function rejectCourse(courseId) {
 
 async function resolveReport(reportId, action) {
     try {
-        await apiRequest(`/api/admin/reports/${reportId}/resolve/`, {
+        await apiRequest(`/admin/reports/${reportId}/resolve/`, {
             method: 'POST',
             body: JSON.stringify({ action })
         });
@@ -359,7 +359,7 @@ async function resolveReport(reportId, action) {
 
 async function approveReview(reviewId) {
     try {
-        await apiRequest(`/api/admin/reviews/${reviewId}/approve/`, { method: 'POST' });
+        await apiRequest(`/admin/reviews/${reviewId}/approve/`, { method: 'POST' });
         showAlert('Review approved', 'success');
         loadFlaggedReviews();
     } catch (error) {
@@ -372,7 +372,7 @@ async function deleteReview(reviewId) {
     if (!confirm('Delete this review?')) return;
     
     try {
-        await apiRequest(`/api/admin/reviews/${reviewId}/`, { method: 'DELETE' });
+        await apiRequest(`/admin/reviews/${reviewId}/`, { method: 'DELETE' });
         showAlert('Review deleted', 'success');
         loadFlaggedReviews();
     } catch (error) {

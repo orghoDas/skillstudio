@@ -114,7 +114,7 @@ async function loadCourses() {
             params.append('completed', 'true');
         }
 
-        const response = await apiRequest(`/api/enrollments/?${params.toString()}`);
+        const response = await apiRequest(`/enrollments/?${params.toString()}`);
         
         if (response && response.results && response.results.length > 0) {
             container.innerHTML = response.results.map(enrollment => renderCourseCard(enrollment)).join('');
@@ -209,7 +209,7 @@ function renderCourseCard(enrollment) {
 
 async function downloadCertificate(enrollmentId) {
     try {
-        const response = await apiRequest(`/api/enrollments/${enrollmentId}/certificate/`);
+        const response = await apiRequest(`/enrollments/${enrollmentId}/certificate/`);
         if (response.certificate_url) {
             window.open(response.certificate_url, '_blank');
         } else {

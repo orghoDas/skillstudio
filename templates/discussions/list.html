@@ -182,7 +182,7 @@ async function loadThreads() {
     const courseId = getCourseIdFromUrl();
     
     try {
-        const data = await apiRequest(`/api/courses/${courseId}/discussions/?tab=${currentTab}&page=${currentPage}`);
+        const data = await apiRequest(`/courses/${courseId}/discussions/?tab=${currentTab}&page=${currentPage}`);
         
         allThreads = data.threads;
         
@@ -360,7 +360,7 @@ async function submitThread() {
     
     try {
         const courseId = getCourseIdFromUrl();
-        await apiRequest(`/api/courses/${courseId}/discussions/`, {
+        await apiRequest(`/courses/${courseId}/discussions/`, {
             method: 'POST',
             body: JSON.stringify({ title, content, category, type, subscribe })
         });

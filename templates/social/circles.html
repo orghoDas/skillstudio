@@ -229,7 +229,7 @@ async function openCreateModal() {
     
     // Load courses for dropdown
     try {
-        const response = await apiRequest('/api/courses/?status=published&limit=100');
+        const response = await apiRequest('/courses/?status=published&limit=100');
         if (response && response.results) {
             const select = document.getElementById('circle-course');
             select.innerHTML = '<option value="">Select a course...</option>' + 
@@ -256,7 +256,7 @@ async function handleCreateCircle(e) {
     };
 
     try {
-        const response = await apiRequest('/api/social/circles/', {
+        const response = await apiRequest('/social/circles/', {
             method: 'POST',
             body: JSON.stringify(formData)
         });

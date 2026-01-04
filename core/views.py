@@ -98,6 +98,18 @@ def instructor_course_content(request, slug):
     """Instructor course content management page"""
     return render(request, 'instructor/course-content.html')
 
+def instructor_course_edit(request, slug):
+    """Instructor course edit page"""
+    return render(request, 'instructor/course-edit.html')
+
+def instructor_lesson_edit(request, id):
+    """Instructor lesson content editor page"""
+    return render(request, 'instructor/lesson-editor.html')
+
+def instructor_course_preview(request, slug):
+    """Instructor course preview page"""
+    return render(request, 'instructor/course-preview.html')
+
 def instructor_students(request):
     """Instructor students list page"""
     return render(request, 'instructor/students-list.html')
@@ -105,7 +117,9 @@ def instructor_students(request):
 def my_courses(request):
     """Student's enrolled courses page"""
     return render(request, 'students/my-courses.html')
-
+def enrollments_list(request):
+    """Student's enrollments page"""
+    return render(request, 'student/enrollments.html')
 def learn_course(request, slug):
     """Student course learning interface"""
     return render(request, 'students/learn.html')

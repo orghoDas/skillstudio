@@ -237,7 +237,7 @@ function renderActionButton(isPastEvent) {
 
 async function handleRegister() {
     try {
-        await apiRequest(`/api/events/${eventId}/register/`, { method: 'POST' });
+        await apiRequest(`/events/${eventId}/register/`, { method: 'POST' });
         showAlert('Successfully registered for the event!', 'success');
         loadEventDetails();
     } catch (error) {
@@ -250,7 +250,7 @@ async function handleCancelRegistration() {
     if (!confirm('Are you sure you want to cancel your registration?')) return;
     
     try {
-        await apiRequest(`/api/events/${eventId}/cancel-registration/`, { method: 'POST' });
+        await apiRequest(`/events/${eventId}/cancel-registration/`, { method: 'POST' });
         showAlert('Registration cancelled', 'success');
         loadEventDetails();
     } catch (error) {

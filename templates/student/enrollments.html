@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+
+{% block title %}My Enrollments - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div>
+        <h1 class="text-3xl font-bold mb-2">My Enrollments</h1>
+        <p class="text-gray-400">Track your enrolled courses and progress</p>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="border-b border-dark-border">
+        <nav class="flex space-x-6">
+            <button class="enrollment-tab px-3 py-2 border-b-2 border-blue-500 text-blue-400 font-medium" data-status="all">
+                All Courses
+            </button>
+            <button class="enrollment-tab px-3 py-2 border-b-2 border-transparent text-gray-400 hover:text-white" data-status="in_progress">
+                In Progress
+            </button>
+            <button class="enrollment-tab px-3 py-2 border-b-2 border-transparent text-gray-400 hover:text-white" data-status="completed">
+                Completed
+            </button>
+        </nav>
+    </div>
+
+    <!-- Enrollments Grid -->
+    <div id="enrollments-container">
+        <!-- Loading skeleton -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+            <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentFilter = 'all';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+        window.location.href = '/auth/login/?next=/enrollments/';
+        return;
+    }
+
+    // Redirect instructors and admins to their dashboards
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role === 'instructor') {
+        window.location.href = '/instructor/dashboard/';
+        return;
+    } else if (user.role === 'admin') {
+        window.location.href = '/admin-panel/';
+        return;
+    }
+
+    // Tab switching
+    document.querySelectorAll('.enrollment-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Update active tab
+            document.querySelectorAll('.enrollment-tab').forEach(t => {
+                t.classList.remove('border-blue-500', 'text-blue-400');
+                t.classList.add('border-transparent', 'text-gray-400');
+            });
+            this.classList.remove('border-transparent', 'text-gray-400');
+            this.classList.add('border-blue-500', 'text-blue-400');
+            
+            // Load enrollments
+            currentFilter = this.dataset.status;
+            loadEnrollments();
+        });
+    });
+
+    loadEnrollments();
+});
+
+async function loadEnrollments() {
+    const container = document.getElementById('enrollments-container');
+    
+    try {
+        // Build query
+        let query = '';
+        if (currentFilter !== 'all') {
+            query = `?status=${currentFilter}`;
+        }
+        
+        const response = await apiRequest(`/enrollments/${query}`);
+        const enrollments = response.results || response || [];
+        
+        if (enrollments.length > 0) {
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    ${enrollments.map(enrollment => renderEnrollmentCard(enrollment)).join('')}
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                    <p class="text-gray-400 text-lg mb-4">No enrollments found</p>
+                    <a href="/courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        Browse Courses
+                    </a>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading enrollments:', error);
+        container.innerHTML = `
+            <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
+                <p class="text-red-400 text-lg mb-4">Failed to load enrollments</p>
+                <button onclick="loadEnrollments()" class="text-blue-400 hover:text-blue-300">
+                    Try Again
+                </button>
+            </div>
+        `;
+    }
+}
+
+function renderEnrollmentCard(enrollment) {
+    const course = enrollment.course || {};
+    const progress = enrollment.progress_percentage || 0;
+    const status = enrollment.status || 'enrolled';
+    
+    const statusColors = {
+        enrolled: 'bg-blue-900/30 text-blue-400',
+        in_progress: 'bg-yellow-900/30 text-yellow-400',
+        completed: 'bg-green-900/30 text-green-400',
+        dropped: 'bg-red-900/30 text-red-400'
+    };
+    
+    return `
+        <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
+            <div class="relative">
+                ${course.thumbnail ? 
+                    `<img src="${course.thumbnail}" alt="${course.title}" class="w-full h-40 object-cover">` :
+                    `<div class="w-full h-40 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <svg class="w-16 h-16 text-white opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>`
+                }
+                <span class="absolute top-2 right-2 px-2 py-1 text-xs rounded ${statusColors[status]} capitalize">
+                    ${status.replace('_', ' ')}
+                </span>
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold mb-2 line-clamp-2">${course.title || 'Untitled Course'}</h3>
+                
+                <!-- Progress Bar -->
+                <div class="mb-3">
+                    <div class="flex items-center justify-between text-sm mb-1">
+                        <span class="text-gray-400">Progress</span>
+                        <span class="text-blue-400 font-semibold">${Math.round(progress)}%</span>
+                    </div>
+                    <div class="w-full bg-dark-bg rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${progress}%"></div>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
+                    <span class="flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        ${enrollment.time_spent ? Math.round(enrollment.time_spent / 3600) : 0}h
+                    </span>
+                    <span>Enrolled ${new Date(enrollment.enrolled_at).toLocaleDateString()}</span>
+                </div>
+                
+                <!-- Action Button -->
+                <a href="/learn/${course.slug}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    ${progress > 0 ? 'Continue Learning' : 'Start Learning'}
+                </a>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

@@ -35,11 +35,11 @@ async function loadResults() {
     const container = document.getElementById('results-container');
 
     try {
-        const attempt = await apiRequest(`/api/assessments/attempts/${attemptId}/`);
+        const attempt = await apiRequest(`/assessments/attempts/${attemptId}/`);
         const assessment = attempt.assessment;
         
         // Load detailed results with correct/incorrect answers
-        const detailedResults = await apiRequest(`/api/assessments/attempts/${attemptId}/results/`);
+        const detailedResults = await apiRequest(`/assessments/attempts/${attemptId}/results/`);
 
         const passed = attempt.score >= (assessment.passing_score || 0);
         const completedAt = new Date(attempt.completed_at);
@@ -250,7 +250,7 @@ function formatDuration(seconds) {
 
 async function downloadCertificate() {
     try {
-        const response = await apiRequest(`/api/assessments/attempts/${attemptId}/certificate/`);
+        const response = await apiRequest(`/assessments/attempts/${attemptId}/certificate/`);
         if (response.certificate_url) {
             window.open(response.certificate_url, '_blank');
         } else {

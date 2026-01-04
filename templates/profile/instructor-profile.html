@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 async function loadProfile() {
     try {
         // Get user info
-        const userResponse = await apiRequest('/api/accounts/me/');
+        const userResponse = await apiRequest('/accounts/me/');
         if (!userResponse) return;
         
         // Basic info
@@ -170,7 +170,7 @@ async function loadProfile() {
         document.getElementById('profile-avatar').textContent = userResponse.email?.charAt(0).toUpperCase() || 'I';
         
         // Get profile data
-        const profileResponse = await apiRequest('/api/accounts/profile/');
+        const profileResponse = await apiRequest('/accounts/profile/');
         
         if (profileResponse) {
             document.getElementById('headline').value = profileResponse.headline || '';
@@ -239,7 +239,7 @@ async function handleProfileUpdate(e) {
     };
     
     try {
-        const response = await apiRequest('/api/accounts/profile/', {
+        const response = await apiRequest('/accounts/profile/', {
             method: 'PUT',
             body: JSON.stringify(formData)
         });

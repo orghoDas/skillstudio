@@ -128,7 +128,7 @@ async function loadThread() {
     const courseId = getCourseIdFromUrl();
     
     try {
-        const data = await apiRequest(`/api/discussions/${threadId}/`);
+        const data = await apiRequest(`/discussions/${threadId}/`);
         
         threadData = data;
         
@@ -294,7 +294,7 @@ async function postReply() {
     
     try {
         const threadId = getThreadIdFromUrl();
-        await apiRequest(`/api/discussions/${threadId}/replies/`, {
+        await apiRequest(`/discussions/${threadId}/replies/`, {
             method: 'POST',
             body: JSON.stringify({ content, is_answer: markAsAnswer })
         });
@@ -312,7 +312,7 @@ async function postReply() {
 async function toggleLike() {
     try {
         const threadId = getThreadIdFromUrl();
-        const data = await apiRequest(`/api/discussions/${threadId}/like/`, {
+        const data = await apiRequest(`/discussions/${threadId}/like/`, {
             method: 'POST'
         });
         
@@ -327,7 +327,7 @@ async function toggleLike() {
 
 async function toggleReplyLike(replyId) {
     try {
-        await apiRequest(`/api/discussions/replies/${replyId}/like/`, {
+        await apiRequest(`/discussions/replies/${replyId}/like/`, {
             method: 'POST'
         });
         loadThread();
@@ -339,7 +339,7 @@ async function toggleReplyLike(replyId) {
 async function toggleSubscribe() {
     try {
         const threadId = getThreadIdFromUrl();
-        const data = await apiRequest(`/api/discussions/${threadId}/subscribe/`, {
+        const data = await apiRequest(`/discussions/${threadId}/subscribe/`, {
             method: 'POST'
         });
         

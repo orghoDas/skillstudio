@@ -170,7 +170,7 @@ async function loadAnalytics() {
     const dateRange = document.getElementById('dateRange').value;
     
     try {
-        const data = await apiRequest(`/api/analytics/instructor/?range=${dateRange}`);
+        const data = await apiRequest(`/analytics/instructor/?range=${dateRange}`);
         
         // Update overview stats
         document.getElementById('totalRevenue').textContent = `$${data.overview.total_revenue.toLocaleString()}`;

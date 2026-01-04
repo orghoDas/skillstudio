@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db.models import Avg, Count
 from .models import (
     Course, Lesson, Module, Category, Tag, CourseTag,
     CourseVersion, LessonResource
@@ -51,6 +52,14 @@ class LessonSerializer(serializers.ModelSerializer):
 
 
 class LessonCreateUpdateSerializer(serializers.ModelSerializer):
+    module = serializers.PrimaryKeyRelatedField(queryset=Module.objects.all(), required=False)
+    content_text = serializers.CharField(required=False, allow_blank=True, default='')
+    video_url = serializers.URLField(required=False, allow_blank=True, default='')
+    duration_seconds = serializers.IntegerField(required=False, allow_null=True, default=0)
+    metadata = serializers.JSONField(required=False, allow_null=True, default=None)
+    position = serializers.IntegerField(required=False, default=0)
+    is_free = serializers.BooleanField(required=False, default=False)
+    
     class Meta:
         model = Lesson
         fields = [
@@ -59,18 +68,8 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        content_type = attrs.get('content_type')
-        
-        if content_type == 'video' and not attrs.get('video_url'):
-            raise serializers.ValidationError({
-                'video_url': 'Video lessons must have a video URL.'
-            })
-        
-        if content_type == 'text' and not attrs.get('content_text'):
-            raise serializers.ValidationError({
-                'content_text': 'Text lessons must have content.'
-            })
-        
+        # Allow all content types - validation is optional
+        # Instructors can add video URLs and content later
         return attrs
 
 
@@ -135,6 +134,8 @@ class ModuleSerializer(serializers.ModelSerializer):
 
 
 class ModuleCreateUpdateSerializer(serializers.ModelSerializer):
+    course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), required=False)
+    
     class Meta:
         model = Module
         fields = ['course', 'title', 'position']
@@ -255,6 +256,14 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
                 CourseTag.objects.create(course=course, tag_id=tag_id)
         
         return course
+    
+    def to_representation(self, instance):
+        """Ensure slug and id are always in response"""
+        representation = super().to_representation(instance)
+        # Explicitly add slug and id
+        representation['id'] = instance.id
+        representation['slug'] = instance.slug
+        return representation
 
     def update(self, instance, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)

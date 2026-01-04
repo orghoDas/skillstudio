@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function loadAccountInfo() {
     try {
-        const response = await apiRequest('/api/accounts/me/');
+        const response = await apiRequest('/accounts/me/');
         if (response) {
             document.getElementById('account-email').value = response.email;
             document.getElementById('account-role').value = response.role || 'student';
@@ -277,7 +277,7 @@ async function handlePasswordChange(e) {
     }
     
     try {
-        const response = await apiRequest('/api/accounts/change-password/', {
+        const response = await apiRequest('/accounts/change-password/', {
             method: 'POST',
             body: JSON.stringify({
                 old_password: currentPassword,

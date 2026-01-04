@@ -262,7 +262,7 @@ function renderTransaction(tx) {
 
 async function downloadInvoice(transactionId) {
     try {
-        const response = await apiRequest(`/api/payments/transactions/${transactionId}/invoice/`);
+        const response = await apiRequest(`/payments/transactions/${transactionId}/invoice/`);
         if (response.download_url) {
             window.open(response.download_url, '_blank');
             showAlert('Invoice downloaded successfully!', 'success');
@@ -275,7 +275,7 @@ async function downloadInvoice(transactionId) {
 
 async function viewReceipt(transactionId) {
     try {
-        const response = await apiRequest(`/api/payments/transactions/${transactionId}/`);
+        const response = await apiRequest(`/payments/transactions/${transactionId}/`);
         // In a real app, this would open a modal with receipt details
         showAlert('Receipt details loaded', 'success');
         console.log('Receipt:', response);
@@ -287,7 +287,7 @@ async function viewReceipt(transactionId) {
 
 async function retryPayment(transactionId) {
     try {
-        const response = await apiRequest(`/api/payments/transactions/${transactionId}/retry/`, {
+        const response = await apiRequest(`/payments/transactions/${transactionId}/retry/`, {
             method: 'POST'
         });
         showAlert('Payment retry initiated', 'success');

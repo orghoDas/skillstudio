@@ -173,10 +173,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function loadCourse(slug) {
     try {
-        const response = await fetch(`/api/courses/${slug}/`);
-        if (!response.ok) throw new Error('Course not found');
-        
-        courseData = await response.json();
+        courseData = await apiRequest(`/courses/${slug}/`);
         
         // Hide loading, show content
         document.getElementById('course-loading').classList.add('hidden');
@@ -229,13 +226,16 @@ async function checkEnrollmentStatus() {
     }
     
     try {
-        const response = await apiRequest(`/api/enrollments/?course=${courseData.id}`);
-        if (response && response.results && response.results.length > 0) {
-            const enrollment = response.results[0];
+        const response = await apiRequest(`/enrollments/?course=${courseData.id}`);
+        // Handle both paginated and non-paginated responses
+        const enrollments = response?.results || response || [];
+        
+        if (enrollments.length > 0) {
+            const enrollment = enrollments[0];
             document.getElementById('enroll-btn').textContent = 'Continue Learning';
             document.getElementById('enroll-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700');
             document.getElementById('enroll-btn').classList.add('bg-green-600', 'hover:bg-green-700');
-            document.getElementById('enroll-btn').onclick = () => window.location.href = `/courses/${courseData.slug || courseData.id}/learn/`;
+            document.getElementById('enroll-btn').onclick = () => window.location.href = `/learn/${courseData.slug || courseData.id}/`;
             
             // Show enrollment status
             const statusEl = document.getElementById('enrollment-status');
@@ -269,15 +269,15 @@ async function handleEnrollment() {
     btn.textContent = 'Enrolling...';
     
     try {
-        const response = await apiRequest('/api/enrollments/', {
+        const response = await apiRequest('/enrollments/enroll/', {
             method: 'POST',
-            body: JSON.stringify({ course: courseData.id })
+            body: JSON.stringify({ course_id: courseData.id })
         });
         
         if (response) {
             showAlert('Successfully enrolled in the course!', 'success');
             setTimeout(() => {
-                window.location.reload();
+                window.location.href = '/dashboard/';
             }, 1500);
         }
     } catch (error) {

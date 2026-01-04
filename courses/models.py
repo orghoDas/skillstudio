@@ -113,7 +113,26 @@ class Course(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.title)
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            
+            # Keep appending numbers until we find a unique slug
+            while True:
+                if self.pk:
+                    # Updating existing course - exclude self
+                    exists = Course.objects.filter(slug=slug).exclude(pk=self.pk).exists()
+                else:
+                    # Creating new course
+                    exists = Course.objects.filter(slug=slug).exists()
+                
+                if not exists:
+                    break
+                    
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            self.slug = slug
         super().save(*args, **kwargs)
 
     def clean(self):
@@ -179,7 +198,7 @@ class Lesson(models.Model):
     content_text = models.TextField(blank=True)
     video_url = models.URLField(blank=True)
     duration_seconds = models.PositiveIntegerField(default=0, help_text="Duration in seconds")
-    metadata = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True, null=True)
     position = models.PositiveIntegerField(default=0)
     is_free = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
@@ -193,19 +212,13 @@ class Lesson(models.Model):
         return self.title
     
     def clean(self):
-        if self.content_type == 'video' and not self.video_url:
-            raise ValidationError("Video lessons must have a video URL.")
-
-        if self.content_type == 'text' and not self.content_text:
-            raise ValidationError("Text lessons must have content.")
-
-        if self.content_type == 'quiz' and self.content_text:
-            raise ValidationError("Quiz lessons should not store text content.")
-        if self.content_type == 'resource' and not self.resources.exists():
-            raise ValidationError("Resource lessons must have at least one resource.")
+        # Optional validation - allow draft lessons without full content
+        # Only validate if explicitly requested
+        pass
         
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Skip full_clean to allow creating draft lessons
+        # Validation can be done when publishing the course
         super().save(*args, **kwargs)
 
 

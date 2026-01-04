@@ -125,7 +125,7 @@ async function loadAssessments() {
             params.append('status', 'in_progress');
         }
 
-        const response = await apiRequest(`/api/assessments/?${params.toString()}`);
+        const response = await apiRequest(`/assessments/?${params.toString()}`);
         
         if (response && response.results && response.results.length > 0) {
             container.innerHTML = response.results.map(assessment => renderAssessmentCard(assessment)).join('');

@@ -88,7 +88,7 @@ async function loadCertificates() {
     const container = document.getElementById('certificates-container');
     
     try {
-        const response = await apiRequest('/api/certificates/');
+        const response = await apiRequest('/certificates/');
         const certificates = response.results || response;
 
         // Update stats
@@ -186,7 +186,7 @@ function renderCertificate(cert) {
 
 async function downloadCertificate(certId) {
     try {
-        const response = await apiRequest(`/api/certificates/${certId}/download/`);
+        const response = await apiRequest(`/certificates/${certId}/download/`);
         if (response.download_url) {
             window.open(response.download_url, '_blank');
             showAlert('Certificate downloaded successfully!', 'success');

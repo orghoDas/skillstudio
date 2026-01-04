@@ -121,11 +121,26 @@ class CourseListView(generics.ListAPIView):
 
 
 class CourseDetailView(generics.RetrieveAPIView):
-    """Get course details"""
+    """Get single course details (by id or slug)"""
     queryset = Course.objects.select_related('instructor', 'instructor__profile', 'category').prefetch_related('tags', 'modules__lessons')
     serializer_class = CourseDetailSerializer
     permission_classes = [AllowAny]
     lookup_field = 'id'
+    
+    def get_object(self):
+        """Support both id and slug lookups"""
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Try to get by slug first (if present in kwargs)
+        if 'slug' in self.kwargs:
+            filter_kwargs = {'slug': self.kwargs['slug']}
+        else:
+            # Otherwise use id
+            filter_kwargs = {'id': self.kwargs['id']}
+        
+        obj = generics.get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
     
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -133,9 +148,12 @@ class CourseDetailView(generics.RetrieveAPIView):
         # Only show published courses to public, or drafts to owner/admin
         if instance.status != 'published':
             if not request.user.is_authenticated:
-                return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
-            if instance.instructor != request.user and request.user.role != 'admin':
-                return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+            # Check if user is the instructor or admin
+            if hasattr(request.user, 'role') and request.user.role == 'admin':
+                pass  # Admins can see all courses
+            elif instance.instructor.id != request.user.id:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         serializer = self.get_serializer(instance, context={'request': request})
         return Response(serializer.data)
@@ -170,11 +188,28 @@ class CourseUpdateView(generics.UpdateAPIView):
         if course.instructor != self.request.user:
             raise ValidationError("You don't have permission to edit this course.")
         
-        # Only drafts can be edited
-        if course.status not in ['draft', 'under_review']:
-            raise ValidationError("Only draft or under review courses can be edited.")
-        
         return course
+    
+    def update(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.error(f"Update request data: {request.data}")
+        
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        
+        if not serializer.is_valid():
+            logger.error(f"Validation errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    def perform_update(self, serializer):
+        # Ensure instructor is set to current user
+        serializer.save(instructor=self.request.user)
 
 
 class CourseDeleteView(generics.DestroyAPIView):
@@ -208,14 +243,41 @@ class InstructorCoursesView(generics.ListAPIView):
 
 # ===== MODULE VIEWS =====
 
-class ModuleListView(generics.ListAPIView):
-    """List modules for a course"""
+class ModuleListView(generics.ListCreateAPIView):
+    """List and create modules for a course (supports both course_id and slug)"""
     serializer_class = ModuleSerializer
     permission_classes = [AllowAny]
     
     def get_queryset(self):
-        course_id = self.kwargs['course_id']
+        # Support both course_id and slug lookups
+        if 'slug' in self.kwargs:
+            course = Course.objects.get(slug=self.kwargs['slug'])
+            course_id = course.id
+        else:
+            course_id = self.kwargs['course_id']
+        
         return Module.objects.filter(course_id=course_id).prefetch_related('lessons').order_by('position')
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ModuleCreateUpdateSerializer
+        return ModuleSerializer
+    
+    def perform_create(self, serializer):
+        # Get course from slug or id
+        if 'slug' in self.kwargs:
+            course = Course.objects.get(slug=self.kwargs['slug'])
+        else:
+            course = Course.objects.get(id=self.kwargs['course_id'])
+        
+        # Check permissions
+        if course.instructor != self.request.user:
+            raise ValidationError("You don't have permission to add modules to this course.")
+        
+        if course.status not in ['draft', 'under_review']:
+            raise ValidationError("Cannot add modules to published courses.")
+        
+        serializer.save(course=course)
 
 
 class ModuleCreateView(generics.CreateAPIView):
@@ -274,14 +336,35 @@ class ModuleDeleteView(generics.DestroyAPIView):
 
 # ===== LESSON VIEWS =====
 
-class LessonListView(generics.ListAPIView):
-    """List lessons for a module"""
+class LessonListView(generics.ListCreateAPIView):
+    """List and create lessons for a module/section"""
     serializer_class = LessonSerializer
     permission_classes = [AllowAny]
     
     def get_queryset(self):
-        module_id = self.kwargs['module_id']
+        # Support both module_id and section id (they're the same)
+        module_id = self.kwargs.get('module_id') or self.kwargs.get('id')
         return Lesson.objects.filter(module_id=module_id).prefetch_related('resources').order_by('position')
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return LessonCreateUpdateSerializer
+        return LessonSerializer
+    
+    def perform_create(self, serializer):
+        # Get module/section id
+        module_id = self.kwargs.get('module_id') or self.kwargs.get('id')
+        module = Module.objects.get(id=module_id)
+        
+        # Check permissions
+        if module.course.instructor != self.request.user:
+            raise ValidationError("You don't have permission to add lessons to this module.")
+        
+        # Allow instructors to add lessons to their own courses even if published
+        # if module.course.status not in ['draft', 'under_review']:
+        #     raise ValidationError("Cannot add lessons to published courses.")
+        
+        serializer.save(module=module)
 
 
 class LessonCreateView(generics.CreateAPIView):
@@ -316,6 +399,22 @@ class LessonUpdateView(generics.UpdateAPIView):
         
         if lesson.module.course.status not in ['draft', 'under_review']:
             raise ValidationError("Cannot edit lessons in published courses.")
+        
+        return lesson
+
+
+class LessonRetrieveUpdateView(generics.RetrieveUpdateAPIView):
+    """Retrieve and update lesson for instructor editor"""
+    queryset = Lesson.objects.all()
+    serializer_class = LessonCreateUpdateSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+    
+    def get_object(self):
+        lesson = super().get_object()
+        
+        if lesson.module.course.instructor != self.request.user:
+            raise ValidationError("You don't have permission to edit this lesson.")
         
         return lesson
 

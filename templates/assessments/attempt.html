@@ -42,10 +42,10 @@ async function loadAssessment() {
         let attempt;
         if (attemptId) {
             // Resume existing attempt
-            attempt = await apiRequest(`/api/assessments/attempts/${attemptId}/`);
+            attempt = await apiRequest(`/assessments/attempts/${attemptId}/`);
         } else {
             // Create new attempt
-            attempt = await apiRequest(`/api/assessments/${assessmentId}/start-attempt/`, {
+            attempt = await apiRequest(`/assessments/${assessmentId}/start-attempt/`, {
                 method: 'POST'
             });
             // Update URL with attempt ID
@@ -54,7 +54,7 @@ async function loadAssessment() {
         }
 
         // Load questions
-        const response = await apiRequest(`/api/assessments/${assessmentId}/questions/`);
+        const response = await apiRequest(`/assessments/${assessmentId}/questions/`);
         questions = response.results || response;
 
         // Load saved answers if resuming
@@ -294,7 +294,7 @@ function updateTimerDisplay() {
 
 async function saveAndExit() {
     try {
-        await apiRequest(`/api/assessments/attempts/${attemptId}/save/`, {
+        await apiRequest(`/assessments/attempts/${attemptId}/save/`, {
             method: 'POST',
             body: JSON.stringify({ answers })
         });
@@ -324,7 +324,7 @@ async function submitAssessment() {
     try {
         if (timerInterval) clearInterval(timerInterval);
         
-        const result = await apiRequest(`/api/assessments/attempts/${attemptId}/submit/`, {
+        const result = await apiRequest(`/assessments/attempts/${attemptId}/submit/`, {
             method: 'POST',
             body: JSON.stringify({ answers })
         });

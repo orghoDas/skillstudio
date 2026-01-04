@@ -35,7 +35,7 @@ async function loadCircleDetails() {
     const container = document.getElementById('circle-container');
 
     try {
-        const circle = await apiRequest(`/api/social/circles/${circleId}/`);
+        const circle = await apiRequest(`/social/circles/${circleId}/`);
         
         // Check membership
         if (circle.members) {
@@ -212,7 +212,7 @@ function getStatusClass(status) {
 
 async function handleJoinCircle() {
     try {
-        await apiRequest(`/api/social/circles/${circleId}/join/`, { method: 'POST' });
+        await apiRequest(`/social/circles/${circleId}/join/`, { method: 'POST' });
         showAlert('Successfully joined the circle!', 'success');
         loadCircleDetails();
     } catch (error) {
@@ -225,7 +225,7 @@ async function handleLeaveCircle() {
     if (!confirm('Are you sure you want to leave this circle?')) return;
     
     try {
-        await apiRequest(`/api/social/circles/${circleId}/leave/`, { method: 'POST' });
+        await apiRequest(`/social/circles/${circleId}/leave/`, { method: 'POST' });
         showAlert('Successfully left the circle', 'success');
         loadCircleDetails();
     } catch (error) {
@@ -242,7 +242,7 @@ async function postDiscussion() {
     }
 
     try {
-        await apiRequest(`/api/social/circles/${circleId}/discussions/`, {
+        await apiRequest(`/social/circles/${circleId}/discussions/`, {
             method: 'POST',
             body: JSON.stringify({ content })
         });

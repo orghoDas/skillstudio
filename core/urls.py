@@ -34,10 +34,14 @@ urlpatterns = [
     path('assessments/<int:assessment_id>/results/<int:attempt_id>/', views.assessment_results, name='assessment_results'),
     path('instructor/courses/', views.instructor_courses_list, name='instructor_courses_list'),
     path('instructor/courses/create/', views.instructor_course_create, name='instructor_course_create'),
+    path('instructor/courses/<slug:slug>/edit/', views.instructor_course_edit, name='instructor_course_edit'),
     path('instructor/courses/<slug:slug>/content/', views.instructor_course_content, name='instructor_course_content'),
+    path('instructor/courses/<slug:slug>/preview/', views.instructor_course_preview, name='instructor_course_preview'),
+    path('instructor/lessons/<int:id>/edit/', views.instructor_lesson_edit, name='instructor_lesson_edit'),
     path('instructor/students/', views.instructor_students, name='instructor_students'),
     path('instructor/analytics/', views.analytics_instructor, name='instructor_analytics'),
     path('my-courses/', views.my_courses, name='my_courses'),
+    path('enrollments/', views.enrollments_list, name='enrollments_list'),
     path('learn/<slug:slug>/', views.learn_course, name='learn_course'),
     
     # Payments & Certificates

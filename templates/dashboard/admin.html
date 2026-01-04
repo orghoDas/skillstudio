@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load platform stats
     async function loadStats() {
         try {
-            const response = await apiRequest('/api/adminpanel/stats/');
+            const response = await apiRequest('/adminpanel/stats/');
             if (response) {
                 document.getElementById('total-users').textContent = response.total_users || 0;
                 document.getElementById('total-courses').textContent = response.total_courses || 0;
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load recent users
     async function loadRecentUsers() {
         try {
-            const response = await apiRequest('/api/accounts/users/?limit=5');
+            const response = await apiRequest('/accounts/users/?limit=5');
             const container = document.getElementById('recent-users');
 
             if (response && response.results && response.results.length > 0) {

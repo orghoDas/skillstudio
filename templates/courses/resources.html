@@ -155,7 +155,7 @@ async function loadResources() {
     const courseId = getCourseIdFromUrl();
     
     try {
-        const data = await apiRequest(`/api/courses/${courseId}/resources/`);
+        const data = await apiRequest(`/courses/${courseId}/resources/`);
         
         allResources = data.resources;
         
@@ -406,7 +406,7 @@ function updateBreadcrumb(folderId) {
 
 async function downloadResource(resourceId) {
     try {
-        const response = await apiRequest(`/api/resources/${resourceId}/download/`, { 
+        const response = await apiRequest(`/resources/${resourceId}/download/`, { 
             method: 'POST' 
         });
         

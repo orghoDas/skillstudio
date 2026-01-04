@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function loadSession() {
     try {
-        sessionData = await apiRequest(`/api/live/sessions/${sessionId}/`);
+        sessionData = await apiRequest(`/live/sessions/${sessionId}/`);
         
         document.getElementById('session-title').textContent = sessionData.title;
         

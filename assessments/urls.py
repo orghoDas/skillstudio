@@ -4,8 +4,11 @@ from .views import (
     StartQuizView,
     SubmitQuizView,
     AssignmentDetailView,
-    SubmitAssignmentView
+    SubmitAssignmentView,
+    SubmitAssignmentByLessonView
 )
+
+from .views_quiz_management import ManageQuizView
 
 from .view_analytics import (
     InstructorAssessmentOverviewView,
@@ -34,6 +37,10 @@ urlpatterns = [
     # Assignment
     path("assignment/lesson/<int:lesson_id>/", AssignmentDetailView.as_view()),
     path("assignment/<int:assignment_id>/submit/", SubmitAssignmentView.as_view()),
+    path("assignment/lesson/<int:lesson_id>/submit/", SubmitAssignmentByLessonView.as_view()),
+    
+    # Quiz Management (Instructor)
+    path("quiz/lesson/<int:lesson_id>/manage/", ManageQuizView.as_view()),
 
     # Analytics
     path("analytics/course/<int:course_id>/overview/", InstructorAssessmentOverviewView.as_view()), 

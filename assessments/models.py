@@ -18,6 +18,8 @@ class Quiz(models.Model):
     title = models.CharField(max_length=255, blank=True)
     total_marks = models.PositiveIntegerField(default=0)
     time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
+    passing_percentage = models.PositiveIntegerField(default=50)
+    is_published = models.BooleanField(default=True)
 
     def has_time_limit(self):
         return bool(self.time_limit_minutes)
@@ -42,6 +44,7 @@ class QuizAttempt(models.Model):
     )
 
     answers = models.JSONField(default=dict)
+    passed = models.BooleanField(default=False)
 
     is_auto_submitted = models.BooleanField(default=False)
 

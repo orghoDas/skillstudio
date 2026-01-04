@@ -1,0 +1,268 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Course - Instructor - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div id="loading" class="max-w-4xl mx-auto animate-pulse space-y-6">
+    <div class="h-8 bg-dark-surface rounded w-1/3"></div>
+    <div class="h-64 bg-dark-surface rounded"></div>
+</div>
+
+<div id="edit-form-container" class="max-w-4xl mx-auto hidden">
+    <!-- Header -->
+    <div class="mb-8 flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Edit Course</h1>
+            <p class="text-gray-400">Update your course details</p>
+        </div>
+        <a id="back-link" href="/instructor/courses/" class="text-blue-400 hover:text-blue-300">
+            ← Back to Courses
+        </a>
+    </div>
+
+    <form id="course-form" class="space-y-6">
+        <!-- Basic Information -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">Basic Information</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label for="title" class="block text-sm font-medium mb-2">Course Title *</label>
+                    <input type="text" id="title" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium mb-2">Course Description *</label>
+                    <textarea id="description" rows="8" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Detailed description of what students will learn"></textarea>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="category" class="block text-sm font-medium mb-2">Category *</label>
+                        <select id="category" required
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select category...</option>
+                            <!-- Will be populated by JavaScript -->
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="level" class="block text-sm font-medium mb-2">Level *</label>
+                        <select id="level" required
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select level...</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing -->
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-6">Pricing</h2>
+            
+            <div class="space-y-4">
+                <div class="flex items-center space-x-3">
+                    <input type="checkbox" id="is_free" 
+                        class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                    <label for="is_free" class="text-sm font-medium">This is a free course</label>
+                </div>
+
+                <div id="price-field">
+                    <label for="price" class="block text-sm font-medium mb-2">Price (USD)</label>
+                    <input type="number" id="price" min="0" step="0.01"
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-between">
+            <a href="/instructor/courses/" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors">
+                Cancel
+            </a>
+            <div class="flex space-x-3">
+                <button type="button" onclick="saveChanges('draft')" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                    Save as Draft
+                </button>
+                <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Save & Publish
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseSlug;
+let courseData;
+let categories = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication and role
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role !== 'instructor') {
+        window.location.href = '/';
+        return;
+    }
+
+    // Get course slug from URL
+    const pathParts = window.location.pathname.split('/');
+    courseSlug = pathParts[3];
+    
+    loadCategories();
+    loadCourse();
+
+    // Handle free course toggle
+    document.getElementById('is_free').addEventListener('change', function() {
+        const priceField = document.getElementById('price-field');
+        if (this.checked) {
+            priceField.style.display = 'none';
+            document.getElementById('price').value = '0';
+        } else {
+            priceField.style.display = 'block';
+        }
+    });
+
+    // Form submission
+    document.getElementById('course-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        saveChanges('published');
+    });
+});
+
+async function loadCategories() {
+    try {
+        const response = await apiRequest('/courses/categories/');
+        categories = response.results || response || [];
+        
+        const categorySelect = document.getElementById('category');
+        categorySelect.innerHTML = '<option value="">Select category...</option>';
+        
+        // If no categories from API, add default ones
+        if (categories.length === 0) {
+            categories = [
+                { id: 1, name: 'Programming' },
+                { id: 2, name: 'Design' },
+                { id: 3, name: 'Business' },
+                { id: 4, name: 'Marketing' },
+                { id: 5, name: 'Data Science' },
+                { id: 6, name: 'Other' }
+            ];
+        }
+        
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat.id;
+            option.textContent = cat.name;
+            categorySelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        // Add fallback categories on error
+        const categorySelect = document.getElementById('category');
+        categorySelect.innerHTML = `
+            <option value="">Select category...</option>
+            <option value="1">Programming</option>
+            <option value="2">Design</option>
+            <option value="3">Business</option>
+            <option value="4">Marketing</option>
+            <option value="5">Data Science</option>
+            <option value="6">Other</option>
+        `;
+    }
+}
+
+async function loadCourse() {
+    try {
+        courseData = await apiRequest(`/courses/${courseSlug}/`);
+        
+        // Populate form fields
+        document.getElementById('title').value = courseData.title || '';
+        document.getElementById('description').value = courseData.description || '';
+        document.getElementById('level').value = courseData.level || '';
+        
+        // Category - wait for categories to load
+        setTimeout(() => {
+            if (courseData.category) {
+                document.getElementById('category').value = courseData.category;
+            }
+        }, 500);
+        
+        // Pricing
+        const isFree = !courseData.price || parseFloat(courseData.price) === 0;
+        document.getElementById('is_free').checked = isFree;
+        document.getElementById('price').value = courseData.price || '0';
+        if (isFree) {
+            document.getElementById('price-field').style.display = 'none';
+        }
+        
+        // Show form, hide loading
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('edit-form-container').classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading course:', error);
+        document.getElementById('loading').innerHTML = `
+            <div class="text-center py-16">
+                <p class="text-red-400 text-lg mb-4">Failed to load course</p>
+                <a href="/instructor/courses/" class="text-blue-400 hover:text-blue-300">← Back to Courses</a>
+            </div>
+        `;
+    }
+}
+
+function getFormData(status) {
+    const categoryValue = document.getElementById('category').value;
+    const isFree = document.getElementById('is_free').checked;
+    
+    return {
+        title: document.getElementById('title').value,
+        description: document.getElementById('description').value,
+        category: categoryValue ? parseInt(categoryValue) : null,
+        level: document.getElementById('level').value,
+        is_free: isFree,
+        price: isFree ? 0 : parseFloat(document.getElementById('price').value) || 0,
+        status: status
+    };
+}
+
+async function saveChanges(status) {
+    try {
+        const updatedData = getFormData(status);
+        console.log('Updating course with data:', updatedData);
+        console.log('Course ID:', courseData.id);
+        
+        const response = await apiRequest(`/courses/${courseData.id}/update/`, {
+            method: 'PUT',
+            body: JSON.stringify(updatedData)
+        });
+
+        console.log('Course updated:', response);
+        
+        showAlert(`Course ${status === 'published' ? 'updated and published' : 'saved as draft'} successfully!`, 'success');
+        setTimeout(() => {
+            window.location.href = `/instructor/courses/${courseSlug}/content/`;
+        }, 1500);
+    } catch (error) {
+        console.error('Error updating course:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        showAlert(error.message || 'Failed to update course', 'error');
+    }
+}
+</script>
+{% endblock %}

@@ -9,6 +9,18 @@
 {% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
 
 {% block content %}
+<script>
+// Check user role and redirect if not a student
+document.addEventListener('DOMContentLoaded', function() {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role === 'instructor') {
+        window.location.href = '/instructor/dashboard/';
+    } else if (user.role === 'admin') {
+        window.location.href = '/admin-panel/';
+    }
+});
+</script>
+
 <div class="space-y-6">
     <!-- Welcome Section -->
     <div>
@@ -113,14 +125,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     async function loadStats() {
         try {
             const [enrollments, certificates, circles] = await Promise.all([
-                apiRequest('/api/enrollments/'),
-                apiRequest('/api/certificates/'),
-                apiRequest('/api/social/circles/my-circles/')
+                apiRequest('/enrollments/'),
+                apiRequest('/certificates/'),
+                apiRequest('/social/circles/my-circles/')
             ]);
 
-            if (enrollments && enrollments.results) {
-                const enrolled = enrollments.results.filter(e => e.status !== 'completed');
-                const completed = enrollments.results.filter(e => e.status === 'completed');
+            // Handle both paginated and non-paginated responses
+            const enrollmentsList = enrollments?.results || enrollments || [];
+            if (enrollmentsList.length > 0) {
+                const enrolled = enrollmentsList.filter(e => e.status !== 'completed');
+                const completed = enrollmentsList.filter(e => e.status === 'completed');
                 document.getElementById('enrolled-count').textContent = enrolled.length;
                 document.getElementById('completed-count').textContent = completed.length;
             }
@@ -140,11 +154,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load in-progress courses
     async function loadContinueLearning() {
         try {
-            const response = await apiRequest('/api/enrollments/?status=in_progress&limit=3');
+            const response = await apiRequest('/enrollments/?status=in_progress&limit=3');
             const container = document.getElementById('continue-learning');
+            
+            // Handle both paginated and non-paginated responses
+            const enrollments = response?.results || response || [];
 
-            if (response && response.results && response.results.length > 0) {
-                container.innerHTML = response.results.map(enrollment => `
+            if (enrollments.length > 0) {
+                container.innerHTML = enrollments.map(enrollment => `
                     <a href="/courses/${enrollment.course_slug || enrollment.course}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
                         <div class="h-40 bg-gradient-to-br from-blue-500 to-purple-600"></div>
                         <div class="p-4">
@@ -178,7 +195,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load upcoming events
     async function loadUpcomingEvents() {
         try {
-            const response = await apiRequest('/api/events/?limit=3');
+            const response = await apiRequest('/events/?limit=3');
             const container = document.getElementById('upcoming-events');
 
             if (response && response.results && response.results.length > 0) {

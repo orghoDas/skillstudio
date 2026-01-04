@@ -145,7 +145,7 @@ function debounce(func, wait) {
 
 async function loadStats() {
     try {
-        const stats = await apiRequest('/api/instructors/stats/');
+        const stats = await apiRequest('/instructors/stats/');
         document.getElementById('total-courses').textContent = stats.total_courses || 0;
         document.getElementById('total-students').textContent = stats.total_students || 0;
         document.getElementById('published-courses').textContent = stats.published_courses || 0;
@@ -170,10 +170,13 @@ async function loadCourses() {
         if (status) params.append('status', status);
         if (sortBy) params.append('ordering', sortBy);
 
-        const response = await apiRequest(`/api/courses/?${params.toString()}`);
+        const response = await apiRequest(`/courses/?${params.toString()}`);
         
-        if (response && response.results && response.results.length > 0) {
-            container.innerHTML = response.results.map(course => renderCourseCard(course)).join('');
+        // Handle both paginated (response.results) and direct array responses
+        const courses = response.results || response;
+        
+        if (courses && courses.length > 0) {
+            container.innerHTML = courses.map(course => renderCourseCard(course)).join('');
         } else {
             container.innerHTML = `
                 <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
@@ -268,7 +271,7 @@ function renderCourseCard(course) {
                         <a href="/instructor/courses/${course.slug}/students/" class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-semibold transition-colors">
                             Students
                         </a>
-                        <a href="/courses/${course.slug}/" target="_blank" class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-white text-sm rounded-lg font-semibold transition-colors">
+                        <a href="/instructor/courses/${course.slug}/preview/" class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-white text-sm rounded-lg font-semibold transition-colors">
                             Preview
                         </a>
                     </div>

@@ -250,15 +250,32 @@ async function createCourse(status) {
         const courseData = getFormData(status);
         console.log('Creating course with data:', courseData);
         
-        const response = await apiRequest('/api/courses/create/', {
+        const response = await apiRequest('/courses/create/', {
             method: 'POST',
             body: JSON.stringify(courseData)
         });
 
-        console.log('Course created:', response);
+        console.log('Course created - Full response:', response);
+        console.log('Response type:', typeof response);
+        console.log('Response keys:', Object.keys(response || {}));
+        console.log('Response slug:', response?.slug);
+        console.log('Response id:', response?.id);
+        
+        // Check if response is the actual data or wrapped
+        const courseData_response = response.data || response;
+        console.log('Course data:', courseData_response);
+        
+        if (!courseData_response.slug && !courseData_response.id) {
+            console.error('Full response object:', JSON.stringify(response, null, 2));
+            throw new Error('Course created but no slug or ID returned. Check console for details.');
+        }
+        
+        const courseIdentifier = courseData_response.slug || courseData_response.id;
+        console.log('Redirecting to:', `/instructor/courses/${courseIdentifier}/content/`);
+        
         showAlert(`Course ${status === 'published' ? 'created and published' : 'saved as draft'} successfully!`, 'success');
         setTimeout(() => {
-            window.location.href = `/instructor/courses/${response.slug}/content/`;
+            window.location.href = `/instructor/courses/${courseIdentifier}/content/`;
         }, 1500);
     } catch (error) {
         console.error('Error creating course:', error);

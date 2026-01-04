@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load students data
     async function loadStudents() {
         try {
-            const response = await apiRequest('/api/instructors/students/');
+            const response = await apiRequest('/instructors/students/');
             
             if (response) {
                 const students = response.students || [];

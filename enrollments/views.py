@@ -42,9 +42,26 @@ class EnrollmentListView(generics.ListAPIView):
     serializer_class = EnrollmentListSerializer
 
     def get_queryset(self):
-        return Enrollment.objects.filter(
+        queryset = Enrollment.objects.filter(
             user=self.request.user
         ).select_related('course', 'course__instructor').order_by('-enrolled_at')
+        
+        # Filter by course ID if provided
+        course_id = self.request.query_params.get('course')
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+        
+        # Filter by course slug if provided
+        course_slug = self.request.query_params.get('course_slug')
+        if course_slug:
+            queryset = queryset.filter(course__slug=course_slug)
+        
+        # Filter by status if provided
+        status = self.request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        return queryset
 
 
 class EnrollmentDetailView(generics.RetrieveAPIView):

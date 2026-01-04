@@ -136,18 +136,25 @@ async function loadCourses(page = 1) {
         const response = await fetch(`/api/courses/?${params.toString()}`);
         const data = await response.json();
         
-        if (data.results && data.results.length > 0) {
-            container.innerHTML = data.results.map(course => `
+        console.log('API Response:', data);
+        console.log('Has results?', data.results);
+        console.log('Results length:', data.results ? data.results.length : 'no results array');
+        
+        // Handle both paginated {results: [...]} and unpaginated [...] responses
+        const courses = data.results || data;
+        
+        if (courses && courses.length > 0) {
+            container.innerHTML = courses.map(course => `
                 <a href="/courses/${course.slug || course.id}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
                     <div class="h-48 bg-gradient-to-br from-blue-500 to-purple-600 relative">
-                        ${course.price === 0 || course.price === '0.00' ? 
+                        ${course.price === 0 || course.price === '0.00' || course.is_free ? 
                             '<span class="absolute top-3 right-3 bg-green-600 text-white text-xs px-3 py-1 rounded-full font-semibold">FREE</span>' : 
                             `<span class="absolute top-3 right-3 bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">$${course.price}</span>`
                         }
                     </div>
                     <div class="p-4">
                         <div class="flex items-center space-x-2 mb-2">
-                            ${course.category ? `<span class="text-xs px-2 py-1 bg-purple-900/50 text-purple-300 rounded">${course.category}</span>` : ''}
+                            ${course.category_name ? `<span class="text-xs px-2 py-1 bg-purple-900/50 text-purple-300 rounded">${course.category_name}</span>` : ''}
                             ${course.level ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded capitalize">${course.level}</span>` : ''}
                         </div>
                         <h3 class="font-semibold mb-2 line-clamp-2">${course.title}</h3>
@@ -163,10 +170,10 @@ async function loadCourses(page = 1) {
                                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                                 </svg>
-                                <span>${course.rating || '0.0'} (${course.reviews_count || 0})</span>
+                                <span>${course.average_rating || '0.0'} (${course.reviews_count || 0})</span>
                             </div>
                         </div>
-                        ${course.enrollment_count ? `<p class="text-xs text-gray-500 mt-2">${course.enrollment_count} students enrolled</p>` : ''}
+                        ${course.enrollments_count ? `<p class="text-xs text-gray-500 mt-2">${course.enrollments_count} students enrolled</p>` : ''}
                     </div>
                 </a>
             `).join('');
