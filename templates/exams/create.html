@@ -151,14 +151,68 @@
     <div class="bg-dark-surface rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div class="p-6 border-b border-dark-border flex items-center justify-between">
             <h3 class="text-2xl font-bold">Question Bank</h3>
-            <button onclick="closeQuestionBank()" class="text-gray-400 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
+            <div class="flex items-center space-x-3">
+                <button id="show-create-question-btn" onclick="toggleCreateQuestionForm()" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm">Create Question</button>
+                <button onclick="closeQuestionBank()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         
         <div class="p-6 overflow-y-auto flex-1">
+            <div id="question-create-form" class="hidden mb-4 p-4 bg-dark-bg border border-dark-border rounded-lg">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="md:col-span-2">
+                        <label class="block text-sm mb-1">Question Text</label>
+                        <input id="new-question-text" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded" />
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1">Type</label>
+                        <select id="new-question-type" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded">
+                            <option value="mcq">MCQ</option>
+                            <option value="tf">True/False</option>
+                            <option value="short">Short Answer</option>
+                            <option value="essay">Essay</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1">Marks</label>
+                        <input id="new-question-marks" type="number" value="1" min="0" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded" />
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1">Difficulty</label>
+                        <select id="new-question-difficulty" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded">
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
+                    <div id="mcq-options-container" class="md:col-span-2">
+                        <label class="block text-sm mb-1">Options (for MCQ)</label>
+                        <div id="mcq-options-list" class="space-y-2">
+                            <div class="flex items-center space-x-2">
+                                <input class="mcq-option-text flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded" placeholder="Option text" />
+                                <label class="text-sm"><input type="radio" name="mcq-correct" value="0" checked /> Correct</label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input class="mcq-option-text flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded" placeholder="Option text" />
+                                <label class="text-sm"><input type="radio" name="mcq-correct" value="1" /> Correct</label>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <button type="button" onclick="addMcqOption()" class="px-3 py-1 bg-gray-700 text-white rounded text-sm">Add option</button>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 flex items-center space-x-3">
+                        <button id="submit-create-question" type="button" onclick="submitCreateQuestion()" class="px-4 py-2 bg-blue-600 text-white rounded">Create</button>
+                        <button type="button" onclick="toggleCreateQuestionForm(true)" class="px-4 py-2 bg-gray-700 text-white rounded">Cancel</button>
+                        <div id="create-question-status" class="text-sm text-gray-400"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="question-bank-list" class="space-y-3">
                 <div class="text-center py-8 text-gray-400">
                     Loading questions...
@@ -181,6 +235,7 @@
 const API_BASE = '/api';
 let selectedQuestions = [];
 let selectedQuestionIds = new Set();
+let questionMap = {};
 
 async function apiRequest(endpoint, options = {}) {
     const token = localStorage.getItem('access_token');
@@ -204,77 +259,316 @@ async function apiRequest(endpoint, options = {}) {
 
 async function loadCourses() {
     try {
-        const courses = await apiRequest('/courses/instructor/courses/');
+        const payload = await apiRequest('/courses/instructor/courses/');
         const select = document.getElementById('course-select');
-        
+
+        let courses = [];
+        if (Array.isArray(payload)) {
+            courses = payload;
+        } else if (payload && Array.isArray(payload.results)) {
+            // DRF pagination
+            courses = payload.results;
+        } else {
+            console.warn('Unexpected courses payload:', payload);
+            throw new Error('Unexpected response from server');
+        }
+        console.debug('loadCourses payload', payload);
+        // If no courses, show friendly message
+        if (!courses || courses.length === 0) {
+            const select = document.getElementById('course-select');
+            select.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No courses found. Create courses first or check your instructor account.';
+            select.appendChild(option);
+            return;
+        }
         courses.forEach(course => {
             const option = document.createElement('option');
             option.value = course.id;
             option.textContent = course.title;
             select.appendChild(option);
         });
+        // If instructor endpoint returned empty, try fallback
+        if (courses.length === 0) {
+            // Try the public courses list filtered by instructor=me
+            try {
+                const fallback = await apiRequest('/courses/?instructor=me');
+                let fbCourses = Array.isArray(fallback) ? fallback : (fallback && Array.isArray(fallback.results) ? fallback.results : []);
+                if (fbCourses.length > 0) {
+                    fbCourses.forEach(course => {
+                        const option = document.createElement('option');
+                        option.value = course.id;
+                        option.textContent = course.title;
+                        select.appendChild(option);
+                    });
+                } else {
+                    // No courses at all
+                    select.innerHTML = '';
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'No courses found. Create a course first.';
+                    select.appendChild(opt);
+                    // Add a create course link
+                    let createLink = document.getElementById('create-course-link');
+                    if (!createLink) {
+                        createLink = document.createElement('a');
+                        createLink.id = 'create-course-link';
+                        createLink.href = '/instructor/courses/create/';
+                        createLink.className = 'mt-2 inline-block text-sm text-blue-400 hover:underline';
+                        createLink.textContent = 'Create a course';
+                        select.parentNode.appendChild(createLink);
+                    }
+                }
+            } catch (e) {
+                console.warn('Fallback courses request failed', e);
+            }
+        }
     } catch (error) {
         console.error('Error loading courses:', error);
-        alert('Failed to load courses');
+        const select = document.getElementById('course-select');
+        // Show a friendly option with the error message and a retry
+        let msg = 'Failed to load courses';
+        if (error && error.body) {
+            msg = (error.body.detail || error.body.error || error.body.message) || msg;
+        } else if (error && error.message) {
+            msg = error.message;
+        }
+        select.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = msg;
+        select.appendChild(opt);
+
+        // Add a retry button if not present
+        let retry = document.getElementById('courses-retry-btn');
+        if (!retry) {
+            retry = document.createElement('button');
+            retry.id = 'courses-retry-btn';
+            retry.type = 'button';
+            retry.className = 'mt-2 px-3 py-1 bg-blue-600 text-white rounded-lg text-sm';
+            retry.textContent = 'Retry';
+            retry.addEventListener('click', loadCourses);
+            select.parentNode.appendChild(retry);
+        }
+        // Also show a toast/alert
+        try { showToast(msg, 'error'); } catch(e) { alert(msg); }
     }
 }
 
 async function showQuestionBank() {
     const courseId = document.getElementById('course-select').value;
-    
+
     if (!courseId) {
-        alert('Please select a course first');
+        showToast('Please select a course first', 'warning');
         return;
     }
-    
-    document.getElementById('question-bank-modal').classList.remove('hidden');
-    
+
+    const modal = document.getElementById('question-bank-modal');
+    modal.classList.remove('hidden');
+
+    const container = document.getElementById('question-bank-list');
+    container.innerHTML = '<div class="text-center py-8 text-gray-400">Loading questions...</div>';
+
     try {
-        const questions = await apiRequest(`/exams/questions/?course_id=${courseId}`);
-        const container = document.getElementById('question-bank-list');
-        
-        if (questions.length === 0) {
+        const payload = await apiRequest(`/exams/questions/?course_id=${courseId}`);
+        let questions = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.results) ? payload.results : []);
+
+        questionMap = {}; // reset
+        container.innerHTML = '';
+
+        if (!questions || questions.length === 0) {
             container.innerHTML = '<p class="text-center py-8 text-gray-400">No questions found for this course. Create questions first in the admin panel.</p>';
             return;
         }
-        
-        container.innerHTML = questions.map(q => `
-            <label class="flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all">
-                <input type="checkbox" 
-                    value="${q.id}" 
-                    ${selectedQuestionIds.has(q.id) ? 'checked' : ''}
-                    onchange="toggleQuestion(${q.id}, this.checked, ${JSON.stringify(q).replace(/"/g, '&quot;')})"
-                    class="mt-1 w-5 h-5 rounded text-blue-600 focus:ring-2 focus:ring-blue-500">
-                <div class="ml-3 flex-1">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="font-semibold">${q.question_text}</span>
-                        <span class="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">${q.marks} marks</span>
-                    </div>
-                    <div class="flex items-center space-x-3 text-xs text-gray-400">
-                        <span class="px-2 py-1 bg-gray-700 rounded">${q.question_type}</span>
-                        <span class="px-2 py-1 bg-gray-700 rounded">${q.difficulty}</span>
-                    </div>
-                </div>
-            </label>
-        `).join('');
-        
+
+        // Build DOM nodes for each question
+        questions.forEach(q => {
+            questionMap[q.id] = q;
+
+            const label = document.createElement('label');
+            label.className = 'flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = q.id;
+            input.checked = selectedQuestionIds.has(q.id);
+            input.className = 'mt-1 w-5 h-5 rounded text-blue-600 focus:ring-2 focus:ring-blue-500';
+            input.addEventListener('change', function() {
+                toggleQuestion(q.id, this.checked);
+            });
+
+            const div = document.createElement('div');
+            div.className = 'ml-3 flex-1';
+
+            const header = document.createElement('div');
+            header.className = 'flex items-center justify-between mb-2';
+
+            const qtext = document.createElement('span');
+            qtext.className = 'font-semibold';
+            qtext.textContent = q.question_text;
+
+            const marks = document.createElement('span');
+            marks.className = 'px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded';
+            marks.textContent = `${q.marks} marks`;
+
+            header.appendChild(qtext);
+            header.appendChild(marks);
+
+            const meta = document.createElement('div');
+            meta.className = 'flex items-center space-x-3 text-xs text-gray-400';
+
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'px-2 py-1 bg-gray-700 rounded';
+            typeSpan.textContent = q.question_type || '';
+
+            const diffSpan = document.createElement('span');
+            diffSpan.className = 'px-2 py-1 bg-gray-700 rounded';
+            diffSpan.textContent = q.difficulty || '';
+
+            meta.appendChild(typeSpan);
+            meta.appendChild(diffSpan);
+
+            div.appendChild(header);
+            div.appendChild(meta);
+
+            label.appendChild(input);
+            label.appendChild(div);
+
+            container.appendChild(label);
+        });
+
     } catch (error) {
         console.error('Error loading questions:', error);
-        document.getElementById('question-bank-list').innerHTML = '<p class="text-center py-8 text-red-500">Failed to load questions</p>';
+        container.innerHTML = '<p class="text-center py-8 text-red-500">Failed to load questions</p>';
     }
 }
 
-function toggleQuestion(id, checked, question) {
+function toggleCreateQuestionForm(hideOnly = false) {
+    const form = document.getElementById('question-create-form');
+    if (hideOnly) {
+        form.classList.add('hidden');
+        return;
+    }
+    form.classList.toggle('hidden');
+}
+
+function addMcqOption() {
+    const list = document.getElementById('mcq-options-list');
+    const idx = list.querySelectorAll('.mcq-option-text').length;
+    const row = document.createElement('div');
+    row.className = 'flex items-center space-x-2';
+    const input = document.createElement('input');
+    input.className = 'mcq-option-text flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded';
+    input.placeholder = 'Option text';
+    const label = document.createElement('label');
+    label.className = 'text-sm';
+    label.innerHTML = `<input type="radio" name="mcq-correct" value="${idx}" /> Correct`;
+    row.appendChild(input);
+    row.appendChild(label);
+    list.appendChild(row);
+}
+
+async function submitCreateQuestion() {
+    const courseId = document.getElementById('course-select').value;
+    if (!courseId) {
+        showToast('Select a course before creating a question', 'warning');
+        return;
+    }
+
+    const text = document.getElementById('new-question-text').value.trim();
+    const type = document.getElementById('new-question-type').value;
+    const marks = parseFloat(document.getElementById('new-question-marks').value) || 1;
+    const difficulty = document.getElementById('new-question-difficulty').value;
+
+    if (!text) {
+        showToast('Question text cannot be empty', 'warning');
+        return;
+    }
+
+    const payload = {
+        course: parseInt(courseId, 10),
+        question_text: text,
+        question_type: type,
+        marks: marks,
+        difficulty: difficulty
+    };
+
+    if (type === 'mcq') {
+        const optionElems = Array.from(document.querySelectorAll('.mcq-option-text'));
+        const options = optionElems.map(el => el.value.trim()).filter(v => v);
+        if (options.length < 2) {
+            showToast('MCQ must have at least 2 options', 'warning');
+            statusEl.textContent = '';
+            return;
+        }
+        const radios = document.getElementsByName('mcq-correct');
+        let correctIndex = 0;
+        for (let r of radios) if (r.checked) { correctIndex = parseInt(r.value, 10); break; }
+        payload.options = options.map((text, idx) => ({ text, is_correct: idx === correctIndex }));
+    }
+
+    const statusEl = document.getElementById('create-question-status');
+    statusEl.textContent = 'Creating...';
+
+    try {
+        console.debug('Creating question payload', payload);
+        const created = await apiRequest('/exams/questions/', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        // Add to questionMap and select it
+        questionMap[created.id] = created;
+        selectedQuestionIds.add(created.id);
+        selectedQuestions.push(created);
+
+        // Re-render selected list and prepend the new question to bank
+        renderSelectedQuestions();
+        const container = document.getElementById('question-bank-list');
+        const label = document.createElement('label');
+        label.className = 'flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all';
+        const input = document.createElement('input');
+        input.type = 'checkbox'; input.value = created.id; input.checked = true;
+        input.className = 'mt-1 w-5 h-5 rounded text-blue-600 focus:ring-2 focus:ring-blue-500';
+        input.addEventListener('change', function() { toggleQuestion(created.id, this.checked); });
+        const div = document.createElement('div'); div.className = 'ml-3 flex-1';
+        div.innerHTML = `<div class="flex items-center justify-between mb-2"><span class="font-semibold">${escapeHtml(created.question_text)}</span><span class="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">${created.marks} marks</span></div>`;
+        label.appendChild(input); label.appendChild(div);
+        container.prepend(label);
+
+        showToast('Question created', 'success');
+        toggleCreateQuestionForm(true);
+        statusEl.textContent = '';
+    } catch (err) {
+        console.error('Create question failed', err);
+        statusEl.textContent = 'Failed to create';
+        // Show detailed server error if available
+        const serverMsg = (err && err.body && (err.body.detail || err.body.error || err.body.message)) || err.message || 'Failed to create question';
+        showToast(serverMsg, 'error');
+        // If server returned validation errors, log them for debugging
+        if (err && err.body) console.debug('Server error body:', err.body);
+    }
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, function (s) {
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s];
+    });
+}
+
+function toggleQuestion(id, checked) {
     if (checked) {
         selectedQuestionIds.add(id);
         if (!selectedQuestions.find(q => q.id === id)) {
-            selectedQuestions.push(question);
+            const q = questionMap[id];
+            if (q) selectedQuestions.push(q);
         }
     } else {
         selectedQuestionIds.delete(id);
         selectedQuestions = selectedQuestions.filter(q => q.id !== id);
     }
-    
+
     document.getElementById('selected-count').textContent = selectedQuestionIds.size;
 }
 

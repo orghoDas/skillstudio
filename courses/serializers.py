@@ -160,8 +160,8 @@ class CurriculumModuleSerializer(serializers.ModelSerializer):
 # ===== COURSE SERIALIZERS =====
 
 class CourseListSerializer(serializers.ModelSerializer):
-    instructor_name = serializers.CharField(source='instructor.profile.full_name', read_only=True)
-    instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
+    instructor_name = serializers.SerializerMethodField()
+    instructor_email = serializers.SerializerMethodField()
     category_name = serializers.CharField(source='category.name', read_only=True)
     enrollments_count = serializers.SerializerMethodField()
     module_count = serializers.SerializerMethodField()
@@ -197,10 +197,22 @@ class CourseListSerializer(serializers.ModelSerializer):
         from social.models import Review
         return Review.objects.filter(course=obj).count()
 
+    def get_instructor_name(self, obj):
+        try:
+            return obj.instructor.profile.full_name or ''
+        except Exception:
+            return obj.instructor.email if hasattr(obj.instructor, 'email') else ''
+
+    def get_instructor_email(self, obj):
+        try:
+            return obj.instructor.email or ''
+        except Exception:
+            return ''
+
 
 class CourseDetailSerializer(serializers.ModelSerializer):
-    instructor_name = serializers.CharField(source='instructor.profile.full_name', read_only=True)
-    instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
+    instructor_name = serializers.SerializerMethodField()
+    instructor_email = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     tags = TagSerializer(many=True, read_only=True)
@@ -252,6 +264,18 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         # Return empty list for now since field doesn't exist in model
         # This can be populated when the field is added to the Course model
         return []
+
+    def get_instructor_name(self, obj):
+        try:
+            return obj.instructor.profile.full_name or ''
+        except Exception:
+            return obj.instructor.email if hasattr(obj.instructor, 'email') else ''
+
+    def get_instructor_email(self, obj):
+        try:
+            return obj.instructor.email or ''
+        except Exception:
+            return ''
 
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):

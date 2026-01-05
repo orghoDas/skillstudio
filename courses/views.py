@@ -236,9 +236,28 @@ class InstructorCoursesView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsInstructor]
     
     def get_queryset(self):
-        return Course.objects.filter(instructor=self.request.user).select_related(
-            'category', 'instructor__profile'
-        ).order_by('-created_at')
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            logger.debug("InstructorCoursesView.get_queryset called", extra={
+                'user': getattr(self.request, 'user', None),
+                'is_authenticated': getattr(self.request.user, 'is_authenticated', False)
+            })
+            return Course.objects.filter(instructor=self.request.user).select_related(
+                'category', 'instructor__profile'
+            ).order_by('-created_at')
+        except Exception as e:
+            logger.exception("Error building instructor courses queryset")
+            raise
+
+    def list(self, request, *args, **kwargs):
+        from rest_framework import status as _status
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception:
+            logger = logging.getLogger(__name__)
+            logger.exception("Failed to list instructor courses")
+            return Response({'error': 'Failed to load instructor courses'}, status=_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ===== MODULE VIEWS =====
