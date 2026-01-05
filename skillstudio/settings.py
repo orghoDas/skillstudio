@@ -70,7 +70,6 @@ INSTALLED_APPS = [
     'enrollments',
     "exams",
     # "events",  # Removed
-    "ai_recommender",
     "social",
     "payments",
     'live',
