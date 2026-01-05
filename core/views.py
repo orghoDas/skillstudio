@@ -164,7 +164,8 @@ def browse_courses(request):
 
 def ai_recommendations(request):
     """AI-powered course recommendations"""
-    return render(request, 'ai_recommender/recommendations.html')
+    # AI recommender removed — redirect users to course browsing instead
+    return render(request, 'search/browse.html')
 
 def course_resources(request, course_id):
     """Student course resources view"""

@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Apps to reset migrations for
 APPS = [
-    'accounts', 'ai_recommender', 'assessments',
+    'accounts', 'assessments',
     'certificates', 'core', 'courses', 'enrollments', 'events', 'exams',
     'instructors', 'live', 'payments', 'social', 'students'
 ]
