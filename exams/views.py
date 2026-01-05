@@ -121,10 +121,7 @@ def start_exam(request, exam_id):
         attempt = start_exam_attempt(exam, request.user)
         serializer = ExamAttemptSerializer(attempt)
         
-        return Response({
-            'attempt': serializer.data,
-            'message': 'Exam attempt started successfully'
-        }, status=status.HTTP_201_CREATED)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
         
     except ValueError as e:
         return Response({
@@ -137,7 +134,8 @@ def start_exam(request, exam_id):
 def submit_exam(request, exam_id):
     """Submit exam answers."""
     serializer = SubmitExamSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     attempt_id = serializer.validated_data['attempt_id']
     answers = serializer.validated_data['answers']

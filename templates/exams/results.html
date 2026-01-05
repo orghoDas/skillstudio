@@ -143,23 +143,50 @@ async function loadResults() {
     const resultsContainer = document.getElementById('results-container');
     
     try {
+        console.log('Loading results for exam:', examId, 'attempt:', attemptId);
+        
         // Load exam details
         exam = await apiRequest(`/exams/${examId}/`);
+        console.log('Loaded exam:', exam);
         
         // Load attempt result
         if (attemptId) {
-            currentAttempt = await apiRequest(`/exams/attempt/${attemptId}/result/`);
+            try {
+                // Try to get detailed result first
+                const resultData = await apiRequest(`/exams/attempt/${attemptId}/result/`);
+                console.log('Loaded result:', resultData);
+                
+                // ExamResult has attempt nested inside
+                if (resultData.attempt) {
+                    currentAttempt = resultData.attempt;
+                } else {
+                    currentAttempt = resultData;
+                }
+            } catch (e) {
+                // Fallback: get attempt data directly from attempts endpoint
+                console.warn('Could not load result, trying attempts endpoint:', e);
+                const response = await apiRequest(`/exams/${examId}/attempts/`);
+                const attempts = Array.isArray(response) ? response : (response.attempts || []);
+                currentAttempt = attempts.find(a => a.id == attemptId) || attempts[0];
+                console.log('Loaded attempt from history:', currentAttempt);
+            }
         } else {
             // Get latest attempt
-            const attempts = await apiRequest(`/exams/${examId}/attempts/`);
+            const response = await apiRequest(`/exams/${examId}/attempts/`);
+            const attempts = Array.isArray(response) ? response : (response.attempts || []);
             if (attempts.length > 0) {
                 currentAttempt = attempts[0];
+                console.log('Loaded latest attempt:', currentAttempt);
             }
         }
         
         if (!currentAttempt) {
             throw new Error('No attempt found');
         }
+        
+        console.log('Final attempt data:', currentAttempt);
+        console.log('Score:', currentAttempt.score);
+        console.log('Percentage:', currentAttempt.percentage);
         
         loadingState.classList.add('hidden');
         resultsContainer.classList.remove('hidden');
@@ -179,16 +206,27 @@ async function loadResults() {
 }
 
 function displayResults() {
-    const passed = currentAttempt.score >= exam.passing_marks;
-    const percentage = (currentAttempt.score / exam.total_marks) * 100;
+    // Ensure we have valid data
+    if (!currentAttempt || !exam) {
+        console.error('Missing attempt or exam data', { currentAttempt, exam });
+        return;
+    }
+    
+    const score = parseFloat(currentAttempt.score) || 0;
+    const totalMarks = parseFloat(exam.total_marks) || 100;
+    const passingMarks = parseFloat(exam.passing_marks) || 50;
+    const passed = score >= passingMarks;
+    const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
+    
+    console.log('Displaying results:', { score, totalMarks, passingMarks, passed, percentage });
     
     // Set exam info
-    document.getElementById('exam-title').textContent = exam.title;
+    document.getElementById('exam-title').textContent = exam.title || 'Exam';
     document.getElementById('exam-course').textContent = exam.course_name || 'Course';
     
     // Set score
-    document.getElementById('score-display').textContent = `${currentAttempt.score}/${exam.total_marks}`;
-    document.getElementById('percentage-display').textContent = `${percentage.toFixed(1)}%`;
+    document.getElementById('score-display').textContent = `${score}/${totalMarks}`;
+    document.getElementById('percentage-display').textContent = isNaN(percentage) ? '0%' : `${percentage.toFixed(1)}%`;
     
     // Set status badge and icon
     const statusBadge = document.getElementById('status-badge');
@@ -214,16 +252,35 @@ function displayResults() {
         `;
     }
     
-    // Set stats
-    document.getElementById('total-questions').textContent = currentAttempt.total_questions || exam.question_count || 0;
-    document.getElementById('correct-answers').textContent = currentAttempt.correct_answers || 0;
-    document.getElementById('wrong-answers').textContent = currentAttempt.wrong_answers || 0;
+    // Set stats from result if available, otherwise from attempt
+    if (currentAttempt.result) {
+        const result = currentAttempt.result;
+        const totalQs = (result.correct_count || 0) + (result.incorrect_count || 0) + (result.unanswered_count || 0);
+        document.getElementById('total-questions').textContent = totalQs;
+        document.getElementById('correct-answers').textContent = result.correct_count || 0;
+        document.getElementById('wrong-answers').textContent = (result.incorrect_count || 0) + (result.unanswered_count || 0);
+        console.log('Using result data:', { totalQs, correct: result.correct_count, wrong: result.incorrect_count, unanswered: result.unanswered_count });
+    } else {
+        // Fallback: calculate from answers only if result is not available
+        const answers = currentAttempt.answers || {};
+        const totalQuestions = Object.keys(answers).length;
+        const answeredQuestions = Object.values(answers).filter(a => a !== null && a !== '').length;
+        const unansweredQuestions = totalQuestions - answeredQuestions;
+        
+        document.getElementById('total-questions').textContent = totalQuestions;
+        document.getElementById('correct-answers').textContent = answeredQuestions;
+        document.getElementById('wrong-answers').textContent = unansweredQuestions;
+        console.log('Using fallback data:', { totalQuestions, answeredQuestions, unansweredQuestions });
+    }
     
-    const timeTaken = currentAttempt.time_taken || 0;
-    document.getElementById('time-taken').textContent = `${Math.floor(timeTaken / 60)}m`;
+    // Calculate and display time taken
+    const timeSeconds = currentAttempt.time_spent_seconds || 0;
+    const minutes = Math.floor(timeSeconds / 60);
+    const seconds = timeSeconds % 60;
+    document.getElementById('time-taken').textContent = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
     
-    // Show retake button if allowed
-    if (currentAttempt.attempt_number < exam.max_attempts) {
+    // Show retake button if allowed (check max_attempts)
+    if (exam.max_attempts && currentAttempt.attempt_number < exam.max_attempts) {
         document.getElementById('retake-btn').classList.remove('hidden');
     }
     
@@ -235,7 +292,9 @@ function displayResults() {
 
 async function loadAttemptHistory() {
     try {
-        const attempts = await apiRequest(`/exams/${examId}/attempts/`);
+        const response = await apiRequest(`/exams/${examId}/attempts/`);
+        // Handle both array and object response formats
+        const attempts = Array.isArray(response) ? response : (response.attempts || []);
         const container = document.getElementById('attempts-list');
         
         if (attempts.length === 0) {
@@ -248,15 +307,22 @@ async function loadAttemptHistory() {
             const percentage = (attempt.score / exam.total_marks) * 100;
             const isCurrent = attempt.id == attemptId || (index === 0 && !attemptId);
             
+            // Use started_at field (not submitted_at) and format the date
+            const attemptDate = attempt.started_at || attempt.completed_at;
+            const formattedDate = attemptDate ? new Date(attemptDate).toLocaleString() : 'Unknown date';
+            
+            // Calculate attempt number based on index (since model doesn't have attempt_number field)
+            const attemptNumber = index + 1;
+            
             return `
                 <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${isCurrent ? 'border-2 border-blue-500' : ''}">
                     <div class="flex items-center space-x-4">
                         <div class="w-10 h-10 rounded-full ${passed ? 'bg-green-900/30' : 'bg-red-900/30'} flex items-center justify-center">
-                            <span class="font-semibold ${passed ? 'text-green-400' : 'text-red-400'}">#${attempt.attempt_number}</span>
+                            <span class="font-semibold ${passed ? 'text-green-400' : 'text-red-400'}">#${attemptNumber}</span>
                         </div>
                         <div>
                             <div class="font-semibold">${attempt.score}/${exam.total_marks} (${percentage.toFixed(1)}%)</div>
-                            <div class="text-sm text-gray-400">${new Date(attempt.submitted_at).toLocaleString()}</div>
+                            <div class="text-sm text-gray-400">${formattedDate}</div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-3">

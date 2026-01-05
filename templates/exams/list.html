@@ -239,6 +239,10 @@ async function startExam(examId) {
     
     try {
         const attempt = await apiRequest(`/exams/${examId}/start/`, { method: 'POST' });
+        // Attempt response contains id directly
+        if (!attempt.id) {
+            throw new Error('Invalid attempt response from server');
+        }
         window.location.href = `/exams/take/${examId}/?attempt=${attempt.id}`;
     } catch (error) {
         alert(error.message || 'Failed to start exam');

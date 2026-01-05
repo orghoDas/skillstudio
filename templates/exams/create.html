@@ -634,13 +634,13 @@ async function submitForm(status = 'published') {
     const totalMarks = parseFloat(document.getElementById('total-marks').value);
     const passingMarks = parseFloat(document.getElementById('passing-marks').value);
     const maxAttempts = parseInt(document.getElementById('max-attempts').value);
-    const startDatetime = document.getElementById('start-datetime').value;
-    const endDatetime = document.getElementById('end-datetime').value;
+    const startDatetimeLocal = document.getElementById('start-datetime').value;
+    const endDatetimeLocal = document.getElementById('end-datetime').value;
     const randomizeQuestions = document.getElementById('randomize-questions').checked;
     const showResults = document.getElementById('show-results').checked;
     const showAnswers = document.getElementById('show-answers').checked;
     
-    if (!courseId || !title || !startDatetime || !endDatetime) {
+    if (!courseId || !title || !startDatetimeLocal || !endDatetimeLocal) {
         alert('Please fill in all required fields');
         return;
     }
@@ -654,6 +654,16 @@ async function submitForm(status = 'published') {
         alert('Passing marks cannot be greater than total marks');
         return;
     }
+    
+    // Convert local datetime to ISO format with timezone (UTC)
+    // The datetime-local input gives us YYYY-MM-DDTHH:MM
+    // We need to convert it to a proper ISO 8601 UTC string
+    const startDate = new Date(startDatetimeLocal);
+    const endDate = new Date(endDatetimeLocal);
+    
+    // Convert to ISO string (this automatically uses UTC)
+    const startDatetime = startDate.toISOString();
+    const endDatetime = endDate.toISOString();
     
     const examData = {
         course: courseId,
@@ -700,14 +710,24 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Set default start time to now
+    // Set default start time to now (in local timezone)
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    document.getElementById('start-datetime').value = now.toISOString().slice(0, 16);
+    // datetime-local input expects YYYY-MM-DDTHH:MM format in local time
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('start-datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
     
     // Set default end time to 7 days from now
     const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    document.getElementById('end-datetime').value = endDate.toISOString().slice(0, 16);
+    const endYear = endDate.getFullYear();
+    const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
+    const endDay = String(endDate.getDate()).padStart(2, '0');
+    const endHours = String(endDate.getHours()).padStart(2, '0');
+    const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+    document.getElementById('end-datetime').value = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
     
     loadCourses();
 });

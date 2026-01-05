@@ -184,12 +184,19 @@ class ExamAttempt(models.Model):
         
         # Auto-grade MCQ and True/False questions
         for question in self.exam.questions.filter(question_type__in=['mcq', 'tf']):
-            answer = self.answers.get(str(question.id))
-            if answer:
-                # Check if answer is correct
-                correct_options = [opt for opt in question.options if opt.get('is_correct')]
-                if correct_options and str(answer) == str(correct_options[0].get('text')):
-                    total_score += question.marks
+            q_id = str(question.id)
+            answer = self.answers.get(q_id)
+            
+            # Answer is the index of the selected option (0-based)
+            if answer is not None and answer != '':
+                answer_idx = int(answer) if isinstance(answer, str) else answer
+                options = question.options or []
+                
+                # Check if the selected option is correct
+                if 0 <= answer_idx < len(options):
+                    selected_option = options[answer_idx]
+                    if selected_option.get('is_correct', False):
+                        total_score += question.marks
         
         self.score = total_score
         self.percentage = (total_score / total_possible * 100) if total_possible > 0 else Decimal('0')

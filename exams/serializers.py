@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 from accounts.serializers import UserBasicSerializer
 
@@ -22,7 +23,7 @@ class QuestionBankListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = QuestionBank
-        fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'tags']
+        fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'options', 'tags']
 
 
 class ExamSerializer(serializers.ModelSerializer):
@@ -42,6 +43,18 @@ class ExamSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
+    
+    def validate_start_datetime(self, value):
+        """Ensure start_datetime is timezone-aware (UTC)."""
+        if value and not timezone.is_aware(value):
+            return timezone.make_aware(value, timezone.utc)
+        return value
+    
+    def validate_end_datetime(self, value):
+        """Ensure end_datetime is timezone-aware (UTC)."""
+        if value and not timezone.is_aware(value):
+            return timezone.make_aware(value, timezone.utc)
+        return value
 
 
 class ExamListSerializer(serializers.ModelSerializer):
@@ -59,13 +72,14 @@ class ExamListSerializer(serializers.ModelSerializer):
 
 class ExamDetailSerializer(serializers.ModelSerializer):
     """Detailed exam serializer with questions (for students taking exam)."""
-    questions_data = QuestionBankListSerializer(source='questions', many=True, read_only=True)
+    questions = QuestionBankListSerializer(many=True, read_only=True)
+    course_name = serializers.CharField(source='course.title', read_only=True)
     
     class Meta:
         model = Exam
         fields = [
-            'id', 'title', 'description', 'total_marks', 'passing_marks',
-            'duration_minutes', 'randomize_questions', 'questions_data',
+            'id', 'title', 'description', 'course', 'course_name', 'total_marks', 'passing_marks',
+            'duration_minutes', 'randomize_questions', 'questions',
             'custom_questions', 'max_attempts'
         ]
 
@@ -93,13 +107,20 @@ class ExamAttemptSerializer(serializers.ModelSerializer):
 class ExamAttemptListSerializer(serializers.ModelSerializer):
     """Simplified serializer for listing attempts."""
     exam_title = serializers.CharField(source='exam.title', read_only=True)
+    result = serializers.SerializerMethodField()
     
     class Meta:
         model = ExamAttempt
         fields = [
             'id', 'exam', 'exam_title', 'started_at', 'completed_at',
-            'score', 'percentage', 'passed', 'status'
+            'score', 'percentage', 'passed', 'status', 'result'
         ]
+    
+    def get_result(self, obj):
+        """Get result data if it exists."""
+        if hasattr(obj, 'result'):
+            return ExamResultSerializer(obj.result).data
+        return None
 
 
 class ExamResultSerializer(serializers.ModelSerializer):

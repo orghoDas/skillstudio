@@ -117,7 +117,7 @@ def create_exam_result(attempt):
         q_id = str(question.id)
         answer = answers.get(q_id)
         
-        if not answer:
+        if answer is None or answer == '':
             unanswered_count += 1
             question_results[q_id] = {
                 'correct': False,
@@ -131,17 +131,25 @@ def create_exam_result(attempt):
         marks_earned = 0
         
         if question.question_type in ['mcq', 'tf']:
-            correct_options = [opt for opt in question.options if opt.get('is_correct')]
-            if correct_options:
-                correct_answer = correct_options[0].get('text')
-                is_correct = str(answer).strip().lower() == str(correct_answer).strip().lower()
+            try:
+                answer_idx = int(answer) if isinstance(answer, str) else answer
+                options = question.options or []
                 
-                if is_correct:
-                    marks_earned = float(question.marks)
-                    correct_count += 1
-                    difficulty_correct[question.difficulty] += 1
+                # Check if the selected option is correct
+                if 0 <= answer_idx < len(options):
+                    selected_option = options[answer_idx]
+                    is_correct = selected_option.get('is_correct', False)
+                    
+                    if is_correct:
+                        marks_earned = float(question.marks)
+                        correct_count += 1
+                        difficulty_correct[question.difficulty] += 1
+                    else:
+                        incorrect_count += 1
                 else:
                     incorrect_count += 1
+            except (ValueError, TypeError):
+                incorrect_count += 1
         
         question_results[q_id] = {
             'correct': is_correct,
@@ -183,12 +191,20 @@ def calculate_exam_score(attempt):
         q_id = str(question.id)
         answer = attempt.answers.get(q_id)
         
-        if answer:
-            correct_options = [opt for opt in question.options if opt.get('is_correct')]
-            if correct_options:
-                correct_answer = correct_options[0].get('text')
-                if str(answer).strip().lower() == str(correct_answer).strip().lower():
-                    total_score += question.marks
+        # Answer is the index of the selected option (0-based)
+        if answer is not None and answer != '':
+            try:
+                answer_idx = int(answer) if isinstance(answer, str) else answer
+                options = question.options or []
+                
+                # Check if the selected option is correct
+                if 0 <= answer_idx < len(options):
+                    selected_option = options[answer_idx]
+                    if selected_option.get('is_correct', False):
+                        total_score += question.marks
+            except (ValueError, TypeError):
+                # Invalid answer format, skip
+                continue
     
     return total_score
 

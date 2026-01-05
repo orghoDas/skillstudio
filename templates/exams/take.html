@@ -95,7 +95,10 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(error.detail || error.message || 'Request failed');
+        console.error('API Error:', endpoint, error);
+        // Check if error is a validation error object
+        const errorMessage = error.detail || error.message || JSON.stringify(error) || 'Request failed';
+        throw new Error(errorMessage);
     }
 
     return response.json();
@@ -267,24 +270,29 @@ async function submitExam(autoSubmit = false) {
     try {
         clearInterval(timerInterval);
         
-        // Format answers for submission
-        const formattedAnswers = questions.map(question => ({
-            question_id: question.id,
-            selected_option: answers[question.id] !== undefined ? answers[question.id] : null
-        }));
+        // Format answers as a dictionary {question_id: selected_option_index}
+        const formattedAnswers = {};
+        questions.forEach(question => {
+            formattedAnswers[question.id] = answers[question.id] !== undefined ? answers[question.id] : null;
+        });
+        
+        const requestBody = {
+            attempt_id: attemptId,
+            answers: formattedAnswers
+        };
+        
+        console.log('Submitting exam with body:', requestBody);
         
         const result = await apiRequest(`/exams/${examId}/submit/`, {
             method: 'POST',
-            body: JSON.stringify({
-                attempt_id: attemptId,
-                answers: formattedAnswers
-            })
+            body: JSON.stringify(requestBody)
         });
         
         // Redirect to results
         window.location.href = `/exams/results/${examId}/?attempt=${attemptId}`;
         
     } catch (error) {
+        console.error('Submit exam error:', error);
         alert(error.message || 'Failed to submit exam. Please try again.');
         // Restart timer if submission failed
         if (!autoSubmit) {
@@ -321,11 +329,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     getUrlParams();
     
-    if (!examId || !attemptId) {
+    // Validate attemptId is a valid number
+    if (!examId || !attemptId || attemptId === 'undefined' || isNaN(attemptId)) {
         alert('Invalid exam or attempt ID');
         window.location.href = '/exams/';
         return;
     }
+    
+    // Convert attemptId to number
+    attemptId = parseInt(attemptId);
     
     loadExam();
 });
