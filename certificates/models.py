@@ -105,3 +105,22 @@ class Certificate(models.Model):
         self.last_downloaded_at = timezone.now()
         self.save(update_fields=['download_count', 'last_downloaded_at'])
 
+    # PostgreSQL equivalent for certificates:
+    # CREATE TABLE IF NOT EXISTS certificates_certificate (
+    #     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    #     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+    #     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+    #     enrollment_id integer UNIQUE NULL REFERENCES enrollments_enrollment(id) ON DELETE CASCADE,
+    #     certificate_id uuid NOT NULL UNIQUE,
+    #     verification_code varchar(100) NOT NULL UNIQUE,
+    #     pdf varchar(2000) NULL,
+    #     grade numeric(5,2) NULL,
+    #     completion_date timestamptz NULL,
+    #     issued_at timestamptz NOT NULL DEFAULT now(),
+    #     download_count integer NOT NULL DEFAULT 0,
+    #     last_downloaded_at timestamptz NULL,
+    #     CONSTRAINT unique_certificate_per_user_course UNIQUE (user_id, course_id)
+    # );
+    # CREATE INDEX IF NOT EXISTS idx_certificates_user_course ON certificates_certificate (user_id, course_id);
+    # CREATE INDEX IF NOT EXISTS idx_certificates_verification_code ON certificates_certificate (verification_code);
+

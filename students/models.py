@@ -91,6 +91,25 @@ class StudentProfile(models.Model):
             'total_watch_time',
         ])
 
+# PostgreSQL equivalent for student profiles (`student_profiles`):
+# CREATE TABLE IF NOT EXISTS student_profiles (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     preferred_learning_style varchar(20),
+#     learning_goals text NOT NULL DEFAULT '',
+#     interests jsonb NOT NULL DEFAULT '[]',
+#     weekly_study_hours integer NOT NULL DEFAULT 0,
+#     preferred_study_time varchar(20),
+#     total_courses_enrolled integer NOT NULL DEFAULT 0,
+#     total_courses_completed integer NOT NULL DEFAULT 0,
+#     total_certificates_earned integer NOT NULL DEFAULT 0,
+#     total_watch_time integer NOT NULL DEFAULT 0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_student_profiles_user ON student_profiles (user_id);
+# CREATE INDEX IF NOT EXISTS idx_student_profiles_created ON student_profiles (created_at DESC);
+
 
 class StudentNote(models.Model):
     """Notes taken by students during lessons."""
@@ -172,6 +191,36 @@ class StudentBookmark(models.Model):
         return f"Bookmark: {self.user.email} -> {self.course.title}"
 
 
+# PostgreSQL equivalent for student notes (`student_notes`):
+# CREATE TABLE IF NOT EXISTS student_notes (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     lesson_id integer NOT NULL REFERENCES courses_lesson(id) ON DELETE CASCADE,
+#     content text NOT NULL,
+#     timestamp integer NOT NULL DEFAULT 0,
+#     is_pinned boolean NOT NULL DEFAULT false,
+#     tags jsonb NOT NULL DEFAULT '[]',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_student_notes_user_lesson ON student_notes (user_id, lesson_id);
+# CREATE INDEX IF NOT EXISTS idx_student_notes_user_created ON student_notes (user_id, created_at DESC);
+# CREATE INDEX IF NOT EXISTS idx_student_notes_pinned_created ON student_notes (is_pinned, created_at DESC);
+
+# PostgreSQL equivalent for bookmarks (`student_bookmarks`):
+# CREATE TABLE IF NOT EXISTS student_bookmarks (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     course_id integer NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     lesson_id integer NULL REFERENCES courses_lesson(id) ON DELETE CASCADE,
+#     note text NOT NULL DEFAULT '',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (user_id, course_id),
+#     UNIQUE (user_id, lesson_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_student_bookmarks_user_created ON student_bookmarks (user_id, created_at DESC);
+
+
 class Wallet(models.Model):
     """Student wallet for purchasing courses."""
     
@@ -238,3 +287,24 @@ class WalletTransaction(models.Model):
     
     def __str__(self):
         return f"{self.transaction_type}: ${self.amount} - {self.description}"
+
+# PostgreSQL equivalent for wallets (`student_wallets`):
+# CREATE TABLE IF NOT EXISTS student_wallets (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     user_id integer UNIQUE NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     balance numeric(10,2) NOT NULL DEFAULT 0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+
+# PostgreSQL equivalent for wallet transactions (`wallet_transactions`):
+# CREATE TABLE IF NOT EXISTS wallet_transactions (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     wallet_id uuid NOT NULL REFERENCES student_wallets(id) ON DELETE CASCADE,
+#     transaction_type varchar(10) NOT NULL,
+#     amount numeric(10,2) NOT NULL,
+#     description varchar(255) NOT NULL,
+#     balance_after numeric(10,2) NOT NULL,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_wallet_transactions_wallet_created ON wallet_transactions (wallet_id, created_at DESC);

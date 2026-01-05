@@ -36,6 +36,24 @@ class Review(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.course.title} ({self.rating}★)"
 
+# PostgreSQL equivalent for reviews:
+# CREATE TABLE IF NOT EXISTS social_review (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     rating smallint NOT NULL CHECK (rating >= 1 AND rating <= 5),
+#     title varchar(255) NOT NULL DEFAULT '',
+#     comment text NOT NULL DEFAULT '',
+#     helpful_count integer NOT NULL DEFAULT 0,
+#     is_approved boolean NOT NULL DEFAULT true,
+#     is_flagged boolean NOT NULL DEFAULT false,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (user_id, course_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_social_review_course_created ON social_review (course_id, created_at DESC);
+# CREATE INDEX IF NOT EXISTS idx_social_review_helpful ON social_review (helpful_count DESC);
+
 
 class ReviewHelpful(models.Model):
     """Track helpful votes on reviews."""
@@ -45,6 +63,15 @@ class ReviewHelpful(models.Model):
     
     class Meta:
         unique_together = ('review', 'user')
+
+# PostgreSQL equivalent for review helpful votes:
+# CREATE TABLE IF NOT EXISTS social_reviewhelpful (
+#     id serial PRIMARY KEY,
+#     review_id integer NOT NULL REFERENCES social_review(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (review_id, user_id)
+# );
 
 
 class Forum(models.Model):
@@ -72,6 +99,18 @@ class Forum(models.Model):
     
     def post_count(self):
         return sum(thread.posts.count() for thread in self.threads.all())
+
+# PostgreSQL equivalent for forums:
+# CREATE TABLE IF NOT EXISTS social_forum (
+#     id serial PRIMARY KEY,
+#     course_id integer NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     is_locked boolean NOT NULL DEFAULT false,
+#     is_pinned boolean NOT NULL DEFAULT false
+# );
 
 
 class Thread(models.Model):
@@ -111,6 +150,24 @@ class Thread(models.Model):
         return last_post.created_at if last_post else self.created_at
 
 
+# PostgreSQL equivalent for threads:
+# CREATE TABLE IF NOT EXISTS social_thread (
+#     id serial PRIMARY KEY,
+#     forum_id integer NOT NULL REFERENCES social_forum(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     content text NOT NULL,
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     view_count integer NOT NULL DEFAULT 0,
+#     is_locked boolean NOT NULL DEFAULT false,
+#     is_pinned boolean NOT NULL DEFAULT false,
+#     is_solved boolean NOT NULL DEFAULT false,
+#     tags jsonb NOT NULL DEFAULT '[]'
+# );
+# CREATE INDEX IF NOT EXISTS idx_social_thread_forum_updated ON social_thread (forum_id, updated_at DESC);
+
+
 class Post(models.Model):
     """Posts/replies in discussion threads."""
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name="posts")
@@ -137,6 +194,21 @@ class Post(models.Model):
     def __str__(self):
         return f"Post by {self.user.email if self.user else 'Unknown'} in {self.thread.title}"
 
+# PostgreSQL equivalent for posts:
+# CREATE TABLE IF NOT EXISTS social_post (
+#     id serial PRIMARY KEY,
+#     thread_id integer NOT NULL REFERENCES social_thread(id) ON DELETE CASCADE,
+#     user_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     content text NOT NULL,
+#     parent_id integer NULL REFERENCES social_post(id) ON DELETE CASCADE,
+#     is_answer boolean NOT NULL DEFAULT false,
+#     is_edited boolean NOT NULL DEFAULT false,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     edited_at timestamptz NULL,
+#     upvotes integer NOT NULL DEFAULT 0
+# );
+# CREATE INDEX IF NOT EXISTS idx_social_post_thread ON social_post (thread_id);
+
 
 class PostVote(models.Model):
     """Track upvotes/downvotes on posts."""
@@ -152,6 +224,16 @@ class PostVote(models.Model):
     
     class Meta:
         unique_together = ('post', 'user')
+
+# PostgreSQL equivalent for post votes:
+# CREATE TABLE IF NOT EXISTS social_postvote (
+#     id serial PRIMARY KEY,
+#     post_id integer NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     vote smallint NOT NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (post_id, user_id)
+# );
 
 
 class LearningCircle(models.Model):
@@ -191,6 +273,23 @@ class LearningCircle(models.Model):
     
     def __str__(self):
         return self.name
+
+# PostgreSQL equivalent for learning circles:
+# CREATE TABLE IF NOT EXISTS social_learningcircle (
+#     id serial PRIMARY KEY,
+#     name varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     course_id integer NULL REFERENCES courses_course(id) ON DELETE SET NULL,
+#     max_members integer NULL,
+#     is_private boolean NOT NULL DEFAULT false,
+#     join_code varchar(20) NOT NULL DEFAULT '',
+#     learning_goal text NOT NULL DEFAULT '',
+#     weekly_target_hours integer NULL,
+#     status varchar(20) NOT NULL DEFAULT 'active',
+#     cover_image varchar(2000) NULL,
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );
     
     def get_member_count(self):
         """Get the member count - either from annotation or by querying."""
@@ -240,6 +339,18 @@ class CircleMembership(models.Model):
     def __str__(self):
         return f"{self.user.email} in {self.circle.name}"
 
+# PostgreSQL equivalent for circle memberships:
+# CREATE TABLE IF NOT EXISTS social_circlemembership (
+#     id serial PRIMARY KEY,
+#     circle_id integer NOT NULL REFERENCES social_learningcircle(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     role varchar(20) NOT NULL DEFAULT 'member',
+#     status varchar(20) NOT NULL DEFAULT 'active',
+#     joined_at timestamptz NOT NULL DEFAULT now(),
+#     left_at timestamptz NULL,
+#     UNIQUE (circle_id, user_id)
+# );
+
 
 class CircleMessage(models.Model):
     """Messages in learning circle chat."""
@@ -263,6 +374,19 @@ class CircleMessage(models.Model):
     
     def __str__(self):
         return f"Message in {self.circle.name}"
+
+# PostgreSQL equivalent for circle messages:
+# CREATE TABLE IF NOT EXISTS social_circlemessage (
+#     id serial PRIMARY KEY,
+#     circle_id integer NOT NULL REFERENCES social_learningcircle(id) ON DELETE CASCADE,
+#     user_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     message text NOT NULL,
+#     attachment varchar(2000) NULL,
+#     reply_to_id uuid NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     edited_at timestamptz NULL,
+#     is_edited boolean NOT NULL DEFAULT false
+# );
 
 
 class CircleGoal(models.Model):
@@ -293,6 +417,19 @@ class CircleGoal(models.Model):
     def __str__(self):
         return f"{self.title} - {self.circle.name}"
 
+# PostgreSQL equivalent for circle goals:
+# CREATE TABLE IF NOT EXISTS social_circlegoal (
+#     id serial PRIMARY KEY,
+#     circle_id integer NOT NULL REFERENCES social_learningcircle(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     start_date date NOT NULL,
+#     end_date date NOT NULL,
+#     status varchar(20) NOT NULL DEFAULT 'active',
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );
+
 
 class CircleEvent(models.Model):
     """Study sessions/meetings for learning circles."""
@@ -315,6 +452,19 @@ class CircleEvent(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.circle.name}"
+
+# PostgreSQL equivalent for circle events:
+# CREATE TABLE IF NOT EXISTS social_circleevent (
+#     id serial PRIMARY KEY,
+#     circle_id integer NOT NULL REFERENCES social_learningcircle(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     scheduled_at timestamptz NOT NULL,
+#     duration_minutes integer NOT NULL DEFAULT 60,
+#     meeting_link varchar(2000) NOT NULL DEFAULT '',
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );
 
 
 class CircleResource(models.Model):
@@ -344,3 +494,17 @@ class CircleResource(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.circle.name}"
+
+# PostgreSQL equivalent for circle resources:
+# CREATE TABLE IF NOT EXISTS social_circleresource (
+#     id serial PRIMARY KEY,
+#     circle_id integer NOT NULL REFERENCES social_learningcircle(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     resource_type varchar(20) NOT NULL,
+#     url varchar(2000) NOT NULL DEFAULT '',
+#     file varchar(2000) NULL,
+#     note_content text NOT NULL DEFAULT '',
+#     shared_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );

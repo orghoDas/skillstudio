@@ -134,6 +134,40 @@ class Payment(models.Model):
     def __str__(self):
         item = self.course or "Unknown"  # Removed event reference - events app disabled
         return f"Payment #{self.id} - {self.user.email} - {item} - {self.status}"
+
+
+# PostgreSQL equivalent for payments:
+# CREATE TABLE IF NOT EXISTS payments_payment (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     instructor_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     course_id integer NULL REFERENCES courses_course(id) ON DELETE SET NULL,
+#     amount numeric(12,2) NOT NULL,
+#     original_amount numeric(12,2) NOT NULL,
+#     discount_amount numeric(12,2) NOT NULL DEFAULT 0,
+#     currency varchar(10) NOT NULL DEFAULT 'USD',
+#     platform_fee numeric(12,2) NOT NULL DEFAULT 0,
+#     instructor_earnings numeric(12,2) NOT NULL DEFAULT 0,
+#     payment_method varchar(50) NOT NULL DEFAULT 'stripe',
+#     provider varchar(100) NULL,
+#     provider_id varchar(255) NULL,
+#     coupon_id integer NULL REFERENCES payments_coupon(id) ON DELETE SET NULL,
+#     status varchar(30) NOT NULL DEFAULT 'pending',
+#     failure_reason text NOT NULL DEFAULT '',
+#     billing_email varchar(254) NOT NULL DEFAULT '',
+#     billing_address jsonb NOT NULL DEFAULT '{}',
+#     metadata jsonb NOT NULL DEFAULT '{}',
+#     ip_address inet NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     completed_at timestamptz NULL
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_status ON payments_payment (status);
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_instructor ON payments_payment (instructor_id);
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_user ON payments_payment (user_id);
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_method ON payments_payment (payment_method);
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_created ON payments_payment (created_at);
+# CREATE INDEX IF NOT EXISTS idx_payments_payment_provider_id ON payments_payment (provider_id);
     
     @property
     def is_successful(self):
@@ -211,6 +245,33 @@ class Payout(models.Model):
     
     def __str__(self):
         return f"Payout #{self.id} - {self.instructor.email} - ${self.amount} - {self.status}"
+
+
+# PostgreSQL equivalent for payouts:
+# CREATE TABLE IF NOT EXISTS payments_payout (
+#     id serial PRIMARY KEY,
+#     instructor_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     amount numeric(12,2) NOT NULL,
+#     currency varchar(10) NOT NULL DEFAULT 'USD',
+#     status varchar(20) NOT NULL DEFAULT 'pending',
+#     payout_method varchar(50) NOT NULL DEFAULT 'stripe_connect',
+#     account_details jsonb NOT NULL DEFAULT '{}',
+#     transaction_id varchar(255) NOT NULL DEFAULT '',
+#     provider_details jsonb NOT NULL DEFAULT '{}',
+#     failure_reason text NOT NULL DEFAULT '',
+#     admin_notes text NOT NULL DEFAULT '',
+#     processed_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# -- M2M table for payout payments (auto by Django):
+# CREATE TABLE IF NOT EXISTS payments_payout_payments (
+#     id serial PRIMARY KEY,
+#     payout_id integer NOT NULL REFERENCES payments_payout(id) ON DELETE CASCADE,
+#     payment_id integer NOT NULL REFERENCES payments_payment(id) ON DELETE CASCADE
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_payout_instructor_created ON payments_payout (instructor_id, created_at DESC);
+# CREATE INDEX IF NOT EXISTS idx_payments_payout_status ON payments_payout (status);
     
     @property
     def payment_count(self):
@@ -290,6 +351,28 @@ class Refund(models.Model):
     
     def __str__(self):
         return f"Refund #{self.id} - Payment #{self.payment.id} - ${self.amount} - {self.status}"
+
+
+# PostgreSQL equivalent for refunds:
+# CREATE TABLE IF NOT EXISTS payments_refund (
+#     id serial PRIMARY KEY,
+#     payment_id integer NOT NULL REFERENCES payments_payment(id) ON DELETE CASCADE,
+#     requested_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     processed_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     amount numeric(12,2) NOT NULL,
+#     refund_type varchar(20) NOT NULL DEFAULT 'full',
+#     reason text NOT NULL,
+#     status varchar(20) NOT NULL DEFAULT 'requested',
+#     admin_notes text NOT NULL DEFAULT '',
+#     rejection_reason text NOT NULL DEFAULT '',
+#     provider_refund_id varchar(255) NOT NULL DEFAULT '',
+#     requested_at timestamptz NOT NULL DEFAULT now(),
+#     processed_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_refund_status ON payments_refund (status);
+# CREATE INDEX IF NOT EXISTS idx_payments_refund_payment ON payments_refund (payment_id);
 
 
 class Coupon(models.Model):
@@ -390,6 +473,41 @@ class Coupon(models.Model):
     
     def __str__(self):
         return f"{self.code} - {self.discount_type}: {self.discount_value}"
+
+
+# PostgreSQL equivalent for coupons:
+# CREATE TABLE IF NOT EXISTS payments_coupon (
+#     id serial PRIMARY KEY,
+#     code varchar(64) NOT NULL UNIQUE,
+#     discount_type varchar(20) NOT NULL,
+#     discount_value numeric(10,2) NOT NULL,
+#     applies_to varchar(20) NOT NULL DEFAULT 'all',
+#     max_discount_amount numeric(10,2) NULL,
+#     min_order_amount numeric(12,2) NULL,
+#     usage_limit integer NULL,
+#     usage_limit_per_user integer NULL,
+#     current_usage integer NOT NULL DEFAULT 0,
+#     is_active boolean NOT NULL DEFAULT true,
+#     valid_from timestamptz NOT NULL DEFAULT now(),
+#     expires_at timestamptz NULL,
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_coupon_code ON payments_coupon (code);
+# CREATE INDEX IF NOT EXISTS idx_payments_coupon_active_expires ON payments_coupon (is_active, expires_at);
+
+# PostgreSQL equivalent for coupon redemptions:
+# CREATE TABLE IF NOT EXISTS payments_couponredemption (
+#     id serial PRIMARY KEY,
+#     coupon_id integer NOT NULL REFERENCES payments_coupon(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     payment_id integer NULL REFERENCES payments_payment(id) ON DELETE SET NULL,
+#     discount_amount numeric(10,2) NOT NULL DEFAULT 0,
+#     redeemed_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_couponredemption_coupon_user ON payments_couponredemption (coupon_id, user_id);
+# CREATE INDEX IF NOT EXISTS idx_payments_couponredemption_user_redeemed ON payments_couponredemption (user_id, redeemed_at DESC);
     
     @property
     def is_valid(self):
@@ -542,6 +660,55 @@ class PaymentWebhookLog(models.Model):
     
     def __str__(self):
         return f"{self.gateway} - {self.event_type} - {self.created_at}"
+
+
+# PostgreSQL equivalent for payment gateway config:
+# CREATE TABLE IF NOT EXISTS payments_paymentgatewayconfig (
+#     id serial PRIMARY KEY,
+#     gateway_name varchar(50) NOT NULL UNIQUE,
+#     is_active boolean NOT NULL DEFAULT true,
+#     is_test_mode boolean NOT NULL DEFAULT true,
+#     public_key varchar(255) NOT NULL,
+#     secret_key varchar(255) NOT NULL,
+#     webhook_secret varchar(255) NOT NULL DEFAULT '',
+#     config jsonb NOT NULL DEFAULT '{}',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+
+# PostgreSQL equivalent for payment webhook logs:
+# CREATE TABLE IF NOT EXISTS payments_paymentwebhooklog (
+#     id serial PRIMARY KEY,
+#     gateway varchar(50) NOT NULL,
+#     event_type varchar(100) NOT NULL,
+#     event_id varchar(255) NOT NULL UNIQUE,
+#     payment_id integer NULL REFERENCES payments_payment(id) ON DELETE SET NULL,
+#     payload jsonb NOT NULL,
+#     processed boolean NOT NULL DEFAULT false,
+#     processing_error text NOT NULL DEFAULT '',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     processed_at timestamptz NULL
+# );
+# CREATE INDEX IF NOT EXISTS idx_payments_paymentwebhooklog_gateway_created ON payments_paymentwebhooklog (gateway, created_at DESC);
+# CREATE INDEX IF NOT EXISTS idx_payments_paymentwebhooklog_event_id ON payments_paymentwebhooklog (event_id);
+# CREATE INDEX IF NOT EXISTS idx_payments_paymentwebhooklog_processed ON payments_paymentwebhooklog (processed);
+
+# PostgreSQL equivalent for payment disputes:
+# CREATE TABLE IF NOT EXISTS payments_paymentdispute (
+#     id serial PRIMARY KEY,
+#     payment_id integer NOT NULL REFERENCES payments_payment(id) ON DELETE CASCADE,
+#     dispute_id varchar(255) NOT NULL UNIQUE,
+#     amount numeric(12,2) NOT NULL,
+#     currency varchar(10) NOT NULL DEFAULT 'USD',
+#     reason text NOT NULL,
+#     status varchar(20) NOT NULL DEFAULT 'opened',
+#     evidence jsonb NOT NULL DEFAULT '{}',
+#     admin_notes text NOT NULL DEFAULT '',
+#     opened_at timestamptz NOT NULL DEFAULT now(),
+#     closed_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
 
 
 class PaymentDispute(models.Model):

@@ -152,6 +152,46 @@ class LiveSession(models.Model):
             return None
         return max(0, self.max_participants - self.participant_count())
 
+# PostgreSQL equivalent for live sessions:
+# CREATE TABLE IF NOT EXISTS live_livesession (
+#     id serial PRIMARY KEY,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     instructor_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     title varchar(255) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     session_type varchar(20) NOT NULL DEFAULT 'class',
+#     scheduled_start timestamptz NOT NULL,
+#     scheduled_end timestamptz NOT NULL,
+#     actual_start timestamptz NULL,
+#     actual_end timestamptz NULL,
+#     timezone_info varchar(50) NOT NULL DEFAULT 'UTC',
+#     platform varchar(20) NOT NULL DEFAULT 'agora',
+#     meeting_link varchar(2000) NOT NULL DEFAULT '',
+#     meeting_id varchar(255) NOT NULL DEFAULT '',
+#     meeting_password varchar(100) NOT NULL DEFAULT '',
+#     stream_key varchar(255) NOT NULL DEFAULT '',
+#     channel_name varchar(255) NOT NULL DEFAULT '',
+#     app_id varchar(255) NOT NULL DEFAULT '',
+#     max_participants integer NULL,
+#     enable_chat boolean NOT NULL DEFAULT true,
+#     enable_qa boolean NOT NULL DEFAULT true,
+#     enable_polls boolean NOT NULL DEFAULT true,
+#     enable_recording boolean NOT NULL DEFAULT true,
+#     enable_screen_share boolean NOT NULL DEFAULT true,
+#     requires_enrollment boolean NOT NULL DEFAULT true,
+#     is_public boolean NOT NULL DEFAULT false,
+#     password_protected boolean NOT NULL DEFAULT false,
+#     status varchar(20) NOT NULL DEFAULT 'scheduled',
+#     is_featured boolean NOT NULL DEFAULT false,
+#     is_streaming boolean NOT NULL DEFAULT false,
+#     stream_type varchar(20) NOT NULL DEFAULT '',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_livesession_course_status ON live_livesession (course_id, status);
+# CREATE INDEX IF NOT EXISTS idx_live_livesession_instructor ON live_livesession (instructor_id);
+# CREATE INDEX IF NOT EXISTS idx_live_livesession_scheduled_start ON live_livesession (scheduled_start);
+
 
 class SessionParticipant(models.Model):
     """
@@ -211,6 +251,29 @@ class SessionParticipant(models.Model):
         if not session_duration:
             return 0
         return min(100, int((self.duration_seconds / 60) / session_duration * 100))
+
+
+# PostgreSQL equivalent for session participants:
+# CREATE TABLE IF NOT EXISTS live_sessionparticipant (
+#     id serial PRIMARY KEY,
+#     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     status varchar(20) NOT NULL DEFAULT 'registered',
+#     joined_at timestamptz NULL,
+#     left_at timestamptz NULL,
+#     duration_seconds integer NOT NULL DEFAULT 0,
+#     chat_messages_count integer NOT NULL DEFAULT 0,
+#     questions_asked integer NOT NULL DEFAULT 0,
+#     polls_answered integer NOT NULL DEFAULT 0,
+#     can_unmute boolean NOT NULL DEFAULT false,
+#     can_share_screen boolean NOT NULL DEFAULT false,
+#     is_moderator boolean NOT NULL DEFAULT false,
+#     registered_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (session_id, user_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_sessionparticipant_session_status ON live_sessionparticipant (session_id, status);
+# CREATE INDEX IF NOT EXISTS idx_live_sessionparticipant_user ON live_sessionparticipant (user_id);
 
 
 class LiveChatMessage(models.Model):
@@ -276,6 +339,27 @@ class LiveChatMessage(models.Model):
         return f"{username}: {self.content[:50]}"
 
 
+# PostgreSQL equivalent for live chat messages:
+# CREATE TABLE IF NOT EXISTS live_livechatmessage (
+#     id serial PRIMARY KEY,
+#     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+#     user_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     message_type varchar(20) NOT NULL DEFAULT 'text',
+#     content text NOT NULL,
+#     file_url varchar(2000) NOT NULL DEFAULT '',
+#     is_pinned boolean NOT NULL DEFAULT false,
+#     is_deleted boolean NOT NULL DEFAULT false,
+#     is_edited boolean NOT NULL DEFAULT false,
+#     reply_to_id integer NULL REFERENCES live_livechatmessage(id) ON DELETE SET NULL,
+#     likes_count integer NOT NULL DEFAULT 0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     edited_at timestamptz NULL,
+#     deleted_at timestamptz NULL
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_livechatmessage_session_created ON live_livechatmessage (session_id, created_at);
+# CREATE INDEX IF NOT EXISTS idx_live_livechatmessage_user ON live_livechatmessage (user_id);
+
+
 class LiveQuestion(models.Model):
     """
     Q&A questions during live sessions.
@@ -333,6 +417,26 @@ class LiveQuestion(models.Model):
     
     def __str__(self):
         return f"{self.question[:50]} - {self.status}"
+
+
+# PostgreSQL equivalent for live questions:
+# CREATE TABLE IF NOT EXISTS live_livequestion (
+#     id serial PRIMARY KEY,
+#     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     question text NOT NULL,
+#     answer text NOT NULL DEFAULT '',
+#     status varchar(20) NOT NULL DEFAULT 'pending',
+#     is_anonymous boolean NOT NULL DEFAULT false,
+#     upvotes integer NOT NULL DEFAULT 0,
+#     is_featured boolean NOT NULL DEFAULT false,
+#     answered_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     answered_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_livequestion_session_status ON live_livequestion (session_id, status);
+# CREATE INDEX IF NOT EXISTS idx_live_livequestion_user ON live_livequestion (user_id);
 
 
 class LivePoll(models.Model):
@@ -401,6 +505,26 @@ class LivePoll(models.Model):
         return True
 
 
+# PostgreSQL equivalent for live polls:
+# CREATE TABLE IF NOT EXISTS live_livepoll (
+#     id serial PRIMARY KEY,
+#     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+#     created_by_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     question varchar(500) NOT NULL,
+#     description text NOT NULL DEFAULT '',
+#     status varchar(20) NOT NULL DEFAULT 'draft',
+#     allow_multiple_answers boolean NOT NULL DEFAULT false,
+#     show_results_immediately boolean NOT NULL DEFAULT true,
+#     is_anonymous boolean NOT NULL DEFAULT false,
+#     duration_seconds integer NULL,
+#     started_at timestamptz NULL,
+#     ends_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_livepoll_session_status ON live_livepoll (session_id, status);
+
+
 class PollOption(models.Model):
     """
     Poll answer options.
@@ -434,6 +558,17 @@ class PollOption(models.Model):
         return round((self.votes_count / total) * 100, 1)
 
 
+# PostgreSQL equivalent for poll options:
+# CREATE TABLE IF NOT EXISTS live_polloption (
+#     id serial PRIMARY KEY,
+#     poll_id integer NOT NULL REFERENCES live_livepoll(id) ON DELETE CASCADE,
+#     text varchar(255) NOT NULL,
+#     order integer NOT NULL DEFAULT 0,
+#     votes_count integer NOT NULL DEFAULT 0
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_polloption_poll_order ON live_polloption (poll_id, order);
+
+
 class PollVote(models.Model):
     """
     User votes on poll options.
@@ -464,6 +599,17 @@ class PollVote(models.Model):
     
     def __str__(self):
         return f"{self.user.email} voted for {self.option.text}"
+
+
+# PostgreSQL equivalent for poll votes:
+# CREATE TABLE IF NOT EXISTS live_pollvote (
+#     id serial PRIMARY KEY,
+#     poll_id integer NOT NULL REFERENCES live_livepoll(id) ON DELETE CASCADE,
+#     option_id integer NOT NULL REFERENCES live_polloption(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     created_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_pollvote_poll_user ON live_pollvote (poll_id, user_id);
 
 
 class SessionRecording(models.Model):
@@ -535,6 +681,30 @@ class SessionRecording(models.Model):
         return f"{minutes}:{seconds:02d}"
 
 
+    # PostgreSQL equivalent for session recordings:
+    # CREATE TABLE IF NOT EXISTS live_sessionrecording (
+    #     id serial PRIMARY KEY,
+    #     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+    #     title varchar(255) NOT NULL,
+    #     description text NOT NULL DEFAULT '',
+    #     video_url varchar(2000) NOT NULL,
+    #     thumbnail_url varchar(2000) NOT NULL DEFAULT '',
+    #     duration_seconds integer NOT NULL DEFAULT 0,
+    #     file_size_mb numeric(10,2) NOT NULL DEFAULT 0,
+    #     processing_status varchar(20) NOT NULL DEFAULT 'pending',
+    #     error_message text NOT NULL DEFAULT '',
+    #     is_public boolean NOT NULL DEFAULT false,
+    #     requires_enrollment boolean NOT NULL DEFAULT true,
+    #     views_count integer NOT NULL DEFAULT 0,
+    #     downloads_count integer NOT NULL DEFAULT 0,
+    #     recorded_at timestamptz NOT NULL DEFAULT now(),
+    #     processed_at timestamptz NULL,
+    #     published_at timestamptz NULL
+    # );
+    # CREATE INDEX IF NOT EXISTS idx_live_sessionrecording_session ON live_sessionrecording (session_id);
+    # CREATE INDEX IF NOT EXISTS idx_live_sessionrecording_processing_status ON live_sessionrecording (processing_status);
+
+
 class RecordingView(models.Model):
     """
     Tracks recording views and watch time.
@@ -579,6 +749,24 @@ class RecordingView(models.Model):
         if self.recording.duration_seconds == 0:
             return 0
         return min(100, int((self.watch_duration_seconds / self.recording.duration_seconds) * 100))
+
+
+# PostgreSQL equivalent for recording views:
+# CREATE TABLE IF NOT EXISTS live_recordingview (
+#     id serial PRIMARY KEY,
+#     recording_id integer NOT NULL REFERENCES live_sessionrecording(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     watch_duration_seconds integer NOT NULL DEFAULT 0,
+#     last_position_seconds integer NOT NULL DEFAULT 0,
+#     completed boolean NOT NULL DEFAULT false,
+#     device_type varchar(50) NOT NULL DEFAULT '',
+#     browser varchar(50) NOT NULL DEFAULT '',
+#     first_viewed_at timestamptz NOT NULL DEFAULT now(),
+#     last_viewed_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (recording_id, user_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_recordingview_recording ON live_recordingview (recording_id);
+# CREATE INDEX IF NOT EXISTS idx_live_recordingview_user ON live_recordingview (user_id);
 
 
 class SessionAttendance(models.Model):
@@ -630,3 +818,21 @@ class SessionAttendance(models.Model):
     def __str__(self):
         status = "Present" if self.marked_present else "Absent"
         return f"{self.participant.user.email} - {status}"
+
+
+# PostgreSQL equivalent for session attendance:
+# CREATE TABLE IF NOT EXISTS live_sessionattendance (
+#     id serial PRIMARY KEY,
+#     session_id integer NOT NULL REFERENCES live_livesession(id) ON DELETE CASCADE,
+#     participant_id integer NOT NULL REFERENCES live_sessionparticipant(id) ON DELETE CASCADE,
+#     marked_present boolean NOT NULL DEFAULT false,
+#     attendance_percentage integer NOT NULL DEFAULT 0,
+#     verified_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     verified_at timestamptz NULL,
+#     notes text NOT NULL DEFAULT '',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (session_id, participant_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_live_sessionattendance_session ON live_sessionattendance (session_id);
+# CREATE INDEX IF NOT EXISTS idx_live_sessionattendance_marked_present ON live_sessionattendance (marked_present);
