@@ -138,6 +138,22 @@ def live_room(request, session_id):
     """Live session room page"""
     return render(request, 'live/room.html')
 
+def exams_list(request):
+    """Exams list page"""
+    return render(request, 'exams/list.html')
+
+def exam_take(request, exam_id):
+    """Exam taking page"""
+    return render(request, 'exams/take.html')
+
+def exam_results(request, exam_id):
+    """Exam results page"""
+    return render(request, 'exams/results.html')
+
+def exam_create(request):
+    """Exam creation page"""
+    return render(request, 'exams/create.html')
+
 def search_results(request):
     """Search results page"""
     return render(request, 'search/results.html')

@@ -247,6 +247,18 @@ class MeView(APIView):
 
     def get(self, request):
         user = request.user
+        # Ensure we have the latest DB state for user and profile
+        try:
+            user.refresh_from_db()
+        except Exception:
+            pass
+        try:
+            # Accessing profile may create it; refresh to get latest wallet
+            if hasattr(user, 'profile'):
+                user.profile.refresh_from_db()
+        except Exception:
+            pass
+
         serializer = MeSerializer(user)
         data = serializer.data
         

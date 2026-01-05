@@ -1,0 +1,285 @@
+{% extends 'base.html' %}
+
+{% block title %}Exams - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Exams</h1>
+            <p class="text-gray-400">Take final exams to test your knowledge</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <a href="/exams/create/" id="create-exam-btn" class="hidden px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Create Exam
+            </a>
+            <select id="filter-status" onchange="loadExams()" 
+                class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="all">All Exams</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="active">Available Now</option>
+                <option value="completed">Completed</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Exams Grid -->
+    <div id="exams-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Exams will be loaded here -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="hidden text-center py-16">
+        <div class="w-32 h-32 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+            <svg class="w-16 h-16 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">No exams available</h3>
+        <p class="text-gray-400">Check back later for upcoming exams</p>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="text-center py-16">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p class="text-gray-400">Loading exams...</p>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api';
+let currentFilter = 'all';
+let isInstructor = false;
+
+async function apiRequest(endpoint, options = {}) {
+    const token = localStorage.getItem('access_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers }
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || error.message || 'Request failed');
+    }
+
+    return response.json();
+}
+
+async function loadExams() {
+    const container = document.getElementById('exams-container');
+    const emptyState = document.getElementById('empty-state');
+    const loadingState = document.getElementById('loading-state');
+    
+    currentFilter = document.getElementById('filter-status').value;
+    
+    try {
+        loadingState.classList.remove('hidden');
+        container.innerHTML = '';
+        emptyState.classList.add('hidden');
+        
+        const data = await apiRequest('/exams/');
+        const exams = Array.isArray(data) ? data : (data.results || []);
+        
+        console.log('Loaded exams:', exams);
+        
+        loadingState.classList.add('hidden');
+        
+        if (!exams || exams.length === 0) {
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        // Filter exams based on status
+        let filteredExams = exams;
+        const now = new Date();
+        
+        if (currentFilter === 'upcoming') {
+            filteredExams = exams.filter(exam => new Date(exam.start_datetime) > now);
+        } else if (currentFilter === 'active') {
+            filteredExams = exams.filter(exam => {
+                const start = new Date(exam.start_datetime);
+                const end = new Date(exam.end_datetime);
+                return start <= now && end >= now && exam.status === 'published';
+            });
+        } else if (currentFilter === 'completed') {
+            filteredExams = exams.filter(exam => exam.attempt_count > 0);
+        }
+        
+        if (filteredExams.length === 0) {
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        filteredExams.forEach(exam => {
+            container.appendChild(createExamCard(exam));
+        });
+        
+    } catch (error) {
+        console.error('Error loading exams:', error);
+        loadingState.classList.add('hidden');
+        container.innerHTML = `
+            <div class="col-span-2 bg-red-900/20 border border-red-500/50 rounded-xl p-8 text-center">
+                <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p class="text-red-400 text-lg mb-2">Failed to load exams</p>
+                <p class="text-gray-400 text-sm mb-4">${error.message || 'Please try again later'}</p>
+                <button onclick="loadExams()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
+function createExamCard(exam) {
+    const card = document.createElement('div');
+    card.className = 'bg-dark-surface border border-dark-border rounded-xl p-6 hover:border-blue-500 transition-all';
+    
+    const now = new Date();
+    const startDate = new Date(exam.start_datetime);
+    const endDate = new Date(exam.end_datetime);
+    const isActive = startDate <= now && endDate >= now && exam.status === 'published';
+    const isUpcoming = startDate > now;
+    const hasAttempts = exam.attempt_count > 0;
+    const canRetake = !hasAttempts || (exam.attempt_count < exam.max_attempts);
+    
+    let statusBadge = '';
+    if (isActive) {
+        statusBadge = '<span class="px-3 py-1 bg-green-900/30 text-green-400 text-sm rounded-full">Available Now</span>';
+    } else if (isUpcoming) {
+        statusBadge = '<span class="px-3 py-1 bg-blue-900/30 text-blue-400 text-sm rounded-full">Upcoming</span>';
+    } else if (hasAttempts) {
+        statusBadge = '<span class="px-3 py-1 bg-gray-900/30 text-gray-400 text-sm rounded-full">Completed</span>';
+    } else {
+        statusBadge = '<span class="px-3 py-1 bg-gray-900/30 text-gray-400 text-sm rounded-full">Ended</span>';
+    }
+    
+    card.innerHTML = `
+        <div class="flex items-start justify-between mb-4">
+            <div class="flex-1">
+                <h3 class="text-xl font-semibold mb-2">${exam.title}</h3>
+                <p class="text-sm text-gray-400 mb-3">${exam.course_name || 'Course'}</p>
+            </div>
+            ${statusBadge}
+        </div>
+        
+        <p class="text-gray-300 mb-4 line-clamp-2">${exam.description || 'No description'}</p>
+        
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="flex items-center text-sm text-gray-400">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                ${exam.duration_minutes} minutes
+            </div>
+            <div class="flex items-center text-sm text-gray-400">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                ${exam.question_count || 0} questions
+            </div>
+            <div class="flex items-center text-sm text-gray-400">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                ${exam.total_marks} marks
+            </div>
+            <div class="flex items-center text-sm text-gray-400">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                ${exam.attempt_count || 0}/${exam.max_attempts} attempts
+            </div>
+        </div>
+        
+        <div class="flex items-center justify-between pt-4 border-t border-dark-border">
+            <div class="text-sm text-gray-400">
+                <div>Starts: ${new Date(exam.start_datetime).toLocaleString()}</div>
+                <div>Ends: ${new Date(exam.end_datetime).toLocaleString()}</div>
+            </div>
+            <div class="flex space-x-2">
+                ${hasAttempts ? `
+                    <button onclick="viewResults(${exam.id})" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                        View Results
+                    </button>
+                ` : ''}
+                ${isActive && canRetake ? `
+                    <button onclick="startExam(${exam.id})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        ${hasAttempts ? 'Retake Exam' : 'Start Exam'}
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    return card;
+}
+
+async function startExam(examId) {
+    if (!confirm('Are you sure you want to start this exam? The timer will begin immediately.')) {
+        return;
+    }
+    
+    try {
+        const attempt = await apiRequest(`/exams/${examId}/start/`, { method: 'POST' });
+        window.location.href = `/exams/take/${examId}/?attempt=${attempt.id}`;
+    } catch (error) {
+        alert(error.message || 'Failed to start exam');
+    }
+}
+
+function viewResults(examId) {
+    window.location.href = `/exams/results/${examId}/`;
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Check authentication
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    // Check if user is instructor
+    try {
+        const profile = await apiRequest('/accounts/profile/');
+        isInstructor = profile.role === 'instructor';
+    } catch (error) {
+        console.error('Error loading profile:', error);
+    }
+    
+    loadExams();
+    
+    // Show create button for instructors
+    fetch('/api/accounts/me/', {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+    })
+    .then(response => response.json())
+    .then(user => {
+        if (user.role === 'instructor') {
+            document.getElementById('create-exam-btn').classList.remove('hidden');
+        }
+    })
+    .catch(error => console.error('Error checking user role:', error));
+});
+</script>
+{% endblock %}

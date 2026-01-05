@@ -58,6 +58,7 @@ class Profile(models.Model):
     interests = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    wallet = models.DecimalField(default=0, max_digits=12, decimal_places=2, help_text="User wallet balance")
 
     def __str__(self):
         return self.full_name or f"{self.first_name} {self.last_name}".strip() or self.user.email

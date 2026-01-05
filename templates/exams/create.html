@@ -1,0 +1,421 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Exam - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Create New Exam</h1>
+            <p class="text-gray-400">Set up a final exam for your course</p>
+        </div>
+        <a href="/exams/" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+            Cancel
+        </a>
+    </div>
+
+    <!-- Form -->
+    <form id="exam-form" class="space-y-6">
+        <!-- Basic Information -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-6">Basic Information</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium mb-2">Course *</label>
+                    <select id="course-select" required class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select a course</option>
+                    </select>
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium mb-2">Exam Title *</label>
+                    <input type="text" id="title" required placeholder="e.g., Python Programming Final Exam" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium mb-2">Description</label>
+                    <textarea id="description" rows="3" placeholder="Brief description of the exam..." class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Exam Settings -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-6">Exam Settings</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Duration (minutes) *</label>
+                    <input type="number" id="duration" required min="1" value="60" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Total Marks *</label>
+                    <input type="number" id="total-marks" required min="1" value="100" step="0.01" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Passing Marks *</label>
+                    <input type="number" id="passing-marks" required min="1" value="50" step="0.01" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Maximum Attempts *</label>
+                    <input type="number" id="max-attempts" required min="1" value="1" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-6">Schedule</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Start Date & Time *</label>
+                    <input type="datetime-local" id="start-datetime" required class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">End Date & Time *</label>
+                    <input type="datetime-local" id="end-datetime" required class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Options -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-6">Options</h2>
+            
+            <div class="space-y-4">
+                <label class="flex items-center space-x-3">
+                    <input type="checkbox" id="randomize-questions" class="w-5 h-5 rounded border-dark-border text-blue-600 focus:ring-2 focus:ring-blue-500">
+                    <span class="text-sm">Randomize question order for each student</span>
+                </label>
+                
+                <label class="flex items-center space-x-3">
+                    <input type="checkbox" id="show-results" checked class="w-5 h-5 rounded border-dark-border text-blue-600 focus:ring-2 focus:ring-blue-500">
+                    <span class="text-sm">Show results immediately after submission</span>
+                </label>
+                
+                <label class="flex items-center space-x-3">
+                    <input type="checkbox" id="show-answers" class="w-5 h-5 rounded border-dark-border text-blue-600 focus:ring-2 focus:ring-blue-500">
+                    <span class="text-sm">Show correct answers in results</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Questions -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-semibold">Questions</h2>
+                <button type="button" onclick="showQuestionBank()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Add Questions
+                </button>
+            </div>
+            
+            <div id="selected-questions" class="space-y-3">
+                <p class="text-gray-400 text-center py-8">No questions selected. Click "Add Questions" to select from question bank.</p>
+            </div>
+            
+            <div class="mt-4 text-sm text-gray-400">
+                Total Questions: <span id="question-count">0</span>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex items-center justify-end space-x-4">
+            <a href="/exams/" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                Cancel
+            </a>
+            <button type="button" onclick="saveAsDraft()" class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors">
+                Save as Draft
+            </button>
+            <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                Publish Exam
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Question Bank Modal -->
+<div id="question-bank-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-dark-surface rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="p-6 border-b border-dark-border flex items-center justify-between">
+            <h3 class="text-2xl font-bold">Question Bank</h3>
+            <button onclick="closeQuestionBank()" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="p-6 overflow-y-auto flex-1">
+            <div id="question-bank-list" class="space-y-3">
+                <div class="text-center py-8 text-gray-400">
+                    Loading questions...
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-6 border-t border-dark-border flex items-center justify-end space-x-4">
+            <button onclick="closeQuestionBank()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                Close
+            </button>
+            <button onclick="addSelectedQuestions()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                Add Selected (<span id="selected-count">0</span>)
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api';
+let selectedQuestions = [];
+let selectedQuestionIds = new Set();
+
+async function apiRequest(endpoint, options = {}) {
+    const token = localStorage.getItem('access_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers }
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || error.message || 'Request failed');
+    }
+
+    return response.json();
+}
+
+async function loadCourses() {
+    try {
+        const courses = await apiRequest('/courses/instructor/courses/');
+        const select = document.getElementById('course-select');
+        
+        courses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.id;
+            option.textContent = course.title;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading courses:', error);
+        alert('Failed to load courses');
+    }
+}
+
+async function showQuestionBank() {
+    const courseId = document.getElementById('course-select').value;
+    
+    if (!courseId) {
+        alert('Please select a course first');
+        return;
+    }
+    
+    document.getElementById('question-bank-modal').classList.remove('hidden');
+    
+    try {
+        const questions = await apiRequest(`/exams/questions/?course_id=${courseId}`);
+        const container = document.getElementById('question-bank-list');
+        
+        if (questions.length === 0) {
+            container.innerHTML = '<p class="text-center py-8 text-gray-400">No questions found for this course. Create questions first in the admin panel.</p>';
+            return;
+        }
+        
+        container.innerHTML = questions.map(q => `
+            <label class="flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all">
+                <input type="checkbox" 
+                    value="${q.id}" 
+                    ${selectedQuestionIds.has(q.id) ? 'checked' : ''}
+                    onchange="toggleQuestion(${q.id}, this.checked, ${JSON.stringify(q).replace(/"/g, '&quot;')})"
+                    class="mt-1 w-5 h-5 rounded text-blue-600 focus:ring-2 focus:ring-blue-500">
+                <div class="ml-3 flex-1">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">${q.question_text}</span>
+                        <span class="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">${q.marks} marks</span>
+                    </div>
+                    <div class="flex items-center space-x-3 text-xs text-gray-400">
+                        <span class="px-2 py-1 bg-gray-700 rounded">${q.question_type}</span>
+                        <span class="px-2 py-1 bg-gray-700 rounded">${q.difficulty}</span>
+                    </div>
+                </div>
+            </label>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading questions:', error);
+        document.getElementById('question-bank-list').innerHTML = '<p class="text-center py-8 text-red-500">Failed to load questions</p>';
+    }
+}
+
+function toggleQuestion(id, checked, question) {
+    if (checked) {
+        selectedQuestionIds.add(id);
+        if (!selectedQuestions.find(q => q.id === id)) {
+            selectedQuestions.push(question);
+        }
+    } else {
+        selectedQuestionIds.delete(id);
+        selectedQuestions = selectedQuestions.filter(q => q.id !== id);
+    }
+    
+    document.getElementById('selected-count').textContent = selectedQuestionIds.size;
+}
+
+function addSelectedQuestions() {
+    renderSelectedQuestions();
+    closeQuestionBank();
+}
+
+function renderSelectedQuestions() {
+    const container = document.getElementById('selected-questions');
+    
+    if (selectedQuestions.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center py-8">No questions selected. Click "Add Questions" to select from question bank.</p>';
+        document.getElementById('question-count').textContent = '0';
+        return;
+    }
+    
+    container.innerHTML = selectedQuestions.map((q, index) => `
+        <div class="flex items-start justify-between p-4 bg-dark-bg border border-dark-border rounded-lg">
+            <div class="flex items-center space-x-3 flex-1">
+                <span class="text-gray-400 font-mono">${index + 1}.</span>
+                <div class="flex-1">
+                    <p class="font-semibold mb-1">${q.question_text}</p>
+                    <div class="flex items-center space-x-3 text-xs text-gray-400">
+                        <span>${q.marks} marks</span>
+                        <span>•</span>
+                        <span>${q.question_type}</span>
+                        <span>•</span>
+                        <span>${q.difficulty}</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="removeQuestion(${q.id})" class="text-red-500 hover:text-red-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </button>
+        </div>
+    `).join('');
+    
+    document.getElementById('question-count').textContent = selectedQuestions.length;
+}
+
+function removeQuestion(id) {
+    selectedQuestionIds.delete(id);
+    selectedQuestions = selectedQuestions.filter(q => q.id !== id);
+    renderSelectedQuestions();
+}
+
+function closeQuestionBank() {
+    document.getElementById('question-bank-modal').classList.add('hidden');
+}
+
+async function saveAsDraft() {
+    await submitForm('draft');
+}
+
+async function submitForm(status = 'published') {
+    const courseId = document.getElementById('course-select').value;
+    const title = document.getElementById('title').value;
+    const description = document.getElementById('description').value;
+    const duration = parseInt(document.getElementById('duration').value);
+    const totalMarks = parseFloat(document.getElementById('total-marks').value);
+    const passingMarks = parseFloat(document.getElementById('passing-marks').value);
+    const maxAttempts = parseInt(document.getElementById('max-attempts').value);
+    const startDatetime = document.getElementById('start-datetime').value;
+    const endDatetime = document.getElementById('end-datetime').value;
+    const randomizeQuestions = document.getElementById('randomize-questions').checked;
+    const showResults = document.getElementById('show-results').checked;
+    const showAnswers = document.getElementById('show-answers').checked;
+    
+    if (!courseId || !title || !startDatetime || !endDatetime) {
+        alert('Please fill in all required fields');
+        return;
+    }
+    
+    if (selectedQuestions.length === 0) {
+        alert('Please add at least one question');
+        return;
+    }
+    
+    if (passingMarks > totalMarks) {
+        alert('Passing marks cannot be greater than total marks');
+        return;
+    }
+    
+    const examData = {
+        course: courseId,
+        title,
+        description,
+        duration_minutes: duration,
+        total_marks: totalMarks,
+        passing_marks: passingMarks,
+        max_attempts: maxAttempts,
+        start_datetime: startDatetime,
+        end_datetime: endDatetime,
+        randomize_questions: randomizeQuestions,
+        show_results_immediately: showResults,
+        show_correct_answers: showAnswers,
+        status,
+        questions: selectedQuestions.map(q => q.id)
+    };
+    
+    try {
+        const exam = await apiRequest('/exams/', {
+            method: 'POST',
+            body: JSON.stringify(examData)
+        });
+        
+        alert(`Exam ${status === 'draft' ? 'saved as draft' : 'published'} successfully!`);
+        window.location.href = '/exams/';
+        
+    } catch (error) {
+        console.error('Error creating exam:', error);
+        alert(error.message || 'Failed to create exam');
+    }
+}
+
+document.getElementById('exam-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitForm('published');
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    // Set default start time to now
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('start-datetime').value = now.toISOString().slice(0, 16);
+    
+    // Set default end time to 7 days from now
+    const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    document.getElementById('end-datetime').value = endDate.toISOString().slice(0, 16);
+    
+    loadCourses();
+});
+</script>
+{% endblock %}

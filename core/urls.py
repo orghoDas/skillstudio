@@ -51,6 +51,10 @@ urlpatterns = [
     path('live/sessions/', views.live_schedule, name='live_sessions'),  # Alias
     path('live/room/<int:session_id>/', views.live_room, name='live_room'),
     
+    # Exams
+    path('exams/', views.exams_list, name='exams_list'),    path("exams/create/", views.exam_create, name="exam_create"),    path('exams/take/<int:exam_id>/', views.exam_take, name='exam_take'),
+    path('exams/results/<int:exam_id>/', views.exam_results, name='exam_results'),
+    
     # Search & Discovery
     path('search/', views.search_results, name='search_results'),
     path('browse/', views.browse_courses, name='browse_courses'),

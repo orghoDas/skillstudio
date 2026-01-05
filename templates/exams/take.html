@@ -1,0 +1,340 @@
+{% extends 'base.html' %}
+
+{% block title %}Take Exam - SkillStudio{% endblock %}
+
+{% block main_classes %}p-0{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-dark-bg">
+    <!-- Header with Timer -->
+    <div class="bg-dark-surface border-b border-dark-border sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 id="exam-title" class="text-2xl font-bold mb-1">Loading...</h1>
+                    <p id="exam-info" class="text-sm text-gray-400">Preparing your exam</p>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <!-- Timer -->
+                    <div class="flex items-center space-x-3 px-4 py-2 bg-dark-bg rounded-lg">
+                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span id="timer" class="text-xl font-mono font-semibold">--:--</span>
+                    </div>
+                    <!-- Submit Button -->
+                    <button onclick="submitExam()" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                        Submit Exam
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="max-w-7xl mx-auto px-6 py-4">
+        <div class="flex items-center justify-between mb-2 text-sm text-gray-400">
+            <span>Progress</span>
+            <span id="progress-text">0/0 answered</span>
+        </div>
+        <div class="w-full bg-dark-surface rounded-full h-2">
+            <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Questions -->
+    <div class="max-w-7xl mx-auto px-6 py-6">
+        <div id="questions-container" class="space-y-8">
+            <!-- Questions will be loaded here -->
+        </div>
+        
+        <!-- Loading State -->
+        <div id="loading-state" class="text-center py-16">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading exam...</p>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="fixed bottom-0 left-0 right-0 bg-dark-surface border-t border-dark-border">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <button onclick="if(confirm('Are you sure you want to leave this exam?')) window.location.href='/exams/'" 
+                    class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors">
+                    Exit Exam
+                </button>
+                <button onclick="submitExam()" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors text-lg">
+                    Submit Exam
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api';
+let examId = null;
+let attemptId = null;
+let exam = null;
+let questions = [];
+let answers = {};
+let timerInterval = null;
+let timeRemaining = 0;
+
+async function apiRequest(endpoint, options = {}) {
+    const token = localStorage.getItem('access_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers }
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || error.message || 'Request failed');
+    }
+
+    return response.json();
+}
+
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const pathParts = window.location.pathname.split('/');
+    examId = pathParts[pathParts.indexOf('take') + 1];
+    attemptId = params.get('attempt');
+}
+
+async function loadExam() {
+    const loadingState = document.getElementById('loading-state');
+    const questionsContainer = document.getElementById('questions-container');
+    
+    try {
+        // Load exam details
+        exam = await apiRequest(`/exams/${examId}/`);
+        
+        document.getElementById('exam-title').textContent = exam.title;
+        document.getElementById('exam-info').textContent = `${exam.course_name} • ${exam.total_marks} marks • ${exam.duration_minutes} minutes`;
+        
+        // Get questions (they include both from QuestionBank and custom questions)
+        questions = exam.questions || [];
+        
+        if (exam.randomize_questions) {
+            questions = shuffleArray(questions);
+        }
+        
+        loadingState.classList.add('hidden');
+        renderQuestions();
+        
+        // Start timer
+        timeRemaining = exam.duration_minutes * 60;
+        startTimer();
+        
+        // Auto-save answers every 30 seconds
+        setInterval(autoSaveAnswers, 30000);
+        
+    } catch (error) {
+        console.error('Error loading exam:', error);
+        loadingState.innerHTML = `
+            <div class="text-center py-16">
+                <p class="text-red-500 mb-4">${error.message || 'Failed to load exam'}</p>
+                <a href="/exams/" class="text-blue-500 hover:underline">Return to exams</a>
+            </div>
+        `;
+    }
+}
+
+function renderQuestions() {
+    const container = document.getElementById('questions-container');
+    container.innerHTML = '';
+    
+    questions.forEach((question, index) => {
+        const questionCard = createQuestionCard(question, index + 1);
+        container.appendChild(questionCard);
+    });
+    
+    updateProgress();
+}
+
+function createQuestionCard(question, number) {
+    const card = document.createElement('div');
+    card.className = 'bg-dark-surface border border-dark-border rounded-xl p-6';
+    card.id = `question-${question.id}`;
+    
+    const options = question.options || [];
+    
+    card.innerHTML = `
+        <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center space-x-3">
+                <span class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-semibold text-sm">
+                    ${number}
+                </span>
+                <h3 class="text-lg font-semibold">${question.question_text}</h3>
+            </div>
+            <span class="px-3 py-1 bg-blue-900/30 text-blue-400 text-sm rounded-full">${question.marks} ${question.marks == 1 ? 'mark' : 'marks'}</span>
+        </div>
+        
+        <div class="space-y-3 ml-11">
+            ${options.map((option, optIndex) => `
+                <label class="flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all option-label">
+                    <input type="radio" 
+                        name="question-${question.id}" 
+                        value="${optIndex}"
+                        onchange="selectAnswer(${question.id}, ${optIndex})"
+                        class="mt-1 w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500">
+                    <span class="ml-3 flex-1 text-gray-200">${option.text || option}</span>
+                </label>
+            `).join('')}
+        </div>
+    `;
+    
+    return card;
+}
+
+function selectAnswer(questionId, optionIndex) {
+    answers[questionId] = optionIndex;
+    updateProgress();
+    
+    // Visual feedback
+    const questionCard = document.getElementById(`question-${questionId}`);
+    questionCard.classList.add('border-green-500');
+}
+
+function updateProgress() {
+    const answered = Object.keys(answers).length;
+    const total = questions.length;
+    const percentage = total > 0 ? (answered / total) * 100 : 0;
+    
+    document.getElementById('progress-bar').style.width = `${percentage}%`;
+    document.getElementById('progress-text').textContent = `${answered}/${total} answered`;
+}
+
+function startTimer() {
+    updateTimerDisplay();
+    
+    timerInterval = setInterval(() => {
+        timeRemaining--;
+        updateTimerDisplay();
+        
+        if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            alert('Time is up! Your exam will be submitted automatically.');
+            submitExam(true);
+        } else if (timeRemaining <= 300 && timeRemaining % 60 === 0) {
+            // Warning at 5 minutes and every minute after
+            alert(`${Math.floor(timeRemaining / 60)} minute(s) remaining!`);
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(timeRemaining / 60);
+    const seconds = timeRemaining % 60;
+    const timerElement = document.getElementById('timer');
+    timerElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    
+    // Change color when time is running out
+    if (timeRemaining <= 300) {
+        timerElement.classList.add('text-red-500');
+        timerElement.classList.remove('text-white');
+    }
+}
+
+async function autoSaveAnswers() {
+    // In a real implementation, save answers to server
+    console.log('Auto-saving answers...', answers);
+}
+
+async function submitExam(autoSubmit = false) {
+    if (!autoSubmit) {
+        const answered = Object.keys(answers).length;
+        const total = questions.length;
+        
+        if (answered < total) {
+            if (!confirm(`You have only answered ${answered} out of ${total} questions. Submit anyway?`)) {
+                return;
+            }
+        } else {
+            if (!confirm('Are you sure you want to submit your exam? This action cannot be undone.')) {
+                return;
+            }
+        }
+    }
+    
+    try {
+        clearInterval(timerInterval);
+        
+        // Format answers for submission
+        const formattedAnswers = questions.map(question => ({
+            question_id: question.id,
+            selected_option: answers[question.id] !== undefined ? answers[question.id] : null
+        }));
+        
+        const result = await apiRequest(`/exams/${examId}/submit/`, {
+            method: 'POST',
+            body: JSON.stringify({
+                attempt_id: attemptId,
+                answers: formattedAnswers
+            })
+        });
+        
+        // Redirect to results
+        window.location.href = `/exams/results/${examId}/?attempt=${attemptId}`;
+        
+    } catch (error) {
+        alert(error.message || 'Failed to submit exam. Please try again.');
+        // Restart timer if submission failed
+        if (!autoSubmit) {
+            startTimer();
+        }
+    }
+}
+
+function shuffleArray(array) {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+// Prevent accidental page close
+window.addEventListener('beforeunload', (e) => {
+    if (timerInterval) {
+        e.preventDefault();
+        e.returnValue = 'You have an exam in progress. Are you sure you want to leave?';
+        return e.returnValue;
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    getUrlParams();
+    
+    if (!examId || !attemptId) {
+        alert('Invalid exam or attempt ID');
+        window.location.href = '/exams/';
+        return;
+    }
+    
+    loadExam();
+});
+</script>
+
+<style>
+.option-label:has(input:checked) {
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.1);
+}
+</style>
+{% endblock %}

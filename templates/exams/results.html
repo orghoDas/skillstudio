@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+
+{% block title %}Exam Results - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <!-- Loading State -->
+    <div id="loading-state" class="text-center py-16">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p class="text-gray-400">Loading results...</p>
+    </div>
+
+    <!-- Results Container -->
+    <div id="results-container" class="hidden space-y-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between">
+            <a href="/exams/" class="flex items-center text-gray-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                Back to Exams
+            </a>
+        </div>
+
+        <!-- Result Card -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-8">
+            <div class="text-center mb-8">
+                <div id="result-icon" class="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center">
+                    <!-- Icon will be added dynamically -->
+                </div>
+                <h1 id="exam-title" class="text-3xl font-bold mb-2">Exam Title</h1>
+                <p id="exam-course" class="text-gray-400 mb-4">Course Name</p>
+                
+                <!-- Score Display -->
+                <div class="flex items-center justify-center space-x-8 mb-6">
+                    <div>
+                        <div id="score-display" class="text-5xl font-bold mb-2">0/0</div>
+                        <div class="text-sm text-gray-400">Marks Obtained</div>
+                    </div>
+                    <div class="h-16 w-px bg-dark-border"></div>
+                    <div>
+                        <div id="percentage-display" class="text-5xl font-bold mb-2">0%</div>
+                        <div class="text-sm text-gray-400">Percentage</div>
+                    </div>
+                </div>
+                
+                <div id="status-badge" class="inline-block px-6 py-2 rounded-full text-lg font-semibold">
+                    <!-- Status badge will be added dynamically -->
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-dark-border">
+                <div class="text-center">
+                    <div id="total-questions" class="text-2xl font-bold mb-1">0</div>
+                    <div class="text-sm text-gray-400">Total Questions</div>
+                </div>
+                <div class="text-center">
+                    <div id="correct-answers" class="text-2xl font-bold text-green-500 mb-1">0</div>
+                    <div class="text-sm text-gray-400">Correct</div>
+                </div>
+                <div class="text-center">
+                    <div id="wrong-answers" class="text-2xl font-bold text-red-500 mb-1">0</div>
+                    <div class="text-sm text-gray-400">Wrong</div>
+                </div>
+                <div class="text-center">
+                    <div id="time-taken" class="text-2xl font-bold mb-1">0m</div>
+                    <div class="text-sm text-gray-400">Time Taken</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attempt History -->
+        <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4">Your Attempts</h2>
+            <div id="attempts-list" class="space-y-3">
+                <!-- Attempts will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Question Review (if enabled) -->
+        <div id="question-review" class="hidden bg-dark-surface border border-dark-border rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4">Question Review</h2>
+            <div id="review-container" class="space-y-4">
+                <!-- Question reviews will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-center space-x-4">
+            <a href="/exams/" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                Back to Exams
+            </a>
+            <button id="retake-btn" onclick="retakeExam()" class="hidden px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                Retake Exam
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api';
+let examId = null;
+let attemptId = null;
+let exam = null;
+let currentAttempt = null;
+
+async function apiRequest(endpoint, options = {}) {
+    const token = localStorage.getItem('access_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers }
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || error.message || 'Request failed');
+    }
+
+    return response.json();
+}
+
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const pathParts = window.location.pathname.split('/');
+    examId = pathParts[pathParts.indexOf('results') + 1];
+    attemptId = params.get('attempt');
+}
+
+async function loadResults() {
+    const loadingState = document.getElementById('loading-state');
+    const resultsContainer = document.getElementById('results-container');
+    
+    try {
+        // Load exam details
+        exam = await apiRequest(`/exams/${examId}/`);
+        
+        // Load attempt result
+        if (attemptId) {
+            currentAttempt = await apiRequest(`/exams/attempt/${attemptId}/result/`);
+        } else {
+            // Get latest attempt
+            const attempts = await apiRequest(`/exams/${examId}/attempts/`);
+            if (attempts.length > 0) {
+                currentAttempt = attempts[0];
+            }
+        }
+        
+        if (!currentAttempt) {
+            throw new Error('No attempt found');
+        }
+        
+        loadingState.classList.add('hidden');
+        resultsContainer.classList.remove('hidden');
+        
+        displayResults();
+        loadAttemptHistory();
+        
+    } catch (error) {
+        console.error('Error loading results:', error);
+        loadingState.innerHTML = `
+            <div class="text-center py-16">
+                <p class="text-red-500 mb-4">${error.message || 'Failed to load results'}</p>
+                <a href="/exams/" class="text-blue-500 hover:underline">Return to exams</a>
+            </div>
+        `;
+    }
+}
+
+function displayResults() {
+    const passed = currentAttempt.score >= exam.passing_marks;
+    const percentage = (currentAttempt.score / exam.total_marks) * 100;
+    
+    // Set exam info
+    document.getElementById('exam-title').textContent = exam.title;
+    document.getElementById('exam-course').textContent = exam.course_name || 'Course';
+    
+    // Set score
+    document.getElementById('score-display').textContent = `${currentAttempt.score}/${exam.total_marks}`;
+    document.getElementById('percentage-display').textContent = `${percentage.toFixed(1)}%`;
+    
+    // Set status badge and icon
+    const statusBadge = document.getElementById('status-badge');
+    const resultIcon = document.getElementById('result-icon');
+    
+    if (passed) {
+        statusBadge.className = 'inline-block px-6 py-2 bg-green-900/30 text-green-400 rounded-full text-lg font-semibold';
+        statusBadge.textContent = '✓ Passed';
+        resultIcon.className = 'w-24 h-24 mx-auto mb-6 bg-green-900/30 rounded-full flex items-center justify-center';
+        resultIcon.innerHTML = `
+            <svg class="w-12 h-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `;
+    } else {
+        statusBadge.className = 'inline-block px-6 py-2 bg-red-900/30 text-red-400 rounded-full text-lg font-semibold';
+        statusBadge.textContent = '✗ Failed';
+        resultIcon.className = 'w-24 h-24 mx-auto mb-6 bg-red-900/30 rounded-full flex items-center justify-center';
+        resultIcon.innerHTML = `
+            <svg class="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `;
+    }
+    
+    // Set stats
+    document.getElementById('total-questions').textContent = currentAttempt.total_questions || exam.question_count || 0;
+    document.getElementById('correct-answers').textContent = currentAttempt.correct_answers || 0;
+    document.getElementById('wrong-answers').textContent = currentAttempt.wrong_answers || 0;
+    
+    const timeTaken = currentAttempt.time_taken || 0;
+    document.getElementById('time-taken').textContent = `${Math.floor(timeTaken / 60)}m`;
+    
+    // Show retake button if allowed
+    if (currentAttempt.attempt_number < exam.max_attempts) {
+        document.getElementById('retake-btn').classList.remove('hidden');
+    }
+    
+    // Show question review if enabled
+    if (exam.show_correct_answers && currentAttempt.answers) {
+        displayQuestionReview();
+    }
+}
+
+async function loadAttemptHistory() {
+    try {
+        const attempts = await apiRequest(`/exams/${examId}/attempts/`);
+        const container = document.getElementById('attempts-list');
+        
+        if (attempts.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-sm">No previous attempts</p>';
+            return;
+        }
+        
+        container.innerHTML = attempts.map((attempt, index) => {
+            const passed = attempt.score >= exam.passing_marks;
+            const percentage = (attempt.score / exam.total_marks) * 100;
+            const isCurrent = attempt.id == attemptId || (index === 0 && !attemptId);
+            
+            return `
+                <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${isCurrent ? 'border-2 border-blue-500' : ''}">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-10 h-10 rounded-full ${passed ? 'bg-green-900/30' : 'bg-red-900/30'} flex items-center justify-center">
+                            <span class="font-semibold ${passed ? 'text-green-400' : 'text-red-400'}">#${attempt.attempt_number}</span>
+                        </div>
+                        <div>
+                            <div class="font-semibold">${attempt.score}/${exam.total_marks} (${percentage.toFixed(1)}%)</div>
+                            <div class="text-sm text-gray-400">${new Date(attempt.submitted_at).toLocaleString()}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <span class="px-3 py-1 ${passed ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'} text-sm rounded-full">
+                            ${passed ? 'Passed' : 'Failed'}
+                        </span>
+                        ${!isCurrent ? `<button onclick="viewAttempt(${attempt.id})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Error loading attempts:', error);
+    }
+}
+
+function displayQuestionReview() {
+    const reviewSection = document.getElementById('question-review');
+    const container = document.getElementById('review-container');
+    
+    reviewSection.classList.remove('hidden');
+    
+    if (!currentAttempt.answers || currentAttempt.answers.length === 0) {
+        container.innerHTML = '<p class="text-gray-400">No answer details available</p>';
+        return;
+    }
+    
+    container.innerHTML = currentAttempt.answers.map((answer, index) => {
+        const isCorrect = answer.is_correct;
+        
+        return `
+            <div class="p-4 bg-dark-bg border-2 ${isCorrect ? 'border-green-500' : 'border-red-500'} rounded-lg">
+                <div class="flex items-start justify-between mb-3">
+                    <h4 class="font-semibold">Question ${index + 1}</h4>
+                    <span class="px-3 py-1 ${isCorrect ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'} text-sm rounded-full">
+                        ${isCorrect ? '✓ Correct' : '✗ Wrong'}
+                    </span>
+                </div>
+                <p class="text-gray-300 mb-3">${answer.question_text}</p>
+                <div class="space-y-2">
+                    <div class="text-sm">
+                        <span class="text-gray-400">Your answer:</span>
+                        <span class="${isCorrect ? 'text-green-400' : 'text-red-400'} ml-2">${answer.user_answer || 'Not answered'}</span>
+                    </div>
+                    ${!isCorrect ? `
+                        <div class="text-sm">
+                            <span class="text-gray-400">Correct answer:</span>
+                            <span class="text-green-400 ml-2">${answer.correct_answer}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function viewAttempt(id) {
+    window.location.href = `/exams/results/${examId}/?attempt=${id}`;
+}
+
+async function retakeExam() {
+    if (!confirm('Are you sure you want to retake this exam?')) {
+        return;
+    }
+    
+    try {
+        const attempt = await apiRequest(`/exams/${examId}/start/`, { method: 'POST' });
+        window.location.href = `/exams/take/${examId}/?attempt=${attempt.id}`;
+    } catch (error) {
+        alert(error.message || 'Failed to start exam');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check authentication
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    getUrlParams();
+    
+    if (!examId) {
+        alert('Invalid exam ID');
+        window.location.href = '/exams/';
+        return;
+    }
+    
+    loadResults();
+});
+</script>
+{% endblock %}

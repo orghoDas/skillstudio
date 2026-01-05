@@ -211,24 +211,138 @@ class EnrollmentCreateSerializer(serializers.Serializer):
         return value
     
     def create(self, validated_data):
+        from decimal import Decimal
+        from payments.models import Payment
+        from accounts.models import Profile
+        from django.db import transaction
+        import logging
+        logger = logging.getLogger("enrollments")
         user = self.context['request'].user
         course_id = validated_data['course_id']
         course = Course.objects.get(id=course_id)
-        
-        enrollment, created = Enrollment.objects.get_or_create(
-            user=user,
-            course=course,
-            defaults={'status': 'active'}
-        )
-        
-        # Reactivate if canceled
-        if not created and enrollment.status == 'canceled':
-            enrollment.status = 'active'
-            enrollment.is_completed = False
-            enrollment.completed_at = None
-            enrollment.save()
-        
-        return enrollment
+        try:
+            with transaction.atomic():
+                # Only process payment if course is not free
+                if not course.is_free and course.price > 0:
+                    student_profile = user.profile
+                    instructor_profile = course.instructor.profile
+                    # Ensure we have the latest DB values in case profile was updated elsewhere
+                    try:
+                        student_profile.refresh_from_db()
+                    except Exception:
+                        pass
+                    try:
+                        instructor_profile.refresh_from_db()
+                    except Exception:
+                        pass
+                    # Ensure Decimal for all wallet and price operations
+                    from decimal import Decimal
+                    course_price = Decimal(course.price)
+                    # Prefer the student's dedicated Wallet model if present (frontend uses this)
+                    student_wallet_val = None
+                    try:
+                        from students.models import Wallet
+                        student_wallet_obj = Wallet.objects.filter(user=user).first()
+                    except Exception:
+                        student_wallet_obj = None
+
+                    if student_wallet_obj:
+                        student_wallet_val = getattr(student_wallet_obj, 'balance', None)
+                    else:
+                        # Fall back to Profile.wallet if Wallet model not present
+                        student_wallet_val = getattr(student_profile, 'wallet', None)
+                    # Log the authoritative server-side wallet value for debugging
+                    logger.debug(f"Enroll attempt: user={user.id}, server_wallet={student_wallet_val}, course_price={course.price}")
+                    if student_wallet_val is None:
+                        # Profile table missing wallet column; log and proceed to create payment record without wallet updates
+                        logger.warning(f"Profile.wallet missing for user={user.id}; skipping wallet balance update and proceeding with payment record.")
+                        platform_fee = (Decimal('0.10') * course_price).quantize(Decimal('0.01'))
+                        instructor_earnings = course_price - platform_fee
+                        Payment.objects.create(
+                            user=user,
+                            instructor=course.instructor,
+                            course=course,
+                            amount=course_price,
+                            original_amount=course_price,
+                            discount_amount=0,
+                            payment_method="wallet",
+                            status="completed",
+                            platform_fee=platform_fee,
+                            instructor_earnings=instructor_earnings,
+                            currency="USD",
+                        )
+                    else:
+                        student_wallet = Decimal(student_wallet_val)
+                        if student_wallet < course_price:
+                            logger.error(f"Insufficient wallet: user={user.id}, wallet={student_wallet}, price={course_price}")
+                            raise serializers.ValidationError({"detail": "Insufficient balance"})
+                        # Deduct from student's Wallet model if available, otherwise Profile.wallet
+                        if student_wallet_obj:
+                            try:
+                                new_balance = student_wallet_obj.deduct_money(course_price)
+                                # Keep Profile.wallet in sync for places that read it
+                                try:
+                                    student_profile.wallet = new_balance
+                                    student_profile.save(update_fields=["wallet"])
+                                except Exception:
+                                    pass
+                                # record transaction if transactions model exists
+                                try:
+                                    from students.models import WalletTransaction
+                                    WalletTransaction.objects.create(
+                                        wallet=student_wallet_obj,
+                                        transaction_type='debit',
+                                        amount=course_price,
+                                        description=f'Payment for course {course.id}',
+                                        balance_after=new_balance
+                                    )
+                                except Exception:
+                                    pass
+                            except Exception as e:
+                                logger.error(f"Failed to deduct from Wallet model for user={user.id}: {e}")
+                                raise serializers.ValidationError({"detail": "Insufficient balance"})
+                        else:
+                            student_profile.wallet = student_wallet - course_price
+                            student_profile.save(update_fields=["wallet"])
+                        # Platform fee (10%)
+                        platform_fee = (Decimal('0.10') * course_price).quantize(Decimal('0.01'))
+                        instructor_earnings = course_price - platform_fee
+                        # Add to instructor if instructor profile has wallet
+                        if hasattr(instructor_profile, 'wallet'):
+                            instructor_profile.wallet = Decimal(instructor_profile.wallet) + instructor_earnings
+                            instructor_profile.save(update_fields=["wallet"])
+                        # Create payment record
+                        Payment.objects.create(
+                            user=user,
+                            instructor=course.instructor,
+                            course=course,
+                            amount=course_price,
+                            original_amount=course_price,
+                            discount_amount=0,
+                            payment_method="wallet",
+                            status="completed",
+                            platform_fee=platform_fee,
+                            instructor_earnings=instructor_earnings,
+                            currency="USD",
+                        )
+                enrollment, created = Enrollment.objects.get_or_create(
+                    user=user,
+                    course=course,
+                    defaults={'status': 'active'}
+                )
+                # Reactivate if canceled
+                if not created and enrollment.status == 'canceled':
+                    enrollment.status = 'active'
+                    enrollment.is_completed = False
+                    enrollment.completed_at = None
+                    enrollment.save()
+                return enrollment
+        except serializers.ValidationError:
+            # Preserve ValidationError messages (e.g., insufficient wallet) so API returns them directly
+            raise
+        except Exception as e:
+            logger.exception(f"Enrollment failed for user={user.id}, course={course_id}: {e}")
+            raise serializers.ValidationError(f"Enrollment failed: {str(e)}")
 
 
 # ===========================

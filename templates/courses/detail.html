@@ -282,10 +282,50 @@ async function handleEnrollment() {
         }
     } catch (error) {
         console.error('Enrollment error:', error);
-        showAlert(error.message || 'Failed to enroll. Please try again.', 'error');
+        // If error indicates insufficient balance, show friendly modal with Add Funds action
+        const body = error && error.body;
+        const detail = body && (body.detail || body.error || body.message) || error.message;
+        if (detail && detail.toString().toLowerCase().includes('insufficient')) {
+            showInsufficientFundsModal(detail);
+        } else {
+            showAlert(detail || 'Failed to enroll. Please try again.', 'error');
+        }
         btn.disabled = false;
         btn.textContent = 'Enroll Now';
     }
+}
+
+function showInsufficientFundsModal(message) {
+    // Simple modal offering to add funds
+    const existing = document.getElementById('insufficient-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'insufficient-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 max-w-lg w-full mx-4">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-xl font-bold">Insufficient Balance</h3>
+                <button onclick="document.getElementById('insufficient-modal')?.remove()" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <p class="text-sm text-gray-300 mb-4">${escapeHtml(message || 'You do not have enough balance to enroll in this course.')}</p>
+            <div class="flex space-x-3">
+                <button onclick="document.getElementById('insufficient-modal')?.remove()" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Cancel</button>
+                <button onclick="(function(){ window.location.href='/student/wallet/'; })()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Add Funds</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function escapeHtml(unsafe) {
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 </script>
 {% endblock %}
