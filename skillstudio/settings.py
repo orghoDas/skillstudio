@@ -191,3 +191,11 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8000')
+
+# Celery configuration
+# Broker URL (use REDIS_URL or CELERY_BROKER_URL env vars)
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL', 'redis://localhost:6379/0'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+
+# Minimal beat schedule: run recommender hourly
+CELERY_BEAT_SCHEDULE = {}

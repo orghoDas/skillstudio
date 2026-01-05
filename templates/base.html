@@ -72,7 +72,13 @@
     <!-- Main Content -->
     <div class="flex">
         <!-- Sidebar (if needed) -->
-        {% block sidebar %}{% endblock %}
+        {% block sidebar %}
+        <div class="w-80 hidden lg:block px-4">
+            {% if user.is_authenticated %}
+                <!-- AI recommender widget removed -->
+            {% endif %}
+        </div>
+        {% endblock %}
         
         <!-- Main Content Area -->
         <main class="flex-1 {% block main_classes %}p-6 lg:p-8{% endblock %}">

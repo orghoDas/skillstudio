@@ -34,7 +34,6 @@ urlpatterns = [
     # path('api/events/', include('events.urls')),  # Removed
     path('api/social/', include('social.urls')),
     path('api/payments/', include('payments.urls')),
-    path('api/ai-recommender/', include('ai_recommender.urls')),
     path('api/live/', include('live.urls')),
 ]
 

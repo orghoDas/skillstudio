@@ -1,0 +1,71 @@
+{% load static %}
+<div id="ai-recommender-widget" class="ai-recommender-widget">
+  <h3>Recommended for you</h3>
+  <div id="ai-recs" style="min-height:50px">Loading…</div>
+  {% if is_staff %}
+    <div style="margin-top:8px">
+      <label><input type="checkbox" id="flag-toggle"> Enable recommender (admin)</label>
+      <span id="flag-status" style="margin-left:8px"></span>
+    </div>
+  {% endif %}
+</div>
+
+<style>
+.ai-recommender-widget{border:1px solid #e1e1e1;padding:12px;border-radius:6px;max-width:560px;background:#fff}
+.ai-rec{border-bottom:1px solid #f0f0f0;padding:8px 0}
+.ai-rec:last-child{border-bottom:none}
+.ai-rec-title{font-weight:600}
+.ai-rec-meta{color:#666;font-size:13px}
+</style>
+
+<script>
+(function(){
+  const root = document.getElementById('ai-recommender-widget');
+  const list = document.getElementById('ai-recs');
+  const csrftoken = (name)=>{
+    const v=("; "+document.cookie).split('; '+name+'=');
+    return v.length===2?v.pop().split(';').shift():'';
+  };
+
+  function render(items){
+    if(!items || items.length===0){ list.innerText = 'No recommendations yet.'; return }
+    list.innerHTML = '';
+    items.forEach(r=>{
+      const el = document.createElement('div'); el.className='ai-rec';
+      el.innerHTML = `<div class="ai-rec-title"><a href="/courses/${r.course.id}/">${r.course.title}</a></div>`+
+                     `<div class="ai-rec-meta">Score: ${r.score} — ${r.reason}</div>`;
+      list.appendChild(el);
+    })
+  }
+
+  function fetchRecs(){
+    fetch('/api/ai-recommender/my/', {credentials:'same-origin'})
+      .then(r=>r.json())
+      .then(data=>render(data))
+      .catch(e=>{ list.innerText = 'Failed to load recommendations'; console.error(e) })
+  }
+
+  fetchRecs();
+
+  // admin flag toggle
+  const flagToggle = document.getElementById('flag-toggle');
+  const flagStatus = document.getElementById('flag-status');
+  if(flagToggle){
+    // load current
+    fetch('/api/ai-recommender/feature-flag/', {credentials:'same-origin'})
+      .then(r=>r.json())
+      .then(d=>{ flagToggle.checked = !!d.ai_recommender_enabled; flagStatus.innerText = d.ai_recommender_enabled? 'enabled':'disabled' })
+      .catch(()=>flagStatus.innerText='?')
+
+    flagToggle.addEventListener('change', ()=>{
+      fetch('/api/ai-recommender/feature-flag/', {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRFToken':csrftoken('csrftoken')},
+        body: JSON.stringify({enabled: flagToggle.checked})
+      }).then(r=>r.json()).then(d=>{ flagStatus.innerText = d.ai_recommender_enabled? 'enabled':'disabled' })
+        .catch(err=>{ flagStatus.innerText='error'; console.error(err) })
+    })
+  }
+})();
+</script>
