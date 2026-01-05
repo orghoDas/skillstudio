@@ -28,6 +28,20 @@ class Enrollment(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.course.title}"
 
+# PostgreSQL equivalent for enrollments:
+# CREATE TABLE IF NOT EXISTS enrollments_enrollment (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     status varchar(20) NOT NULL DEFAULT 'active',
+#     enrolled_at timestamptz NOT NULL DEFAULT now(),
+#     completed_at timestamptz NULL,
+#     is_completed boolean NOT NULL DEFAULT false,
+#     UNIQUE (user_id, course_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_enrollments_enrollment_user_course ON enrollments_enrollment (user_id, course_id);
+# CREATE INDEX IF NOT EXISTS idx_enrollments_enrollment_course_status ON enrollments_enrollment (course_id, status);
+
 
 class LessonProgress(models.Model):
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name='lesson_progress')
@@ -47,6 +61,22 @@ class LessonProgress(models.Model):
     def __str__(self):
         return f'{self.user} - {self.lesson.title}'
 
+# PostgreSQL equivalent for lesson progress:
+# CREATE TABLE IF NOT EXISTS enrollments_lessonprogress (
+#     id serial PRIMARY KEY,
+#     enrollment_id integer NOT NULL REFERENCES enrollments_enrollment(id) ON DELETE CASCADE,
+#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
+#     lesson_id integer NOT NULL REFERENCES courses_lesson(id) ON DELETE CASCADE,
+#     is_completed boolean NOT NULL DEFAULT false,
+#     watch_time integer NOT NULL DEFAULT 0,
+#     started_at timestamptz NOT NULL DEFAULT now(),
+#     completed_at timestamptz NULL,
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (enrollment_id, lesson_id)
+# );
+# CREATE INDEX IF NOT EXISTS idx_enrollments_lessonprogress_lesson_completed ON enrollments_lessonprogress (lesson_id, is_completed);
+# CREATE INDEX IF NOT EXISTS idx_enrollments_lessonprogress_enrollment ON enrollments_lessonprogress (enrollment_id);
+
 
 class Wishlist(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wishlists')
@@ -55,4 +85,13 @@ class Wishlist(models.Model):
 
     class Meta:
         unique_together = ('user', 'course')
+
+# PostgreSQL equivalent for wishlist:
+# CREATE TABLE IF NOT EXISTS enrollments_wishlist (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     added_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (user_id, course_id)
+# );
 

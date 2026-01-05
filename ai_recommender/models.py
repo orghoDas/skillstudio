@@ -400,3 +400,144 @@ class UserLearningPath(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - {self.learning_path.title} ({self.progress:.1f}%)"
+
+
+# PostgreSQL equivalents for AI recommender models (summarized):
+# CREATE TABLE IF NOT EXISTS ai_recommender_skill (
+#     id serial PRIMARY KEY,
+#     name varchar(100) NOT NULL UNIQUE,
+#     slug varchar(120) NOT NULL UNIQUE,
+#     category varchar(50) NOT NULL DEFAULT 'other',
+#     description text NOT NULL DEFAULT '',
+#     is_active boolean NOT NULL DEFAULT true,
+#     popularity_score double precision NOT NULL DEFAULT 0.0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_ai_recommender_skill_category_popularity ON ai_recommender_skill (category, popularity_score DESC);
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_courseskill (
+#     id serial PRIMARY KEY,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     skill_id integer NOT NULL REFERENCES ai_recommender_skill(id) ON DELETE CASCADE,
+#     weight double precision NOT NULL DEFAULT 1.0,
+#     is_primary boolean NOT NULL DEFAULT false,
+#     added_by varchar(50) NOT NULL DEFAULT 'instructor',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (course_id, skill_id)
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_userskill (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     skill_id integer NOT NULL REFERENCES ai_recommender_skill(id) ON DELETE CASCADE,
+#     proficiency double precision NOT NULL DEFAULT 0.0,
+#     source varchar(50) NOT NULL DEFAULT 'course',
+#     first_learned_at timestamptz NOT NULL DEFAULT now(),
+#     last_practiced_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (user_id, skill_id)
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_userinterest (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     skill_id integer NOT NULL REFERENCES ai_recommender_skill(id) ON DELETE CASCADE,
+#     interest_level double precision NOT NULL DEFAULT 1.0,
+#     reason varchar(50) NOT NULL DEFAULT 'learning_goal',
+#     target_proficiency double precision NOT NULL DEFAULT 50.0,
+#     deadline date NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (user_id, skill_id)
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_recommendation (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     score double precision NOT NULL,
+#     algorithm varchar(50) NOT NULL,
+#     reason text NOT NULL,
+#     status varchar(20) NOT NULL DEFAULT 'active',
+#     clicked boolean NOT NULL DEFAULT false,
+#     clicked_at timestamptz NULL,
+#     model_version varchar(50) NOT NULL DEFAULT 'v1.0',
+#     metadata jsonb NOT NULL DEFAULT '{}',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     expires_at timestamptz NULL
+# );
+# -- M2M table for matched_skills
+# CREATE TABLE IF NOT EXISTS ai_recommender_recommendation_matched_skills (
+#     id serial PRIMARY KEY,
+#     recommendation_id integer NOT NULL REFERENCES ai_recommender_recommendation(id) ON DELETE CASCADE,
+#     skill_id integer NOT NULL REFERENCES ai_recommender_skill(id) ON DELETE CASCADE
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_skillgapanalysis (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     target_role varchar(200) NOT NULL,
+#     gap_score double precision NOT NULL DEFAULT 0.0,
+#     priority_skills jsonb NOT NULL DEFAULT '[]',
+#     estimated_learning_hours integer NOT NULL DEFAULT 0,
+#     is_active boolean NOT NULL DEFAULT true,
+#     progress double precision NOT NULL DEFAULT 0.0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now(),
+#     last_analyzed_at timestamptz NOT NULL DEFAULT now()
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_trendingskill (
+#     id serial PRIMARY KEY,
+#     skill_id integer NOT NULL REFERENCES ai_recommender_skill(id) ON DELETE CASCADE,
+#     period_start date NOT NULL,
+#     period_end date NOT NULL,
+#     period_type varchar(20) NOT NULL DEFAULT 'weekly',
+#     enrollment_count integer NOT NULL DEFAULT 0,
+#     search_count integer NOT NULL DEFAULT 0,
+#     completion_count integer NOT NULL DEFAULT 0,
+#     trend_score double precision NOT NULL DEFAULT 0.0,
+#     rank integer NOT NULL DEFAULT 0,
+#     rank_change integer NOT NULL DEFAULT 0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     UNIQUE (skill_id, period_start, period_end)
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_learningpath (
+#     id serial PRIMARY KEY,
+#     title varchar(200) NOT NULL,
+#     slug varchar(220) NOT NULL UNIQUE,
+#     description text NOT NULL,
+#     target_role varchar(200) NULL,
+#     difficulty_level varchar(20) NOT NULL DEFAULT 'beginner',
+#     estimated_hours integer NOT NULL DEFAULT 0,
+#     estimated_weeks integer NOT NULL DEFAULT 0,
+#     created_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
+#     is_official boolean NOT NULL DEFAULT false,
+#     is_published boolean NOT NULL DEFAULT false,
+#     enrollment_count integer NOT NULL DEFAULT 0,
+#     completion_count integer NOT NULL DEFAULT 0,
+#     avg_rating double precision NOT NULL DEFAULT 0.0,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_pathcourse (
+#     id serial PRIMARY KEY,
+#     learning_path_id integer NOT NULL REFERENCES ai_recommender_learningpath(id) ON DELETE CASCADE,
+#     course_id integer NOT NULL REFERENCES courses_course(id) ON DELETE CASCADE,
+#     order integer NOT NULL DEFAULT 0,
+#     is_required boolean NOT NULL DEFAULT true,
+#     UNIQUE (learning_path_id, course_id)
+# );
+
+# CREATE TABLE IF NOT EXISTS ai_recommender_userlearningpath (
+#     id serial PRIMARY KEY,
+#     user_id integer NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     learning_path_id integer NOT NULL REFERENCES ai_recommender_learningpath(id) ON DELETE CASCADE,
+#     progress double precision NOT NULL DEFAULT 0.0,
+#     started_at timestamptz NOT NULL DEFAULT now(),
+#     completed_at timestamptz NULL,
+#     target_completion_date date NULL,
+#     UNIQUE (user_id, learning_path_id)
+# );

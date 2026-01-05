@@ -101,6 +101,34 @@ class InstructorProfile(models.Model):
             'total_reviews',
         ])
 
+# PostgreSQL equivalent for `instructor_profiles` (db_table):
+# CREATE TABLE IF NOT EXISTS instructor_profiles (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
+#     bio text NOT NULL DEFAULT '',
+#     headline varchar(255) NOT NULL DEFAULT '',
+#     website varchar(2000) NOT NULL DEFAULT '',
+#     linkedin varchar(2000) NOT NULL DEFAULT '',
+#     twitter varchar(2000) NOT NULL DEFAULT '',
+#     expertise_areas jsonb NOT NULL DEFAULT '[]',
+#     years_of_experience integer NOT NULL DEFAULT 0,
+#     certifications jsonb NOT NULL DEFAULT '[]',
+#     education jsonb NOT NULL DEFAULT '[]',
+#     total_courses integer NOT NULL DEFAULT 0,
+#     total_students integer NOT NULL DEFAULT 0,
+#     total_revenue numeric(10,2) NOT NULL DEFAULT 0,
+#     average_rating numeric(3,2) NOT NULL DEFAULT 0,
+#     total_reviews integer NOT NULL DEFAULT 0,
+#     is_verified boolean NOT NULL DEFAULT false,
+#     verified_at timestamptz NULL,
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_user ON instructor_profiles (user_id);
+# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_is_verified ON instructor_profiles (is_verified);
+# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_avg_rating ON instructor_profiles (average_rating DESC);
+# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_total_students ON instructor_profiles (total_students DESC);
+
 
 class InstructorPayout(models.Model):
     """Track instructor payout requests and history."""
@@ -159,3 +187,22 @@ class InstructorPayout(models.Model):
         self.status = 'failed'
         self.notes = notes
         self.save(update_fields=['status', 'notes'])
+
+
+# PostgreSQL equivalent for `instructor_payouts` (db_table):
+# CREATE TABLE IF NOT EXISTS instructor_payouts (
+#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+#     instructor_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
+#     amount numeric(10,2) NOT NULL,
+#     currency varchar(3) NOT NULL DEFAULT 'USD',
+#     status varchar(20) NOT NULL DEFAULT 'pending',
+#     payment_method varchar(50) NOT NULL DEFAULT 'bank_transfer',
+#     payment_details jsonb NOT NULL DEFAULT '{}',
+#     transaction_id varchar(255) NOT NULL DEFAULT '',
+#     processed_at timestamptz NULL,
+#     notes text NOT NULL DEFAULT '',
+#     created_at timestamptz NOT NULL DEFAULT now(),
+#     updated_at timestamptz NOT NULL DEFAULT now()
+# );
+# CREATE INDEX IF NOT EXISTS idx_instructor_payouts_instructor_created ON instructor_payouts (instructor_id, created_at DESC);
+# CREATE INDEX IF NOT EXISTS idx_instructor_payouts_status ON instructor_payouts (status);

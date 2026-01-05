@@ -94,3 +94,68 @@ class APIKey(models.Model):
 
     def __str__(self):
         return f'APIKey {self.label} for {self.user.email}'
+
+
+# -- User table
+# CREATE TABLE accounts_user (
+#     id SERIAL PRIMARY KEY,
+#     password VARCHAR(128) NOT NULL,
+#     last_login TIMESTAMP WITH TIME ZONE,
+#     is_superuser BOOLEAN NOT NULL,
+#     username VARCHAR(150) UNIQUE,
+#     email VARCHAR(254) UNIQUE NOT NULL,
+#     role VARCHAR(20) NOT NULL DEFAULT 'student',
+#     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+#     is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+#     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     -- PermissionsMixin fields
+#     -- groups and user_permissions are M2M, handled by Django auth tables
+#     CONSTRAINT accounts_user_role_check CHECK (role IN ('admin', 'student', 'instructor'))
+# );
+
+# -- Profile table
+# CREATE TABLE accounts_profile (
+#     id SERIAL PRIMARY KEY,
+#     user_id INTEGER UNIQUE NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     first_name VARCHAR(100),
+#     last_name VARCHAR(100),
+#     full_name VARCHAR(255),
+#     phone VARCHAR(20),
+#     location VARCHAR(255),
+#     bio TEXT,
+#     avatar VARCHAR(200),
+#     social_links JSONB NOT NULL DEFAULT '{}',
+#     interests JSONB NOT NULL DEFAULT '[]',
+#     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     wallet NUMERIC(12,2) NOT NULL DEFAULT 0
+# );
+
+# -- EmailVerificationToken table
+# CREATE TABLE accounts_emailverificationtoken (
+#     id SERIAL PRIMARY KEY,
+#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     token UUID NOT NULL UNIQUE,
+#     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     is_used BOOLEAN NOT NULL DEFAULT FALSE
+# );
+
+# -- PasswordResetToken table
+# CREATE TABLE accounts_passwordresettoken (
+#     id SERIAL PRIMARY KEY,
+#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     token UUID NOT NULL UNIQUE,
+#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     created_at TIMESTAMP WITH TIME ZONE NOT NULL
+# );
+
+# -- APIKey table
+# CREATE TABLE accounts_apikey (
+#     id SERIAL PRIMARY KEY,
+#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
+#     key UUID NOT NULL UNIQUE,
+#     label VARCHAR(255) NOT NULL,
+#     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     is_active BOOLEAN NOT NULL DEFAULT TRUE
+# );
