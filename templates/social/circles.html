@@ -161,9 +161,9 @@ async function loadCircles() {
         const search = document.getElementById('search-circles').value;
         const status = document.getElementById('filter-status').value;
         
-        let endpoint = '/api/social/circles/';
+        let endpoint = '/social/circles/';
         if (currentTab === 'my') {
-            endpoint = '/api/social/circles/my-circles/';
+            endpoint = '/social/circles/my-circles/';
         }
 
         const params = new URLSearchParams();
@@ -172,8 +172,11 @@ async function loadCircles() {
 
         const response = await apiRequest(`${endpoint}?${params.toString()}`);
         
-        if (response && response.results && response.results.length > 0) {
-            container.innerHTML = response.results.map(circle => `
+        // Handle both paginated and non-paginated responses
+        const circles = response?.results || response || [];
+        
+        if (circles.length > 0) {
+            container.innerHTML = circles.map(circle => `
                 <a href="/social/circles/${circle.id}/" class="block bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-purple-500 transition-all hover:shadow-lg hover:shadow-purple-500/10">
                     <div class="flex items-start justify-between mb-4">
                         <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
@@ -190,9 +193,9 @@ async function loadCircles() {
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                             </svg>
-                            <span>${circle.members_count || 0}/${circle.max_members || 10} members</span>
+                            <span>${circle.member_count || 0}/${circle.max_members || 10} members</span>
                         </div>
-                        ${circle.course_title ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded">${circle.course_title}</span>` : ''}
+                        ${circle.course ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded">Course</span>` : ''}
                     </div>
                 </a>
             `).join('');

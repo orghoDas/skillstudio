@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (user.role === 'instructor') {
         window.location.href = '/instructor/dashboard/';
     } else if (user.role === 'admin') {
-        window.location.href = '/admin-panel/';
+        window.location.href = '/dashboard/';
     }
 });
 </script>
@@ -29,7 +29,23 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     <!-- Stats Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+        <!-- Wallet Card -->
+        <div class="bg-gradient-to-br from-yellow-600 to-yellow-700 border border-yellow-500 rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-yellow-500 bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <button onclick="openAddFundsModal()" class="text-xs bg-white text-yellow-700 px-3 py-1 rounded-full font-medium hover:bg-yellow-100 transition-colors">
+                    Add Funds
+                </button>
+            </div>
+            <p class="text-3xl font-bold text-white" id="wallet-balance">$0.00</p>
+            <p class="text-sm text-yellow-100">Wallet Balance</p>
+        </div>
+
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -124,23 +140,30 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load dashboard stats
     async function loadStats() {
         try {
-            const [enrollments, certificates, circles] = await Promise.all([
-                apiRequest('/enrollments/'),
-                apiRequest('/certificates/'),
+            const [dashboardData, circles] = await Promise.all([
+                apiRequest('/students/dashboard/'),
                 apiRequest('/social/circles/my-circles/')
             ]);
 
-            // Handle both paginated and non-paginated responses
-            const enrollmentsList = enrollments?.results || enrollments || [];
-            if (enrollmentsList.length > 0) {
-                const enrolled = enrollmentsList.filter(e => e.status !== 'completed');
-                const completed = enrollmentsList.filter(e => e.status === 'completed');
-                document.getElementById('enrolled-count').textContent = enrolled.length;
-                document.getElementById('completed-count').textContent = completed.length;
-            }
-
-            if (certificates && certificates.results) {
-                document.getElementById('certificates-count').textContent = certificates.results.length;
+            if (dashboardData && dashboardData.courses) {
+                const courses = dashboardData.courses;
+                
+                // Count enrolled courses (all courses)
+                const enrolledCount = courses.length;
+                
+                // Count completed courses (where is_completed is true or has_certificate is true)
+                const completedCount = courses.filter(course => 
+                    course.has_certificate === true || course.status === 'completed'
+                ).length;
+                
+                // Count certificates earned
+                const certificatesCount = courses.filter(course => 
+                    course.has_certificate === true
+                ).length;
+                
+                document.getElementById('enrolled-count').textContent = enrolledCount;
+                document.getElementById('completed-count').textContent = completedCount;
+                document.getElementById('certificates-count').textContent = certificatesCount;
             }
 
             if (circles && circles.results) {
@@ -154,38 +177,42 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load in-progress courses
     async function loadContinueLearning() {
         try {
-            const response = await apiRequest('/enrollments/?status=in_progress&limit=3');
+            const dashboardData = await apiRequest('/students/dashboard/');
             const container = document.getElementById('continue-learning');
             
-            // Handle both paginated and non-paginated responses
-            const enrollments = response?.results || response || [];
+            if (dashboardData && dashboardData.courses) {
+                // Filter for in-progress courses (not completed and has some progress)
+                const inProgressCourses = dashboardData.courses
+                    .filter(course => !course.has_certificate && course.progress_percentage > 0)
+                    .slice(0, 3); // Get first 3
 
-            if (enrollments.length > 0) {
-                container.innerHTML = enrollments.map(enrollment => `
-                    <a href="/courses/${enrollment.course_slug || enrollment.course}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
-                        <div class="h-40 bg-gradient-to-br from-blue-500 to-purple-600"></div>
-                        <div class="p-4">
-                            <h3 class="font-semibold mb-2">${enrollment.course_title || 'Course'}</h3>
-                            <div class="mb-3">
-                                <div class="w-full bg-dark-bg rounded-full h-2">
-                                    <div class="bg-blue-600 h-2 rounded-full" style="width: ${enrollment.progress || 0}%"></div>
+                if (inProgressCourses.length > 0) {
+                    container.innerHTML = inProgressCourses.map(course => `
+                        <a href="/courses/${course.course_id}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
+                            <div class="h-40 bg-gradient-to-br from-blue-500 to-purple-600"></div>
+                            <div class="p-4">
+                                <h3 class="font-semibold mb-2">${course.course_title}</h3>
+                                <div class="mb-3">
+                                    <div class="w-full bg-dark-bg rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: ${course.progress_percentage}%"></div>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-1">${course.progress_percentage.toFixed(1)}% Complete</p>
                                 </div>
-                                <p class="text-xs text-gray-400 mt-1">${enrollment.progress || 0}% Complete</p>
+                                <span class="text-blue-400 text-sm">Continue Learning →</span>
                             </div>
-                            <span class="text-blue-400 text-sm">Continue Learning →</span>
+                        </a>
+                    `).join('');
+                } else {
+                    container.innerHTML = `
+                        <div class="col-span-3 text-center py-12 bg-dark-surface border border-dark-border rounded-lg">
+                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                            <p class="text-gray-400 mb-4">You haven't enrolled in any courses yet</p>
+                            <a href="/courses/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">Browse Courses</a>
                         </div>
-                    </a>
-                `).join('');
-            } else {
-                container.innerHTML = `
-                    <div class="col-span-3 text-center py-12 bg-dark-surface border border-dark-border rounded-lg">
-                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-                        </svg>
-                        <p class="text-gray-400 mb-4">You haven't enrolled in any courses yet</p>
-                        <a href="/courses/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">Browse Courses</a>
-                    </div>
-                `;
+                    `;
+                }
             }
         } catch (error) {
             console.error('Error loading courses:', error);
@@ -227,6 +254,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         } catch (error) {
             console.error('Error loading events:', error);
+            const container = document.getElementById('upcoming-events');
+            container.innerHTML = `
+                <div class="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
+                    <p class="text-gray-400">No upcoming events</p>
+                </div>
+            `;
         }
     }
 
@@ -234,8 +267,123 @@ document.addEventListener('DOMContentLoaded', async function() {
     await Promise.all([
         loadStats(),
         loadContinueLearning(),
-        loadUpcomingEvents()
+        loadUpcomingEvents(),
+        loadWallet()
     ]);
 });
+
+// Load wallet balance
+async function loadWallet() {
+    try {
+        const data = await apiRequest('/students/wallet/');
+        const balanceElement = document.getElementById('wallet-balance');
+        balanceElement.textContent = `$${parseFloat(data.balance).toFixed(2)}`;
+    } catch (error) {
+        console.error('Error loading wallet:', error);
+    }
+}
+
+// Add funds modal
+function openAddFundsModal() {
+    const modal = document.createElement('div');
+    modal.id = 'add-funds-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Add Funds to Wallet</h3>
+                <button onclick="closeAddFundsModal()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Amount ($)</label>
+                    <input type="number" id="amount-input" min="1" step="1" 
+                           class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                           placeholder="Enter amount">
+                </div>
+                <div id="add-funds-error" class="hidden text-red-500 text-sm"></div>
+                <div class="flex space-x-3">
+                    <button onclick="closeAddFundsModal()" 
+                            class="flex-1 px-4 py-2 border border-dark-border rounded-lg hover:bg-dark-bg transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="addFunds()" 
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                        Add Funds
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function closeAddFundsModal() {
+    const modal = document.getElementById('add-funds-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+async function addFunds() {
+    const amountInput = document.getElementById('amount-input');
+    const errorDiv = document.getElementById('add-funds-error');
+    const amount = parseFloat(amountInput.value);
+    
+    if (!amount || amount < 1) {
+        errorDiv.textContent = 'Please enter a valid amount (minimum $1)';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const data = await apiRequest('/students/wallet/', {
+            method: 'POST',
+            body: JSON.stringify({ amount: amount })
+        });
+        
+        // Update balance display
+        const balanceElement = document.getElementById('wallet-balance');
+        balanceElement.textContent = `$${parseFloat(data.balance).toFixed(2)}`;
+        
+        // Close modal
+        closeAddFundsModal();
+        
+        // Show success message
+        showNotification('Success', data.message || 'Funds added successfully', 'success');
+    } catch (error) {
+        console.error('Error adding funds:', error);
+        errorDiv.textContent = error.message || 'Failed to add funds';
+        errorDiv.classList.remove('hidden');
+    }
+}
+
+function showNotification(title, message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 bg-dark-surface border ${
+        type === 'success' ? 'border-green-500' : type === 'error' ? 'border-red-500' : 'border-blue-500'
+    } rounded-lg p-4 shadow-lg max-w-sm`;
+    notification.innerHTML = `
+        <div class="flex items-start">
+            <div class="flex-1">
+                <h4 class="font-bold ${
+                    type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500'
+                }">${title}</h4>
+                <p class="text-sm text-gray-400 mt-1">${message}</p>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-white ml-4">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 5000);
+}
 </script>
 {% endblock %}

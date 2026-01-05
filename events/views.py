@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
@@ -27,7 +27,12 @@ from accounts.permissions import IsInstructor
 
 class EventListCreateView(generics.ListCreateAPIView):
     """List all events or create new event (instructors only)."""
-    permission_classes = [IsAuthenticated]
+    
+    def get_permissions(self):
+        """Allow anyone to view events, but require authentication to create."""
+        if self.request.method == 'POST':
+            return [IsAuthenticated()]
+        return [AllowAny()]
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -35,15 +40,15 @@ class EventListCreateView(generics.ListCreateAPIView):
         return EventListSerializer
     
     def get_queryset(self):
-        queryset = Event.objects.all()
+        queryset = Event.objects.select_related('host', 'course').prefetch_related('registrations')
         
         # Filter by status
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         else:
-            # Default: show only published events for students
-            if self.request.user.role != 'instructor':
+            # Default: show only published events for non-authenticated or non-instructor users
+            if not self.request.user.is_authenticated or self.request.user.role != 'instructor':
                 queryset = queryset.filter(status='published')
         
         # Filter by type
@@ -53,7 +58,8 @@ class EventListCreateView(generics.ListCreateAPIView):
         
         # Filter by upcoming/past
         time_filter = self.request.query_params.get('time')
-        if time_filter == 'upcoming':
+        upcoming_filter = self.request.query_params.get('upcoming')
+        if time_filter == 'upcoming' or upcoming_filter == 'true':
             queryset = queryset.filter(scheduled_for__gt=timezone.now())
         elif time_filter == 'past':
             queryset = queryset.filter(scheduled_for__lt=timezone.now())
@@ -64,12 +70,12 @@ class EventListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(course_id=course_id)
         
         # Filter by host
-        if self.request.user.role == 'instructor':
+        if self.request.user.is_authenticated and self.request.user.role == 'instructor':
             my_events = self.request.query_params.get('my_events')
             if my_events == 'true':
                 queryset = queryset.filter(host=self.request.user)
         
-        return queryset.order_by('-scheduled_for')
+        return queryset.order_by('scheduled_for')
     
     def perform_create(self, serializer):
         serializer.save(host=self.request.user)
@@ -77,8 +83,13 @@ class EventListCreateView(generics.ListCreateAPIView):
 
 class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Get, update, or delete an event."""
-    permission_classes = [IsAuthenticated]
-    queryset = Event.objects.all()
+    queryset = Event.objects.select_related('host', 'course').prefetch_related('registrations')
+    
+    def get_permissions(self):
+        """Allow anyone to view events, but require authentication to modify."""
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAuthenticated()]
     
     def get_serializer_class(self):
         if self.request.method == 'GET':

@@ -7,6 +7,8 @@ from .views import (
     StudentNoteDetailView,
     StudentBookmarkListCreateView,
     StudentBookmarkDetailView,
+    WalletView,
+    WalletTransactionsView,
 )
 
 urlpatterns = [
@@ -17,4 +19,6 @@ urlpatterns = [
     path('notes/<uuid:id>/', StudentNoteDetailView.as_view(), name='student-note-detail'),
     path('bookmarks/', StudentBookmarkListCreateView.as_view(), name='student-bookmarks-list'),
     path('bookmarks/<uuid:id>/', StudentBookmarkDetailView.as_view(), name='student-bookmark-detail'),
+    path('wallet/', WalletView.as_view(), name='student-wallet'),
+    path('wallet/transactions/', WalletTransactionsView.as_view(), name='student-wallet-transactions'),
 ]

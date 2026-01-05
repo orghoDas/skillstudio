@@ -61,10 +61,13 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source='user.role', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    
     class Meta:
         model = Profile
-        fields = ("full_name", "bio", "avatar", "social_links", "interests", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
+        fields = ("role", "email", "first_name", "last_name", "full_name", "phone", "location", "bio", "avatar", "social_links", "interests", "created_at", "updated_at")
+        read_only_fields = ("role", "email", "created_at", "updated_at")
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -111,13 +114,13 @@ class MeSerializer(serializers.ModelSerializer):
 
 
 class ChangePasswordSerializer(serializers.Serializer):
-    old_password = serializers.CharField(required=True)
-    new_password = serializers.CharField(required=True, validators=[validate_password])
-    new_password2 = serializers.CharField(required=True)
+    old_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True, validators=[validate_password])
+    new_password2 = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password2']:
-            raise serializers.ValidationError({"new_password": "Passwords do not match."})
+            raise serializers.ValidationError({"new_password2": "Passwords do not match."})
         return attrs
 
 

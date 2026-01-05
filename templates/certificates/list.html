@@ -186,13 +186,45 @@ function renderCertificate(cert) {
 
 async function downloadCertificate(certId) {
     try {
-        const response = await apiRequest(`/certificates/${certId}/download/`);
-        if (response.download_url) {
-            window.open(response.download_url, '_blank');
-            showAlert('Certificate downloaded successfully!', 'success');
-        } else {
-            showAlert('Certificate is being generated. Please try again in a moment.', 'info');
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            showAlert('Please login to download certificate', 'error');
+            return;
         }
+
+        // Create a download link with authorization
+        const url = `${API_BASE}/certificates/${certId}/download/`;
+        
+        // Fetch the file with authorization header
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                showAlert('Certificate PDF not available yet', 'error');
+            } else {
+                showAlert('Failed to download certificate', 'error');
+            }
+            return;
+        }
+
+        // Get the blob and create download link
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = downloadUrl;
+        a.download = `certificate_${certId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+        
+        showAlert('Certificate downloaded successfully!', 'success');
     } catch (error) {
         console.error('Error downloading certificate:', error);
         showAlert('Failed to download certificate', 'error');

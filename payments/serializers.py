@@ -13,7 +13,7 @@ from payments.models import (
 )
 from accounts.models import User
 from courses.models import Course
-from events.models import Event
+# from events.models import Event  # Removed - events app disabled
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -22,13 +22,13 @@ class PaymentSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     instructor_email = serializers.EmailField(source='instructor.email', read_only=True, allow_null=True)
     course_title = serializers.CharField(source='course.title', read_only=True, allow_null=True)
-    event_title = serializers.CharField(source='event.title', read_only=True, allow_null=True)
+    # event_title = serializers.CharField(source='event.title', read_only=True, allow_null=True)  # Removed
     
     class Meta:
         model = Payment
         fields = [
             'id', 'user', 'user_email', 'instructor', 'instructor_email',
-            'course', 'course_title', 'event', 'event_title',
+            'course', 'course_title',  # 'event', 'event_title',  # Removed
             'amount', 'original_amount', 'discount_amount', 'currency',
             'platform_fee', 'instructor_earnings',
             'payment_method', 'provider', 'provider_id',
@@ -48,22 +48,23 @@ class PaymentSerializer(serializers.ModelSerializer):
 class PaymentCreateSerializer(serializers.Serializer):
     """Serializer for creating payments"""
     
-    course_id = serializers.IntegerField(required=False, allow_null=True)
-    event_id = serializers.IntegerField(required=False, allow_null=True)
+    course_id = serializers.IntegerField(required=True)  # Made required since events removed
+    # event_id = serializers.IntegerField(required=False, allow_null=True)  # Removed
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
     payment_method = serializers.ChoiceField(choices=Payment.PAYMENT_METHOD_CHOICES, default='stripe')
     coupon_code = serializers.CharField(max_length=64, required=False, allow_blank=True)
     billing_email = serializers.EmailField(required=False)
     billing_address = serializers.JSONField(required=False)
     
-    def validate(self, data):
-        if not data.get('course_id') and not data.get('event_id'):
-            raise serializers.ValidationError("Either course_id or event_id must be provided")
-        
-        if data.get('course_id') and data.get('event_id'):
-            raise serializers.ValidationError("Cannot purchase both course and event in single payment")
-        
-        return data
+    # Removed validation - only courses now
+    # def validate(self, data):
+    #     if not data.get('course_id') and not data.get('event_id'):
+    #         raise serializers.ValidationError("Either course_id or event_id must be provided")
+    #     
+    #     if data.get('course_id') and data.get('event_id'):
+    #         raise serializers.ValidationError("Cannot purchase both course and event in single payment")
+    #     
+    #     return data
 
 
 class PayoutSerializer(serializers.ModelSerializer):

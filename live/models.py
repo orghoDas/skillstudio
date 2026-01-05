@@ -95,6 +95,8 @@ class LiveSession(models.Model):
     # Status
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
     is_featured = models.BooleanField(default=False)
+    is_streaming = models.BooleanField(default=False)  # Track if instructor is actively streaming
+    stream_type = models.CharField(max_length=20, blank=True)  # 'camera', 'screen', or 'both'
     
     # Tracking
     created_at = models.DateTimeField(auto_now_add=True)

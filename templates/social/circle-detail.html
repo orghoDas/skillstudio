@@ -37,11 +37,8 @@ async function loadCircleDetails() {
     try {
         const circle = await apiRequest(`/social/circles/${circleId}/`);
         
-        // Check membership
-        if (circle.members) {
-            const user = JSON.parse(localStorage.getItem('user'));
-            isMember = circle.members.some(m => m.id === user.id);
-        }
+        // Check membership from API response
+        isMember = circle.is_member || false;
 
         container.innerHTML = `
             <!-- Header -->
@@ -74,7 +71,7 @@ async function loadCircleDetails() {
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                                 </svg>
-                                <span>${circle.members_count || 0} of ${circle.max_members || 10} members</span>
+                                <span>${circle.member_count || 0} of ${circle.max_members || 10} members</span>
                             </div>
                             ${circle.course_title ? `
                                 <div class="flex items-center space-x-3">
@@ -175,6 +172,11 @@ async function loadCircleDetails() {
             </div>
         `;
     }
+    
+    // Load messages if user is a member
+    if (isMember) {
+        loadDiscussions();
+    }
 }
 
 function renderActionButton(circle) {
@@ -186,7 +188,7 @@ function renderActionButton(circle) {
                 Leave Circle
             </button>
         `;
-    } else if (circle.members_count >= circle.max_members) {
+    } else if (circle.member_count >= circle.max_members) {
         return `
             <button disabled class="px-6 py-3 bg-gray-700 text-gray-400 rounded-lg font-semibold cursor-not-allowed">
                 Circle Full
@@ -242,22 +244,47 @@ async function postDiscussion() {
     }
 
     try {
-        await apiRequest(`/social/circles/${circleId}/discussions/`, {
+        await apiRequest(`/social/circles/${circleId}/messages/`, {
             method: 'POST',
-            body: JSON.stringify({ content })
+            body: JSON.stringify({ message: content })
         });
         document.getElementById('new-discussion').value = '';
-        showAlert('Discussion posted!', 'success');
+        showAlert('Message posted!', 'success');
         loadDiscussions();
     } catch (error) {
-        console.error('Error posting discussion:', error);
-        showAlert('Failed to post discussion', 'error');
+        console.error('Error posting message:', error);
+        showAlert('Failed to post message', 'error');
     }
 }
 
 async function loadDiscussions() {
-    // Implementation for loading discussions
-    // This would fetch from /api/social/circles/{id}/discussions/
+    try {
+        const messages = await apiRequest(`/social/circles/${circleId}/messages/`);
+        const container = document.getElementById('discussions-container');
+        
+        if (messages && messages.length > 0) {
+            container.innerHTML = messages.map(msg => `
+                <div class="border-b border-dark-border pb-4 mb-4 last:border-0">
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-sm font-bold">${msg.user?.email?.charAt(0).toUpperCase() || 'U'}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="font-semibold">${msg.user?.email || 'Unknown'}</span>
+                                <span class="text-xs text-gray-500">${new Date(msg.created_at).toLocaleString()}</span>
+                            </div>
+                            <p class="text-gray-300">${msg.message}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<p class="text-gray-400 text-center py-8">No messages yet. Start the conversation!</p>';
+        }
+    } catch (error) {
+        console.error('Error loading messages:', error);
+    }
 }
 </script>
 {% endblock %}

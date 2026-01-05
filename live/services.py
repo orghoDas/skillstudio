@@ -164,8 +164,8 @@ def join_session(session, user):
     if session.status != 'live':
         raise ValidationError("Session is not currently live")
     
-    # Check enrollment requirement
-    if session.requires_enrollment:
+    # Check enrollment requirement (skip for instructor)
+    if session.requires_enrollment and user != session.instructor:
         from enrollments.models import Enrollment
         if not Enrollment.objects.filter(
             user=user,

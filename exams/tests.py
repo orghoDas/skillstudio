@@ -8,7 +8,8 @@ from datetime import timedelta
 
 from courses.models import Course, Category
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
-from .services import start_exam_attempt, submit_exam_attempt, get_exam_analytics
+from .services import start_exam_attempt, submit_exam_attempt
+# get_exam_analytics kept local to exams app
 
 User = get_user_model()
 

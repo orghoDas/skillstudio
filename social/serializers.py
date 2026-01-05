@@ -82,8 +82,9 @@ class PostSerializer(serializers.ModelSerializer):
 class LearningCircleSerializer(serializers.ModelSerializer):
     """Learning circle serializer."""
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    member_count = serializers.IntegerField(read_only=True)
-    is_full = serializers.BooleanField(read_only=True)
+    member_count = serializers.SerializerMethodField()
+    is_full = serializers.SerializerMethodField()
+    is_member = serializers.SerializerMethodField()
     
     class Meta:
         model = LearningCircle
@@ -91,9 +92,54 @@ class LearningCircleSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'course', 'max_members',
             'is_private', 'join_code', 'learning_goal', 'weekly_target_hours',
             'status', 'cover_image', 'created_by', 'created_by_name',
-            'created_at', 'member_count', 'is_full'
+            'created_at', 'member_count', 'is_full', 'is_member'
         ]
         read_only_fields = ['created_by', 'created_at']
+    
+    def get_member_count(self, obj):
+        """Get the member count from annotation or calculate it."""
+        return obj.get_member_count()
+    
+    def get_is_full(self, obj):
+        """Check if the circle is full."""
+        return obj.is_full()
+    
+    def get_is_member(self, obj):
+        """Check if the current user is a member of this circle."""
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            from .models import CircleMembership
+            return CircleMembership.objects.filter(
+                circle=obj,
+                user=request.user,
+                status='active'
+            ).exists()
+        return False
+
+
+class LearningCircleDetailSerializer(LearningCircleSerializer):
+    """Detailed learning circle serializer with members list."""
+    members = serializers.SerializerMethodField()
+    
+    class Meta(LearningCircleSerializer.Meta):
+        fields = LearningCircleSerializer.Meta.fields + ['members']
+    
+    def get_members(self, obj):
+        """Get active members of the circle."""
+        from .models import CircleMembership
+        memberships = CircleMembership.objects.filter(
+            circle=obj,
+            status='active'
+        ).select_related('user')
+        
+        return [{
+            'id': m.user.id,
+            'email': m.user.email,
+            'first_name': getattr(m.user, 'first_name', ''),
+            'last_name': getattr(m.user, 'last_name', ''),
+            'role': m.role,
+            'joined_at': m.joined_at
+        } for m in memberships]
 
 
 class CircleMembershipSerializer(serializers.ModelSerializer):

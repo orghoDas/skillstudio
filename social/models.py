@@ -192,13 +192,22 @@ class LearningCircle(models.Model):
     def __str__(self):
         return self.name
     
-    def member_count(self):
+    def get_member_count(self):
+        """Get the member count - either from annotation or by querying."""
+        # Check if member_count is annotated (will be an int)
+        if hasattr(self, 'member_count') and isinstance(self.member_count, int):
+            return self.member_count
+        # Otherwise calculate it
         return self.members.filter(status='active').count()
+    
+    def member_count(self):
+        """For backwards compatibility."""
+        return self.get_member_count()
     
     def is_full(self):
         if not self.max_members:
             return False
-        return self.member_count() >= self.max_members
+        return self.get_member_count() >= self.max_members
 
 
 class CircleMembership(models.Model):

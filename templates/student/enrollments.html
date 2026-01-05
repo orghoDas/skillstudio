@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.href = '/instructor/dashboard/';
         return;
     } else if (user.role === 'admin') {
-        window.location.href = '/admin-panel/';
+        window.location.href = '/dashboard/';
         return;
     }
 
@@ -89,14 +89,25 @@ async function loadEnrollments() {
     const container = document.getElementById('enrollments-container');
     
     try {
-        // Build query
-        let query = '';
-        if (currentFilter !== 'all') {
-            query = `?status=${currentFilter}`;
-        }
+        // Always fetch all enrollments and filter client-side
+        const response = await apiRequest('/enrollments/');
+        let enrollments = response.results || response || [];
         
-        const response = await apiRequest(`/enrollments/${query}`);
-        const enrollments = response.results || response || [];
+        // Filter based on current tab
+        if (currentFilter === 'in_progress') {
+            // In progress = active status and has some progress but not completed
+            enrollments = enrollments.filter(e => 
+                e.status === 'active' && 
+                (e.progress_percentage > 0 || e.completed_lessons > 0) && 
+                !e.is_completed
+            );
+        } else if (currentFilter === 'completed') {
+            // Completed = completed status or is_completed flag
+            enrollments = enrollments.filter(e => 
+                e.status === 'completed' || e.is_completed === true
+            );
+        }
+        // 'all' shows everything, no filtering needed
         
         if (enrollments.length > 0) {
             container.innerHTML = `

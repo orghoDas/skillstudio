@@ -52,17 +52,9 @@ async function loadCourse() {
         // Load course sections and lessons
         const sectionsResponse = await apiRequest(`/courses/${courseSlug}/sections/`);
         sections = sectionsResponse.results || sectionsResponse;
-        
-        console.log('Sections loaded:', sections);
-        console.log('Number of sections:', sections?.length);
-        if (sections && sections.length > 0) {
-            console.log('First section:', sections[0]);
-            console.log('First section lessons:', sections[0].lessons);
-        }
 
         // Find first incomplete lesson or first lesson
         currentLesson = findNextLesson();
-        console.log('Current lesson selected:', currentLesson);
 
         renderLearningInterface();
         if (currentLesson) {
@@ -681,16 +673,12 @@ async function loadQuizInterface() {
     const contentArea = document.getElementById('lesson-content');
     
     try {
-        console.log('Loading quiz for lesson:', currentLesson.id);
-        
         // Fetch quiz data
         const response = await apiRequest(`/assessments/quiz/lesson/${currentLesson.id}/`);
-        console.log('Quiz data received:', response);
         
         quizData = response;
         
         if (!quizData.questions || quizData.questions.length === 0) {
-            console.log('No questions found in quiz');
             contentArea.innerHTML = `
                 <div class="max-w-4xl mx-auto text-center py-12">
                     <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

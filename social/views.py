@@ -14,7 +14,7 @@ from .models import (
 )
 from .serializers import (
     ReviewSerializer, ForumSerializer, ThreadSerializer, PostSerializer,
-    LearningCircleSerializer, CircleMembershipSerializer, CircleMessageSerializer,
+    LearningCircleSerializer, LearningCircleDetailSerializer, CircleMembershipSerializer, CircleMessageSerializer,
     CircleGoalSerializer, CircleEventSerializer, CircleResourceSerializer
 )
 from .services import (
@@ -210,7 +210,11 @@ class LearningCircleListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        queryset = LearningCircle.objects.exclude(status='archived')
+        from django.db.models import Count, Q
+        
+        queryset = LearningCircle.objects.exclude(status='archived').annotate(
+            member_count=Count('members', filter=Q(members__status='active'))
+        )
         
         # Filter by course if provided
         course_id = self.request.query_params.get('course_id')
@@ -257,9 +261,14 @@ class LearningCircleListCreateView(generics.ListCreateAPIView):
 
 class LearningCircleDetailView(generics.RetrieveAPIView):
     """Get learning circle details."""
-    serializer_class = LearningCircleSerializer
-    queryset = LearningCircle.objects.all()
+    serializer_class = LearningCircleDetailSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        from django.db.models import Count, Q
+        return LearningCircle.objects.annotate(
+            member_count=Count('members', filter=Q(members__status='active'))
+        )
 
 
 @api_view(['POST'])
@@ -299,13 +308,19 @@ def leave_circle(request, circle_id):
 @permission_classes([IsAuthenticated])
 def my_circles(request):
     """Get user's learning circles."""
+    from django.db.models import Count, Q
+    
     memberships = CircleMembership.objects.filter(
         user=request.user,
         status='active'
     ).select_related('circle')
     
-    circles = [m.circle for m in memberships]
-    serializer = LearningCircleSerializer(circles, many=True)
+    circle_ids = [m.circle_id for m in memberships]
+    circles = LearningCircle.objects.filter(id__in=circle_ids).annotate(
+        member_count=Count('members', filter=Q(members__status='active'))
+    )
+    
+    serializer = LearningCircleSerializer(circles, many=True, context={'request': request})
     
     return Response(serializer.data)
 

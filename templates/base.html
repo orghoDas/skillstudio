@@ -159,8 +159,9 @@
         // API fetch helper
         async function apiRequest(endpoint, options = {}) {
             const token = localStorage.getItem('access_token');
+            const isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
             const headers = {
-                'Content-Type': 'application/json',
+                ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
                 ...options.headers,
             };
             
@@ -181,7 +182,7 @@
                 // Token expired, try to refresh
                 const refreshToken = localStorage.getItem('refresh_token');
                 if (refreshToken) {
-                    const refreshResponse = await fetch(`${API_BASE}/accounts/api/token/refresh/`, {
+                    const refreshResponse = await fetch(`${API_BASE}/accounts/token/refresh/`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ refresh: refreshToken }),

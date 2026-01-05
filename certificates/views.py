@@ -85,12 +85,25 @@ class DownloadCertificateView(APIView):
     """Download certificate PDF for a completed course."""
     permission_classes = [IsAuthenticated]
     
-    def get(self, request, course_id):
-        certificate = get_object_or_404(
-            Certificate,
-            user=request.user,
-            course_id=course_id
-        )
+    def get(self, request, certificate_id=None, course_id=None):
+        # Support both UUID-based and course_id-based lookups
+        if certificate_id:
+            certificate = get_object_or_404(
+                Certificate,
+                id=certificate_id,
+                user=request.user
+            )
+        elif course_id:
+            certificate = get_object_or_404(
+                Certificate,
+                user=request.user,
+                course_id=course_id
+            )
+        else:
+            return Response(
+                {'error': 'Certificate ID or Course ID required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Verify enrollment completion
         if certificate.enrollment and not certificate.enrollment.is_completed:
@@ -111,7 +124,7 @@ class DownloadCertificateView(APIView):
         
         # Return PDF file
         return FileResponse(
-            certificate.pdf_file.open('rb'),
+            certificate.pdf.open('rb'),
             as_attachment=True,
             filename=f"certificate_{certificate.course.slug}_{certificate.user.id}.pdf"
         )

@@ -2,8 +2,14 @@
 
 {% block title %}Courses - SkillStudio{% endblock %}
 
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
 {% block content %}
-<div class="container mx-auto px-6 py-8">
+<div class="max-w-7xl mx-auto">
     <!-- Header -->
     <div class="mb-8">
         <h1 class="text-4xl font-bold mb-2">Discover Courses</h1>

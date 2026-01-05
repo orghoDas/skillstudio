@@ -21,7 +21,7 @@ from .views_reviews import (
 )
 from .views_analytics import AdminCourseStatsView
 from instructors.views import InstructorDashboardView
-from analytics.views import InstructorCourseAnalyticsView as CourseAnalyticsView
+# Analytics removed - CourseAnalyticsView endpoint disabled
 
 urlpatterns = [
     # ===== CATEGORIES ENDPOINTS =====
@@ -33,7 +33,7 @@ urlpatterns = [
     
     # Specific course operations by ID (before slug patterns)
     path('<int:id>/update/', CourseUpdateView.as_view(), name='course-update'),
-    path('<int:id>/delete/', CourseUpdateView.as_view(), name='course-delete'),
+    path('<int:id>/delete/', CourseDeleteView.as_view(), name='course-delete'),
     path('<int:id>/', CourseDetailView.as_view(), name='course-detail'),
     
     # Course Submission & Publishing
@@ -59,8 +59,8 @@ urlpatterns = [
     path('<int:course_id>/reviews/create/', CourseReviewCreateView.as_view(), name='create-review'),
     path('<int:course_id>/rating-stats/', CourseRatingStatsView.as_view(), name='course-rating-stats'),
     
-    # ===== ANALYTICS ENDPOINTS =====
-    path('<int:course_id>/analytics/', CourseAnalyticsView.as_view(), name='course-analytics'),
+    # ===== ANALYTICS ENDPOINTS ===== (removed)
+    # path('<int:course_id>/analytics/', CourseAnalyticsView.as_view(), name='course-analytics'),
     
     # ===== SLUG-BASED COURSE ENDPOINTS (MUST BE LAST) =====
     # These catch-all patterns must come after all specific patterns

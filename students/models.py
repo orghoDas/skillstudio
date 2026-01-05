@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.core.validators import MinValueValidator
+from decimal import Decimal
 import uuid
 
 User = get_user_model()
@@ -168,3 +170,71 @@ class StudentBookmark(models.Model):
         if self.lesson:
             return f"Bookmark: {self.user.email} -> {self.lesson.title}"
         return f"Bookmark: {self.user.email} -> {self.course.title}"
+
+
+class Wallet(models.Model):
+    """Student wallet for purchasing courses."""
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'student_wallets'
+    
+    def __str__(self):
+        return f"Wallet: {self.user.email} - ${self.balance}"
+    
+    def add_money(self, amount):
+        """Add money to wallet."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+        self.balance += Decimal(str(amount))
+        self.save()
+        return self.balance
+    
+    def deduct_money(self, amount):
+        """Deduct money from wallet."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+        if self.balance < Decimal(str(amount)):
+            raise ValueError("Insufficient balance")
+        self.balance -= Decimal(str(amount))
+        self.save()
+        return self.balance
+
+
+class WalletTransaction(models.Model):
+    """Transaction history for wallet."""
+    
+    TRANSACTION_TYPES = [
+        ('credit', 'Credit'),
+        ('debit', 'Debit'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transactions')
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.CharField(max_length=255)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'wallet_transactions'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['wallet', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.transaction_type}: ${self.amount} - {self.description}"

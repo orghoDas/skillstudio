@@ -202,22 +202,31 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     instructor_name = serializers.CharField(source='instructor.profile.full_name', read_only=True)
     instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
     category = CategorySerializer(read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     modules = ModuleSerializer(many=True, read_only=True)
     enrollment_count = serializers.SerializerMethodField()
+    enrollments_count = serializers.SerializerMethodField()  # Alias for template compatibility
     is_enrolled = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    total_duration = serializers.SerializerMethodField()
+    learning_outcomes = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
             'is_free', 'status', 'level', 'instructor', 'instructor_name',
-            'instructor_email', 'category', 'tags', 'modules', 'published_at',
-            'created_at', 'updated_at', 'enrollment_count', 'is_enrolled',
-            'rejection_reason'
+            'instructor_email', 'category', 'category_name', 'tags', 'modules', 'published_at',
+            'created_at', 'updated_at', 'enrollment_count', 'enrollments_count', 'is_enrolled',
+            'rejection_reason', 'average_rating', 'total_duration', 'learning_outcomes'
         ]
 
     def get_enrollment_count(self, obj):
+        return obj.enrollments.filter(status='active').count()
+    
+    def get_enrollments_count(self, obj):
+        # Alias for enrollment_count for template compatibility
         return obj.enrollments.filter(status='active').count()
 
     def get_is_enrolled(self, obj):
@@ -225,6 +234,24 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.enrollments.filter(user=request.user, status='active').exists()
         return False
+    
+    def get_average_rating(self, obj):
+        from social.models import Review
+        from django.db.models import Avg
+        avg = Review.objects.filter(course=obj).aggregate(Avg('rating'))['rating__avg']
+        return round(avg, 1) if avg else 0
+    
+    def get_total_duration(self, obj):
+        total = 0
+        for module in obj.modules.all():
+            for lesson in module.lessons.all():
+                total += lesson.duration_seconds or 0
+        return total
+    
+    def get_learning_outcomes(self, obj):
+        # Return empty list for now since field doesn't exist in model
+        # This can be populated when the field is added to the Course model
+        return []
 
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):

@@ -405,12 +405,12 @@ async function loadQuizContent() {
         const questions = response.questions || [];
         questions.forEach(q => {
             addQuestion({
-                text: q.text,
-                options: q.options.map(opt => ({
-                    text: opt.text,
-                    is_correct: opt.is_correct
+                text: q.question_text || '',
+                options: (q.options || []).map(opt => ({
+                    text: opt.option_text || '',
+                    is_correct: !!opt.is_correct
                 })),
-                explanation: q.explanation || ''
+                explanation: ''
             });
         });
         
@@ -418,7 +418,7 @@ async function loadQuizContent() {
             addQuestion();
         }
     } catch (error) {
-        console.log('No existing quiz found, starting fresh');
+        // No existing quiz, start fresh
         addQuestion();
     }
 }

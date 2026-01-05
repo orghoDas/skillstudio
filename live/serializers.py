@@ -22,12 +22,12 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     course_title = serializers.CharField(source='course.title', read_only=True)
     course_slug = serializers.CharField(source='course.slug', read_only=True)
     
-    duration_minutes = serializers.IntegerField(read_only=True)
-    participant_count = serializers.IntegerField(read_only=True)
-    available_slots = serializers.IntegerField(read_only=True)
-    is_upcoming = serializers.BooleanField(read_only=True)
-    is_live = serializers.BooleanField(read_only=True)
-    is_past = serializers.BooleanField(read_only=True)
+    duration_minutes = serializers.SerializerMethodField()
+    participant_count = serializers.SerializerMethodField()
+    available_slots = serializers.SerializerMethodField()
+    is_upcoming = serializers.SerializerMethodField()
+    is_live = serializers.SerializerMethodField()
+    is_past = serializers.SerializerMethodField()
     
     class Meta:
         model = LiveSession
@@ -41,12 +41,31 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             'enable_screen_share', 'requires_enrollment', 'is_public',
             'password_protected', 'status', 'is_featured', 'duration_minutes',
             'participant_count', 'available_slots', 'is_upcoming', 'is_live',
-            'is_past', 'created_at', 'updated_at'
+            'is_past', 'is_streaming', 'stream_type', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'instructor', 'actual_start', 'actual_end', 'status',
             'created_at', 'updated_at'
         ]
+    
+    def get_duration_minutes(self, obj):
+        return obj.duration_minutes()
+    
+    def get_participant_count(self, obj):
+        # Use annotated count if available, otherwise call method
+        return getattr(obj, 'participants_joined', obj.participant_count())
+    
+    def get_available_slots(self, obj):
+        return obj.available_slots()
+    
+    def get_is_upcoming(self, obj):
+        return obj.is_upcoming()
+    
+    def get_is_live(self, obj):
+        return obj.is_live()
+    
+    def get_is_past(self, obj):
+        return obj.is_past()
 
 
 class CreateLiveSessionSerializer(serializers.ModelSerializer):
@@ -81,7 +100,7 @@ class CreateLiveSessionSerializer(serializers.ModelSerializer):
 class SessionParticipantSerializer(serializers.ModelSerializer):
     """Serializer for SessionParticipant model."""
     
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    user_name = serializers.SerializerMethodField()
     user_email = serializers.CharField(source='user.email', read_only=True)
     session_title = serializers.CharField(source='session.title', read_only=True)
     attendance_rate = serializers.IntegerField(read_only=True)
@@ -99,6 +118,19 @@ class SessionParticipantSerializer(serializers.ModelSerializer):
             'id', 'duration_seconds', 'chat_messages_count',
             'questions_asked', 'polls_answered', 'registered_at', 'updated_at'
         ]
+    
+    def get_user_name(self, obj):
+        """Get user's full name from profile if available."""
+        try:
+            if hasattr(obj.user, 'profile'):
+                profile = obj.user.profile
+                if profile:
+                    full_name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
+                    if full_name:
+                        return full_name
+            return obj.user.username or obj.user.email
+        except Exception:
+            return obj.user.email
 
 
 class LiveChatMessageSerializer(serializers.ModelSerializer):

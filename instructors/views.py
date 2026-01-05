@@ -35,11 +35,42 @@ class InstructorDashboardView(APIView, InstructorOnlyMixin):
     def get(self, request):
         instructor = request.user
 
-        courses = get_course_overview(instructor)
-        students = get_student_engagement(instructor)
-        earnings, payouts = get_revenue_summary(instructor)
+        try:
+            courses = get_course_overview(instructor)
+            students = get_student_engagement(instructor)
+            earnings, payouts = get_revenue_summary(instructor)
+        except Exception as e:
+            # Log the error and return default values
+            import traceback
+            print(f"Error in instructor dashboard: {str(e)}")
+            traceback.print_exc()
+            
+            # Return minimal data
+            return Response({
+                "total_courses": Course.objects.filter(instructor=instructor).count(),
+                "total_students": Enrollment.objects.filter(course__instructor=instructor).values('user').distinct().count(),
+                "active_enrollments": Enrollment.objects.filter(course__instructor=instructor, status='active').count(),
+                "total_revenue": 0,
+                "courses": [],
+                "students": [],
+                "revenue": {"total_earned": 0, "platform_fee": 0},
+                "payouts": []
+            })
+
+        # Get total counts for stats
+        total_courses = Course.objects.filter(instructor=instructor).count()
+        total_students = Enrollment.objects.filter(course__instructor=instructor).values('user').distinct().count()
+        active_enrollments = Enrollment.objects.filter(course__instructor=instructor, status='active').count()
+        
+        # Safely get total revenue
+        total_earned = earnings.get("total_earned") or 0
+        total_revenue = float(total_earned) if total_earned else 0.0
 
         return Response({
+            "total_courses": total_courses,
+            "total_students": total_students,
+            "active_enrollments": active_enrollments,
+            "total_revenue": total_revenue,
             "courses": [
                 {
                     "id": c.id,
@@ -60,8 +91,8 @@ class InstructorDashboardView(APIView, InstructorOnlyMixin):
                 for e in students
             ],
             "revenue": {
-                "total_earned": earnings["total_earned"],
-                "platform_fee": earnings["platform_fee"],
+                "total_earned": earnings.get("total_earned") or 0,
+                "platform_fee": earnings.get("platform_fee") or 0,
             },
             "payouts": [
                 {
@@ -149,7 +180,7 @@ class InstructorStudentsView(APIView):
         # Get all enrollments for instructor's courses
         enrollments = Enrollment.objects.filter(
             course__instructor=instructor
-        ).select_related('user', 'course').order_by('-enrolled_at')
+        ).select_related('user', 'course').prefetch_related('lesson_progress').order_by('-enrolled_at')
         
         # Group students by course
         students_data = []
@@ -159,6 +190,20 @@ class InstructorStudentsView(APIView):
             student_key = (enrollment.user.id, enrollment.course.id)
             if student_key not in seen_students:
                 seen_students.add(student_key)
+                
+                # Calculate progress percentage
+                from courses.models import Lesson
+                total_lessons = Lesson.objects.filter(
+                    module__course=enrollment.course,
+                    is_free=False
+                ).count()
+                
+                if total_lessons == 0:
+                    progress_percentage = 0
+                else:
+                    completed_lessons = enrollment.lesson_progress.filter(is_completed=True).count()
+                    progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
+                
                 students_data.append({
                     "id": enrollment.user.id,
                     "email": enrollment.user.email,
@@ -167,9 +212,9 @@ class InstructorStudentsView(APIView):
                         "title": enrollment.course.title,
                     },
                     "enrolled_at": enrollment.enrolled_at,
-                    "progress": enrollment.progress_percentage,
+                    "progress": progress_percentage,
                     "status": enrollment.status,
-                    "last_accessed": enrollment.last_accessed,
+                    "last_accessed": enrollment.updated_at if hasattr(enrollment, 'updated_at') else enrollment.enrolled_at,
                 })
         
         return Response({

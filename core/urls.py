@@ -13,7 +13,6 @@ urlpatterns = [
     # Dashboard pages
     path('dashboard/', views.student_dashboard, name='student_dashboard'),
     path('instructor/dashboard/', views.instructor_dashboard, name='instructor_dashboard'),
-    path('admin-panel/', views.admin_dashboard, name='admin_dashboard'),
     
     # Course pages
     path('courses/', views.courses_list, name='courses_list'),
@@ -26,8 +25,6 @@ urlpatterns = [
     path('settings/profile/', views.profile_page, name='settings_profile_page'),  # Alias for profile
     path('social/circles/', views.circles_list, name='circles_list'),
     path('social/circles/<int:circle_id>/', views.circle_detail, name='circle_detail'),
-    path('events/', views.events_list, name='events_list'),
-    path('events/<int:event_id>/', views.event_detail, name='event_detail'),
     path('assessments/', views.assessments_list, name='assessments_list'),
     path('assessments/<int:assessment_id>/attempt/', views.assessment_attempt, name='assessment_attempt'),
     path('assessments/<int:assessment_id>/attempt/<int:attempt_id>/', views.assessment_attempt, name='assessment_attempt_resume'),
@@ -39,7 +36,6 @@ urlpatterns = [
     path('instructor/courses/<slug:slug>/preview/', views.instructor_course_preview, name='instructor_course_preview'),
     path('instructor/lessons/<int:id>/edit/', views.instructor_lesson_edit, name='instructor_lesson_edit'),
     path('instructor/students/', views.instructor_students, name='instructor_students'),
-    path('instructor/analytics/', views.analytics_instructor, name='instructor_analytics'),
     path('my-courses/', views.my_courses, name='my_courses'),
     path('enrollments/', views.enrollments_list, name='enrollments_list'),
     path('learn/<slug:slug>/', views.learn_course, name='learn_course'),
@@ -48,21 +44,16 @@ urlpatterns = [
     path('checkout/', views.checkout, name='checkout'),
     path('certificates/', views.certificates_list, name='certificates_list'),
     path('payments/history/', views.payment_history, name='payment_history'),
+    path('wallet/', views.wallet_page, name='wallet_page'),
     
     # Live Sessions
     path('live/', views.live_schedule, name='live_schedule'),
     path('live/sessions/', views.live_schedule, name='live_sessions'),  # Alias
     path('live/room/<int:session_id>/', views.live_room, name='live_room'),
     
-    # Admin Panel
-    path('admin/users/', views.admin_users, name='admin_users'),
-    path('admin/moderation/', views.admin_moderation, name='admin_moderation'),
-    
     # Search & Discovery
     path('search/', views.search_results, name='search_results'),
     path('browse/', views.browse_courses, name='browse_courses'),
-    path('analytics/instructor/', views.analytics_instructor, name='analytics_instructor'),
-    path('analytics/student/', views.analytics_student, name='analytics_student'),
     path('recommendations/', views.ai_recommendations, name='ai_recommendations'),
     path('courses/<int:course_id>/resources/', views.course_resources, name='course_resources'),
     path('instructor/resources/', views.instructor_resources, name='instructor_resources'),

@@ -23,7 +23,7 @@ from enrollments.models import Enrollment, LessonProgress
 
 # Import from proper locations
 from instructors.views import InstructorDashboardView  # Main instructor dashboard
-from analytics.views import InstructorCourseAnalyticsView as CourseAnalyticsView  # Course analytics
+# Analytics app removed - CourseAnalyticsView no longer available
 
 # Only keep admin stats here as it's course-specific
 class AdminCourseStatsView(APIView):

@@ -12,7 +12,7 @@ from certificates.models import Certificate
 from courses.models import Lesson, Course
 from enrollments.models import Enrollment, LessonProgress
 from enrollments.services import get_resume_lesson
-from .models import StudentProfile, StudentNote, StudentBookmark
+from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .constants import (
     ACHIEVEMENTS,
     LESSON_STARTED,
@@ -559,3 +559,132 @@ def get_student_bookmarks(user):
     return StudentBookmark.objects.filter(user=user).select_related(
         'course', 'lesson', 'lesson__module__course'
     ).order_by('-created_at')
+
+
+def get_or_create_wallet(user):
+    """
+    Get or create wallet for user.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        Wallet instance
+    """
+    wallet, created = Wallet.objects.get_or_create(user=user)
+    return wallet
+
+
+def add_funds_to_wallet(user, amount, description='Funds added to wallet'):
+    """
+    Add funds to student wallet.
+    
+    Args:
+        user: User instance
+        amount: Decimal amount to add
+        description: Transaction description
+    
+    Returns:
+        dict with success status, new balance, and transaction
+    
+    Raises:
+        ValidationError: If amount is invalid
+    """
+    if amount <= 0:
+        raise ValidationError("Amount must be positive")
+    
+    wallet = get_or_create_wallet(user)
+    
+    with transaction.atomic():
+        new_balance = wallet.add_money(amount)
+        
+        transaction_record = WalletTransaction.objects.create(
+            wallet=wallet,
+            transaction_type='credit',
+            amount=amount,
+            description=description,
+            balance_after=new_balance
+        )
+    
+    return {
+        'success': True,
+        'balance': new_balance,
+        'transaction': transaction_record
+    }
+
+
+def deduct_funds_from_wallet(user, amount, description='Purchase'):
+    """
+    Deduct funds from student wallet.
+    
+    Args:
+        user: User instance
+        amount: Decimal amount to deduct
+        description: Transaction description
+    
+    Returns:
+        dict with success status, new balance, and transaction
+    
+    Raises:
+        ValidationError: If amount is invalid or insufficient balance
+    """
+    if amount <= 0:
+        raise ValidationError("Amount must be positive")
+    
+    wallet = get_or_create_wallet(user)
+    
+    if wallet.balance < Decimal(str(amount)):
+        raise ValidationError(
+            f"Insufficient balance. Current balance: ${wallet.balance}, Required: ${amount}"
+        )
+    
+    with transaction.atomic():
+        new_balance = wallet.deduct_money(amount)
+        
+        transaction_record = WalletTransaction.objects.create(
+            wallet=wallet,
+            transaction_type='debit',
+            amount=amount,
+            description=description,
+            balance_after=new_balance
+        )
+    
+    return {
+        'success': True,
+        'balance': new_balance,
+        'transaction': transaction_record
+    }
+
+
+def get_wallet_balance(user):
+    """
+    Get current wallet balance.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        Decimal balance
+    """
+    wallet = get_or_create_wallet(user)
+    return wallet.balance
+
+
+def get_wallet_transactions(user, limit=None):
+    """
+    Get wallet transaction history.
+    
+    Args:
+        user: User instance
+        limit: Optional limit on number of transactions
+    
+    Returns:
+        QuerySet of WalletTransaction instances
+    """
+    wallet = get_or_create_wallet(user)
+    transactions = WalletTransaction.objects.filter(wallet=wallet).order_by('-created_at')
+    
+    if limit:
+        transactions = transactions[:limit]
+    
+    return transactions

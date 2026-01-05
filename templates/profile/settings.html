@@ -271,8 +271,18 @@ async function handlePasswordChange(e) {
     const newPassword = document.getElementById('new-password').value;
     const confirmPassword = document.getElementById('confirm-password').value;
     
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        showAlert('Please fill in all password fields', 'error');
+        return;
+    }
+    
     if (newPassword !== confirmPassword) {
-        showAlert('Passwords do not match', 'error');
+        showAlert('New passwords do not match', 'error');
+        return;
+    }
+    
+    if (newPassword.length < 8) {
+        showAlert('Password must be at least 8 characters long', 'error');
         return;
     }
     
@@ -281,17 +291,28 @@ async function handlePasswordChange(e) {
             method: 'POST',
             body: JSON.stringify({
                 old_password: currentPassword,
-                new_password: newPassword
+                new_password: newPassword,
+                new_password2: confirmPassword
             })
         });
         
-        if (response) {
-            showAlert('Password updated successfully!', 'success');
+        if (response && response.message) {
+            showAlert(response.message, 'success');
             document.getElementById('password-form').reset();
         }
     } catch (error) {
         console.error('Error changing password:', error);
-        showAlert(error.message || 'Failed to update password', 'error');
+        
+        // Handle specific error fields
+        if (error.old_password) {
+            showAlert(error.old_password[0] || 'Old password is incorrect', 'error');
+        } else if (error.new_password) {
+            showAlert(error.new_password[0] || 'New password is invalid', 'error');
+        } else if (error.new_password2) {
+            showAlert(error.new_password2[0] || 'Password confirmation failed', 'error');
+        } else {
+            showAlert(error.message || 'Failed to update password', 'error');
+        }
     }
 }
 </script>

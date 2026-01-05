@@ -122,7 +122,7 @@ class CourseListView(generics.ListAPIView):
 
 class CourseDetailView(generics.RetrieveAPIView):
     """Get single course details (by id or slug)"""
-    queryset = Course.objects.select_related('instructor', 'instructor__profile', 'category').prefetch_related('tags', 'modules__lessons')
+    queryset = Course.objects.select_related('instructor', 'instructor__profile', 'category').prefetch_related('tags', 'modules__lessons', 'enrollments')
     serializer_class = CourseDetailSerializer
     permission_classes = [AllowAny]
     lookup_field = 'id'
@@ -377,9 +377,8 @@ class LessonCreateView(generics.CreateAPIView):
         
         if module.course.instructor != self.request.user:
             raise ValidationError("You don't have permission to add lessons.")
-        
-        if module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot add lessons to published courses.")
+
+        # Allow instructors to add lessons to their own courses even if published
         
         serializer.save()
 

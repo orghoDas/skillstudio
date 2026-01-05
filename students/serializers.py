@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import StudentProfile, StudentNote, StudentBookmark
+from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from courses.models import Lesson, Course
 
 User = get_user_model()
@@ -150,3 +150,34 @@ class StudentActivityFeedSerializer(serializers.Serializer):
     lesson_id = serializers.IntegerField(required=False, allow_null=True)
     lesson_title = serializers.CharField(required=False, allow_null=True)
     timestamp = serializers.DateTimeField()
+
+
+class WalletTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for wallet transactions."""
+    
+    class Meta:
+        model = WalletTransaction
+        fields = ['id', 'transaction_type', 'amount', 'description', 'balance_after', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class WalletSerializer(serializers.ModelSerializer):
+    """Serializer for wallet."""
+    
+    recent_transactions = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Wallet
+        fields = ['id', 'balance', 'created_at', 'updated_at', 'recent_transactions']
+        read_only_fields = ['id', 'balance', 'created_at', 'updated_at']
+    
+    def get_recent_transactions(self, obj):
+        """Get recent transactions (last 10)."""
+        transactions = obj.transactions.all()[:10]
+        return WalletTransactionSerializer(transactions, many=True).data
+
+
+class AddFundsSerializer(serializers.Serializer):
+    """Serializer for adding funds to wallet."""
+    
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1)

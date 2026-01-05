@@ -49,13 +49,13 @@ class Payment(models.Model):
         blank=True,
         related_name="payments",
     )
-    event = models.ForeignKey(
-        "events.Event",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="payments",
-    )
+    # event = models.ForeignKey(
+    #     "events.Event",
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     blank=True,
+    #     related_name="payments",
+    # )
 
     # Payment details
     amount = models.DecimalField(
@@ -132,7 +132,7 @@ class Payment(models.Model):
         ordering = ['-created_at']
     
     def __str__(self):
-        item = self.course or self.event or "Unknown"
+        item = self.course or "Unknown"  # Removed event reference - events app disabled
         return f"Payment #{self.id} - {self.user.email} - {item} - {self.status}"
     
     @property
@@ -329,11 +329,11 @@ class Coupon(models.Model):
         blank=True,
         related_name='coupons'
     )
-    specific_events = models.ManyToManyField(
-        'events.Event',
-        blank=True,
-        related_name='coupons'
-    )
+    # specific_events = models.ManyToManyField(
+    #     'events.Event',
+    #     blank=True,
+    #     related_name='coupons'
+    # )
     
     max_discount_amount = models.DecimalField(
         max_digits=10,

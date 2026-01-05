@@ -22,7 +22,7 @@ from payments.serializers import (
 from payments import services
 from accounts.permissions import IsInstructor, IsAdmin
 from courses.models import Course
-from events.models import Event
+# from events.models import Event  # Removed - events app disabled
 
 
 # ==========================================

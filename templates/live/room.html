@@ -49,19 +49,33 @@
     <!-- Main Content Area -->
     <div class="flex-1 flex overflow-hidden">
         <!-- Video Player -->
-        <div class="flex-1 flex items-center justify-center bg-black">
+        <div class="flex-1 flex items-center justify-center bg-black relative">
             <div id="video-container" class="w-full h-full flex items-center justify-center">
-                <!-- Video Player Placeholder -->
-                <div class="text-center">
-                    <div class="w-24 h-24 mx-auto mb-4 bg-dark-surface rounded-full flex items-center justify-center">
-                        <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <p class="text-gray-400 mb-2">Video Player</p>
-                    <p class="text-sm text-gray-500">Video streaming will appear here</p>
-                </div>
+                <!-- Video Player will be initialized here -->
+            </div>
+            
+            <!-- Instructor Controls Overlay (only for instructors) -->
+            <div id="instructor-controls" class="hidden absolute top-4 right-4 bg-dark-surface/90 backdrop-blur-sm border border-dark-border rounded-lg p-4 space-y-3">
+                <h4 class="font-semibold text-sm mb-2">Instructor Controls</h4>
+                <button id="start-camera-btn" onclick="startCamera()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    Start Camera
+                </button>
+                <button id="start-screen-btn" onclick="startScreenShare()" class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    Share Screen
+                </button>
+                <button id="stop-stream-btn" onclick="stopStream()" class="hidden w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                    </svg>
+                    Stop Streaming
+                </button>
             </div>
         </div>
 
@@ -148,6 +162,20 @@ let sessionId;
 let sessionData;
 let chatVisible = true;
 let isMuted = false;
+let isInstructor = false;
+let streamCheckInterval = null;
+let websocket = null;
+let peerConnection = null;
+let remoteStream = null;
+let pendingIceCandidates = []; // Buffer for ICE candidates received before remote description
+
+// WebRTC configuration
+const rtcConfiguration = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
@@ -163,33 +191,100 @@ document.addEventListener('DOMContentLoaded', function() {
 
     loadSession();
     
+    // Check for instructor streaming status every 3 seconds (for students)
+    streamCheckInterval = setInterval(checkInstructorStreaming, 3000);
+    
     // Simulate viewer count updates
     setInterval(updateViewerCount, 5000);
 });
 
+async function checkInstructorStreaming() {
+    if (isInstructor || !sessionData) return;
+    
+    try {
+        const streamingStatus = await apiRequest(`/live/sessions/${sessionId}/streaming/status/`);
+        const container = document.getElementById('video-placeholder');
+        
+        if (!container || container.style.display === 'none') return;
+        
+        const participants = await apiRequest(`/live/sessions/${sessionId}/participants/`);
+        const participantCount = (participants.results || participants).filter(p => p.status === 'joined').length;
+        
+        if (streamingStatus.is_streaming) {
+            // Instructor is streaming
+            container.innerHTML = `
+                <div class="w-32 h-32 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+                    <svg class="w-16 h-16 text-green-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div class="flex items-center justify-center space-x-2 mb-4">
+                    <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <p class="text-white text-lg font-semibold">LIVE NOW</p>
+                </div>
+                <p class="text-gray-300 mb-2">${streamingStatus.instructor_name} is streaming ${streamingStatus.stream_type}</p>
+                <p class="text-gray-400 mb-4">${participantCount} participants watching</p>
+                <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 max-w-md mx-auto mt-6">
+                    <p class="text-yellow-400 text-sm mb-2">⚠️ WebRTC Peer Connection Required</p>
+                    <p class="text-xs text-gray-400">To see the live video stream, a signaling server is needed to establish peer-to-peer connections. This feature requires WebSocket support or a media server like Agora SDK.</p>
+                </div>
+            `;
+        } else {
+            // Instructor is not streaming yet
+            container.innerHTML = `
+                <div class="w-32 h-32 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+                    <svg class="w-16 h-16 text-blue-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <p class="text-white text-lg mb-2">Live Session Active</p>
+                <p class="text-gray-400 mb-4">${participantCount} participants waiting</p>
+                <p class="text-sm text-gray-500">Waiting for ${streamingStatus.instructor_name} to start streaming...</p>
+            `;
+        }
+    } catch (error) {
+        console.error('Error checking streaming status:', error);
+    }
+}
+
 async function loadSession() {
     try {
+        // Load user profile first
+        const userProfile = await apiRequest('/accounts/profile/');
+        localStorage.setItem('user_profile', JSON.stringify(userProfile));
+        
         sessionData = await apiRequest(`/live/sessions/${sessionId}/`);
         
         document.getElementById('session-title').textContent = sessionData.title;
         
-        const startTime = new Date(sessionData.start_time);
+        const startTime = new Date(sessionData.scheduled_start);
         const instructor = sessionData.instructor_name || 'Instructor';
         document.getElementById('session-meta').textContent = 
             `${instructor} • ${startTime.toLocaleString()}`;
 
         // Check if live
-        const now = new Date();
-        const endTime = new Date(sessionData.end_time);
-        const isLive = startTime <= now && now <= endTime;
+        const isLive = sessionData.status === 'live' || sessionData.is_live;
         
         if (isLive) {
             document.getElementById('live-indicator').classList.remove('hidden');
             document.getElementById('live-indicator').classList.add('flex');
+            
+            // Join the session
+            await joinSession();
+        } else if (sessionData.status === 'scheduled') {
+            showAlert('This session has not started yet', 'info');
+        } else if (sessionData.status === 'ended') {
+            showAlert('This session has ended', 'info');
         }
 
-        // Load video player (in real app, integrate with video platform like Agora, Zoom, etc.)
+        // Load video player
         initializeVideoPlayer(sessionData);
+        
+        // Connect to WebSocket for WebRTC signaling
+        connectWebSocket();
+        
+        // Load chat messages
+        loadChatMessages();
         
     } catch (error) {
         console.error('Error loading session:', error);
@@ -197,18 +292,472 @@ async function loadSession() {
     }
 }
 
+async function joinSession() {
+    try {
+        const response = await apiRequest(`/live/sessions/${sessionId}/join/`, {
+            method: 'POST'
+        });
+        console.log('Joined session:', response);
+        showAlert('You have joined the live session', 'success');
+    } catch (error) {
+        console.error('Error joining session:', error);
+        showAlert(error.message || 'Failed to join session', 'error');
+    }
+}
+
 function initializeVideoPlayer(session) {
     const container = document.getElementById('video-container');
     
-    if (session.stream_url || session.recording_url) {
-        // In a real implementation, you would integrate with a video streaming service
-        // For now, show a placeholder
+    // Check if user is instructor
+    const userProfile = JSON.parse(localStorage.getItem('user_profile') || '{}');
+    isInstructor = userProfile.role === 'instructor' || session.instructor === userProfile.id;
+    
+    if (session.platform === 'agora') {
+        // Show WebRTC video interface
         container.innerHTML = `
-            <video class="w-full h-full" controls ${session.stream_url ? 'autoplay' : ''}>
-                <source src="${session.stream_url || session.recording_url}" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
+            <div id="local-video" class="hidden w-full h-full"></div>
+            <div id="remote-videos" class="grid grid-cols-2 gap-2 p-4 w-full h-full"></div>
+            <div id="video-placeholder" class="text-center">
+                <div class="w-32 h-32 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+                    <svg class="w-16 h-16 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <p class="text-white text-lg mb-2">Live Stream</p>
+                <p class="text-gray-400 mb-4">${isInstructor ? 'Start your camera or screen share to begin streaming' : 'Waiting for instructor to start streaming...'}</p>
+                ${isInstructor ? '<p class="text-sm text-gray-500">Use the controls on the right to start streaming</p>' : ''}
+            </div>
         `;
+        
+        // Show instructor controls if user is instructor
+        if (isInstructor) {
+            document.getElementById('instructor-controls').classList.remove('hidden');
+        }
+        
+    } else if (session.meeting_link) {
+        // External platform link
+        container.innerHTML = `
+            <div class="text-center max-w-md">
+                <div class="w-24 h-24 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+                    <svg class="w-12 h-12 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                </div>
+                <p class="text-white text-xl mb-6">${session.platform.toUpperCase()} Meeting</p>
+                <a href="${session.meeting_link}" target="_blank" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold inline-flex items-center space-x-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    <span>Join on ${session.platform}</span>
+                </a>
+                <div class="mt-6 p-4 bg-dark-surface rounded-lg border border-dark-border text-left">
+                    ${session.meeting_id ? `<p class="text-sm text-gray-300 mb-2"><span class="font-semibold">Meeting ID:</span> ${session.meeting_id}</p>` : ''}
+                    ${session.meeting_password ? `<p class="text-sm text-gray-300"><span class="font-semibold">Password:</span> ${session.meeting_password}</p>` : ''}
+                </div>
+            </div>
+        `;
+    }
+}
+
+let localStream = null;
+let isStreaming = false;
+
+// WebSocket Connection
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const accessToken = localStorage.getItem('access_token');
+    const wsUrl = `${protocol}//${window.location.host}/ws/live/sessions/${sessionId}/?token=${accessToken}`;
+    
+    websocket = new WebSocket(wsUrl);
+    
+    websocket.onopen = function(e) {
+        console.log('WebSocket connected');
+    };
+    
+    websocket.onmessage = async function(event) {
+        const data = JSON.parse(event.data);
+        console.log('WebSocket message:', data);
+        
+        switch(data.type) {
+            case 'offer':
+                // Student receives offer from instructor
+                if (!isInstructor) {
+                    await handleOffer(data.offer, data.sender_id);
+                }
+                break;
+            
+            case 'answer':
+                // Instructor receives answer from student
+                if (isInstructor && peerConnection) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    console.log('Instructor: Set remote description from student answer');
+                    
+                    // Process buffered ICE candidates
+                    await processPendingIceCandidates();
+                }
+                break;
+            
+            case 'ice-candidate':
+                // Always buffer ICE candidates - they'll be processed after remote description is set
+                if (data.candidate) {
+                    console.log('Buffering ICE candidate');
+                    pendingIceCandidates.push(data.candidate);
+                    
+                    // Try to process buffered candidates if remote description is already set
+                    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                        processPendingIceCandidates();
+                    }
+                }
+                break;
+            
+            case 'chat':
+                // Handle chat message
+                addChatMessage(data.user_name, data.message, false);
+                break;
+            
+            case 'user_joined':
+                console.log(`${data.user_name} joined`);
+                // If instructor and currently streaming, send offer to new participant
+                if (isInstructor && localVideoElement.srcObject) {
+                    broadcastStream(localVideoElement.srcObject);
+                }
+                break;
+            
+            case 'user_left':
+                console.log(`${data.user_name} left`);
+                break;
+        }
+    };
+    
+    websocket.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+    
+    websocket.onclose = function(e) {
+        console.log('WebSocket closed');
+        // Attempt to reconnect after 3 seconds
+        setTimeout(() => {
+            if (sessionData && sessionData.status === 'live') {
+                connectWebSocket();
+            }
+        }, 3000);
+    };
+}
+
+// Process pending ICE candidates safely
+async function processPendingIceCandidates() {
+    if (pendingIceCandidates.length === 0) return;
+    if (!peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) return;
+    
+    const candidatesToProcess = [...pendingIceCandidates];
+    pendingIceCandidates = [];
+    
+    console.log(`Processing ${candidatesToProcess.length} buffered ICE candidates`);
+    
+    for (const candidate of candidatesToProcess) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log('Added buffered ICE candidate');
+        } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+        }
+    }
+}
+
+// WebRTC Functions for Students
+async function handleOffer(offer, senderId) {
+    try {
+        console.log('Student: Handling offer from instructor');
+        
+        // Create peer connection if it doesn't exist
+        if (!peerConnection) {
+            peerConnection = new RTCPeerConnection(rtcConfiguration);
+            
+            // Handle incoming stream
+            peerConnection.ontrack = (event) => {
+                console.log('Student: Received remote stream from instructor');
+                remoteStream = event.streams[0];
+                displayRemoteStream(remoteStream);
+            };
+            
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    websocket.send(JSON.stringify({
+                        type: 'ice-candidate',
+                        candidate: event.candidate,
+                        sender_id: JSON.parse(localStorage.getItem('user_profile')).id,
+                        target_id: senderId
+                    }));
+                }
+            };
+        }
+        
+        // Set remote description
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log('Student: Set remote description from offer');
+        
+        // Process buffered ICE candidates
+        await processPendingIceCandidates();
+        
+        // Create answer
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        // Send answer back
+        websocket.send(JSON.stringify({
+            type: 'answer',
+            answer: answer,
+            sender_id: JSON.parse(localStorage.getItem('user_profile')).id,
+            target_id: senderId
+        }));
+        
+        console.log('Student: Sent answer to instructor');
+        
+    } catch (error) {
+        console.error('Student: Error handling offer:', error);
+    }
+}
+
+function displayRemoteStream(stream) {
+    const placeholder = document.getElementById('video-placeholder');
+    const localVideo = document.getElementById('local-video');
+    
+    if (placeholder) placeholder.style.display = 'none';
+    
+    localVideo.innerHTML = '<video id="remote-video" autoplay playsinline class="w-full h-full object-contain bg-black"></video>';
+    localVideo.classList.remove('hidden');
+    localVideo.classList.add('flex', 'items-center', 'justify-center');
+    
+    document.getElementById('remote-video').srcObject = stream;
+}
+
+// WebRTC Broadcasting for Instructor
+async function broadcastStream(stream) {
+    try {
+        // Create peer connection for broadcasting
+        peerConnection = new RTCPeerConnection(rtcConfiguration);
+        
+        // Add local stream tracks to peer connection
+        stream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, stream);
+        });
+        
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                websocket.send(JSON.stringify({
+                    type: 'ice-candidate',
+                    candidate: event.candidate,
+                    sender_id: JSON.parse(localStorage.getItem('user_profile')).id
+                }));
+            }
+        };
+        
+        // Create offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        // Send offer to all students via WebSocket
+        websocket.send(JSON.stringify({
+            type: 'offer',
+            offer: offer,
+            sender_id: JSON.parse(localStorage.getItem('user_profile')).id
+        }));
+        
+        console.log('Broadcasting stream via WebRTC');
+        
+    } catch (error) {
+        console.error('Error broadcasting stream:', error);
+    }
+}
+
+async function startCamera() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: true 
+        });
+        
+        const container = document.getElementById('video-container');
+        const placeholder = document.getElementById('video-placeholder');
+        const localVideo = document.getElementById('local-video');
+        
+        if (placeholder) placeholder.style.display = 'none';
+        
+        localVideo.innerHTML = '<video id="my-video" autoplay muted playsinline class="w-full h-full object-contain bg-black"></video>';
+        localVideo.classList.remove('hidden');
+        localVideo.classList.add('flex', 'items-center', 'justify-center');
+        
+        document.getElementById('my-video').srcObject = localStream;
+        
+        isStreaming = true;
+        document.getElementById('start-camera-btn').classList.add('hidden');
+        document.getElementById('start-screen-btn').classList.add('hidden');
+        document.getElementById('stop-stream-btn').classList.remove('hidden');
+        
+        // Notify server that streaming has started
+        try {
+            await apiRequest(`/live/sessions/${sessionId}/streaming/start/`, {
+                method: 'POST',
+                body: JSON.stringify({ stream_type: 'camera' })
+            });
+        } catch (error) {
+            console.error('Error notifying server:', error);
+        }
+        
+        // Broadcast stream via WebRTC if instructor
+        if (isInstructor) {
+            await broadcastStream(localStream);
+        }
+        
+        showAlert('Camera started successfully', 'success');
+    } catch (error) {
+        console.error('Error starting camera:', error);
+        showAlert('Failed to access camera. Please check permissions.', 'error');
+    }
+}
+
+async function startScreenShare() {
+    try {
+        localStream = await navigator.mediaDevices.getDisplayMedia({ 
+            video: { 
+                cursor: "always",
+                displaySurface: "monitor"
+            }, 
+            audio: true 
+        });
+        
+        const container = document.getElementById('video-container');
+        const placeholder = document.getElementById('video-placeholder');
+        const localVideo = document.getElementById('local-video');
+        
+        if (placeholder) placeholder.style.display = 'none';
+        
+        localVideo.innerHTML = '<video id="my-video" autoplay muted playsinline class="w-full h-full object-contain bg-black"></video>';
+        localVideo.classList.remove('hidden');
+        localVideo.classList.add('flex', 'items-center', 'justify-center');
+        
+        document.getElementById('my-video').srcObject = localStream;
+        
+        isStreaming = true;
+        document.getElementById('start-camera-btn').classList.add('hidden');
+        document.getElementById('start-screen-btn').classList.add('hidden');
+        document.getElementById('stop-stream-btn').classList.remove('hidden');
+        
+        // Handle when user stops sharing via browser UI
+        localStream.getVideoTracks()[0].addEventListener('ended', () => {
+            stopStream();
+        });
+        
+        // Notify server that streaming has started
+        try {
+            await apiRequest(`/live/sessions/${sessionId}/streaming/start/`, {
+                method: 'POST',
+                body: JSON.stringify({ stream_type: 'screen' })
+            });
+        } catch (error) {
+            console.error('Error notifying server:', error);
+        }
+        
+        // Broadcast stream via WebRTC if instructor
+        if (isInstructor) {
+            await broadcastStream(localStream);
+        }
+        
+        showAlert('Screen sharing started successfully', 'success');
+    } catch (error) {
+        console.error('Error starting screen share:', error);
+        showAlert('Failed to share screen. Please check permissions.', 'error');
+    }
+}
+
+function stopStream() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    const localVideo = document.getElementById('local-video');
+    const placeholder = document.getElementById('video-placeholder');
+    
+    if (localVideo) {
+        localVideo.innerHTML = '';
+        localVideo.classList.add('hidden');
+    }
+    
+    if (placeholder) placeholder.style.display = 'block';
+    
+    // Close peer connection
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    
+    isStreaming = false;
+    document.getElementById('start-camera-btn').classList.remove('hidden');
+    document.getElementById('start-screen-btn').classList.remove('hidden');
+    document.getElementById('stop-stream-btn').classList.add('hidden');
+    
+    // Notify server that streaming has stopped
+    if (sessionId) {
+        apiRequest(`/live/sessions/${sessionId}/streaming/stop/`, {
+            method: 'POST'
+        }).catch(error => console.error('Error stopping streaming:', error));
+    }
+    
+    showAlert('Streaming stopped', 'info');
+}
+
+async function loadChatMessages() {
+    try {
+        const response = await apiRequest(`/live/sessions/${sessionId}/chat/`);
+        const messages = response.results || response;
+        
+        const container = document.getElementById('chat-messages');
+        if (messages.length > 0) {
+            container.innerHTML = messages.map(msg => renderChatMessage(msg)).join('');
+        }
+    } catch (error) {
+        console.error('Error loading chat:', error);
+    }
+}
+
+function renderChatMessage(message) {
+    const time = new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    return `
+        <div class="flex items-start space-x-2">
+            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                ${message.user_name ? message.user_name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-baseline space-x-2">
+                    <span class="font-medium text-sm">${message.user_name || 'User'}</span>
+                    <span class="text-xs text-gray-500">${time}</span>
+                </div>
+                <p class="text-sm text-gray-300 break-words">${message.message}</p>
+            </div>
+        </div>
+    `;
+}
+
+async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    try {
+        await apiRequest(`/live/sessions/${sessionId}/chat/send/`, {
+            method: 'POST',
+            body: JSON.stringify({ message })
+        });
+        
+        input.value = '';
+        loadChatMessages();
+    } catch (error) {
+        console.error('Error sending message:', error);
+        showAlert('Failed to send message', 'error');
     }
 }
 
@@ -253,9 +802,23 @@ function sendMessage() {
     
     if (!message) return;
     
-    // In real app, send via WebSocket
-    addChatMessage('You', message, true);
-    input.value = '';
+    // Send via WebSocket
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({
+            type: 'chat',
+            message: message,
+            timestamp: new Date().toISOString()
+        }));
+        
+        // Add to local chat immediately
+        const userProfile = JSON.parse(localStorage.getItem('user_profile') || '{}');
+        const userName = userProfile.full_name || userProfile.email || 'You';
+        addChatMessage(userName, message, true);
+        
+        input.value = '';
+    } else {
+        showAlert('Chat connection not available', 'error');
+    }
 }
 
 function addChatMessage(username, message, isOwn = false) {
@@ -273,5 +836,21 @@ function addChatMessage(username, message, isOwn = false) {
     container.appendChild(messageEl);
     container.scrollTop = container.scrollHeight;
 }
+
+// Cleanup when leaving page
+window.addEventListener('beforeunload', function() {
+    if (streamCheckInterval) {
+        clearInterval(streamCheckInterval);
+    }
+    if (localStream) {
+        stopStream();
+    }
+    if (websocket) {
+        websocket.close();
+    }
+    if (peerConnection) {
+        peerConnection.close();
+    }
+});
 </script>
 {% endblock %}

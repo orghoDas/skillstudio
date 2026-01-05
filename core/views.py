@@ -32,10 +32,6 @@ def instructor_dashboard(request):
     """Instructor dashboard"""
     return render(request, 'dashboard/instructor.html')
 
-def admin_dashboard(request):
-    """Admin dashboard"""
-    return render(request, 'dashboard/admin.html')
-
 # Course views
 def courses_list(request):
     """Course listing page"""
@@ -66,13 +62,7 @@ def circle_detail(request, circle_id):
     """Learning circle detail page"""
     return render(request, 'social/circle-detail.html')
 
-def events_list(request):
-    """Events listing page"""
-    return render(request, 'events/list.html')
 
-def event_detail(request, event_id):
-    """Event detail page"""
-    return render(request, 'events/detail.html')
 
 def assessments_list(request):
     """Assessments listing page"""
@@ -136,6 +126,10 @@ def payment_history(request):
     """Payment history and transactions page"""
     return render(request, 'payments/history.html')
 
+def wallet_page(request):
+    """Student wallet page"""
+    return render(request, 'student/wallet.html')
+
 def live_schedule(request):
     """Live sessions schedule page"""
     return render(request, 'live/schedule.html')
@@ -144,14 +138,6 @@ def live_room(request, session_id):
     """Live session room page"""
     return render(request, 'live/room.html')
 
-def admin_users(request):
-    """Admin user management page"""
-    return render(request, 'adminpanel/users.html')
-
-def admin_moderation(request):
-    """Admin content moderation page"""
-    return render(request, 'adminpanel/moderation.html')
-
 def search_results(request):
     """Search results page"""
     return render(request, 'search/results.html')
@@ -159,14 +145,6 @@ def search_results(request):
 def browse_courses(request):
     """Browse courses by category page"""
     return render(request, 'search/browse.html')
-
-def analytics_instructor(request):
-    """Instructor analytics dashboard"""
-    return render(request, 'analytics/instructor.html')
-
-def analytics_student(request):
-    """Student learning analytics"""
-    return render(request, 'analytics/student.html')
 
 def ai_recommendations(request):
     """AI-powered course recommendations"""

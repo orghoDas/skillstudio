@@ -87,14 +87,6 @@
                 </div>
                 <span class="font-semibold">View Students</span>
             </a>
-            <a href="/instructor/analytics/" class="flex items-center space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg hover:border-green-500 transition-colors">
-                <div class="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                    </svg>
-                </div>
-                <span class="font-semibold">View Analytics</span>
-            </a>
         </div>
     </div>
 
@@ -146,6 +138,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     async function loadStats() {
         try {
             const response = await apiRequest('/instructors/stats/');
+            console.log('Stats response:', response);
             if (response) {
                 document.getElementById('courses-count').textContent = response.total_courses || 0;
                 document.getElementById('students-count').textContent = response.total_students || 0;
@@ -154,6 +147,11 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         } catch (error) {
             console.error('Error loading stats:', error);
+            // Show error state
+            document.getElementById('courses-count').textContent = '–';
+            document.getElementById('students-count').textContent = '–';
+            document.getElementById('enrollments-count').textContent = '–';
+            document.getElementById('revenue-count').textContent = '–';
         }
     }
 

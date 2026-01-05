@@ -160,10 +160,23 @@ async function loadProfile() {
             document.getElementById('phone').value = profileResponse.phone || '';
             document.getElementById('location').value = profileResponse.location || '';
             document.getElementById('bio').value = profileResponse.bio || '';
+        }
+        
+        // Get dynamic stats from student dashboard
+        const dashboardData = await apiRequest('/students/dashboard/');
+        if (dashboardData && dashboardData.courses) {
+            const courses = dashboardData.courses;
             
-            // Stats
-            document.getElementById('stats-enrolled').textContent = profileResponse.enrolled_courses || 0;
-            document.getElementById('stats-certificates').textContent = profileResponse.certificates_earned || 0;
+            // Count enrolled courses
+            const enrolledCount = courses.length;
+            
+            // Count certificates earned
+            const certificatesCount = courses.filter(course => 
+                course.has_certificate === true
+            ).length;
+            
+            document.getElementById('stats-enrolled').textContent = enrolledCount;
+            document.getElementById('stats-certificates').textContent = certificatesCount;
         }
         
         // Member since

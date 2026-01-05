@@ -8,20 +8,12 @@ from rest_framework import serializers
 
 from .models import Course
 from social.models import Review
+from social.serializers import ReviewSerializer
 from enrollments.models import Enrollment
 
 
-class ReviewSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.profile.full_name', read_only=True)
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-
-    class Meta:
-        model = Review
-        fields = ['id', 'course', 'user', 'user_name', 'user_email', 'rating', 'title', 'comment', 'created_at']
-        read_only_fields = ['user', 'created_at']
-
-
 class ReviewCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating reviews"""
     class Meta:
         model = Review
         fields = ['rating', 'title', 'comment']

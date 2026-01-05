@@ -244,15 +244,11 @@ function getFormData(status) {
 async function saveChanges(status) {
     try {
         const updatedData = getFormData(status);
-        console.log('Updating course with data:', updatedData);
-        console.log('Course ID:', courseData.id);
         
         const response = await apiRequest(`/courses/${courseData.id}/update/`, {
             method: 'PUT',
             body: JSON.stringify(updatedData)
         });
-
-        console.log('Course updated:', response);
         
         showAlert(`Course ${status === 'published' ? 'updated and published' : 'saved as draft'} successfully!`, 'success');
         setTimeout(() => {

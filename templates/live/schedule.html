@@ -24,6 +24,12 @@
                 <option value="live">Live Now</option>
                 <option value="past">Past Sessions</option>
             </select>
+            <button id="create-session-btn" onclick="showCreateModal()" class="hidden px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                <span>Create Live Session</span>
+            </button>
         </div>
     </div>
 
@@ -86,44 +92,239 @@
 
     <!-- Sessions List -->
     <div id="sessions-container" class="space-y-4">
-        <!-- Loading -->
-        <div class="animate-pulse space-y-4">
-            <div class="h-32 bg-dark-surface border border-dark-border rounded-lg"></div>
-            <div class="h-32 bg-dark-surface border border-dark-border rounded-lg"></div>
-            <div class="h-32 bg-dark-surface border border-dark-border rounded-lg"></div>
+        <!-- Sessions will be loaded here -->
+    </div>
+</div>
+
+<!-- Create Session Modal -->
+<div id="create-session-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-dark-surface border border-dark-border rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b border-dark-border flex items-center justify-between sticky top-0 bg-dark-surface">
+            <h2 class="text-2xl font-bold">Create Live Session</h2>
+            <button onclick="hideCreateModal()" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
+        
+        <form id="create-session-form" class="p-6 space-y-6">
+            <!-- Course Selection -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Course *</label>
+                <select id="course-select" required class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select a course...</option>
+                </select>
+            </div>
+
+            <!-- Title -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Session Title *</label>
+                <input type="text" id="session-title" required maxlength="255" placeholder="e.g., Week 5: Advanced React Patterns"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Description</label>
+                <textarea id="session-description" rows="3" placeholder="Brief description of what will be covered in this session..."
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+
+            <!-- Session Type -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Session Type *</label>
+                <select id="session-type" required class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="class">Live Class</option>
+                    <option value="workshop">Workshop</option>
+                    <option value="webinar">Webinar</option>
+                    <option value="qa">Q&A Session</option>
+                    <option value="office_hours">Office Hours</option>
+                </select>
+            </div>
+
+            <!-- Date and Time -->
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Start Date & Time *</label>
+                    <input type="datetime-local" id="scheduled-start" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">End Date & Time *</label>
+                    <input type="datetime-local" id="scheduled-end" required
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <!-- Platform Selection -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Platform *</label>
+                <select id="platform-select" required onchange="handlePlatformChange()"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="agora">Agora (Built-in)</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="meet">Google Meet</option>
+                    <option value="teams">Microsoft Teams</option>
+                    <option value="custom">Custom Platform</option>
+                </select>
+            </div>
+
+            <!-- External Platform Details (shown only for non-Agora platforms) -->
+            <div id="external-platform-details" class="hidden space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Meeting Link</label>
+                    <input type="url" id="meeting-link" placeholder="https://zoom.us/j/..."
+                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Meeting ID</label>
+                        <input type="text" id="meeting-id" placeholder="123 456 7890"
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Meeting Password</label>
+                        <input type="text" id="meeting-password" placeholder="Optional"
+                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="space-y-3">
+                <label class="block text-sm font-medium mb-2">Session Features</label>
+                <div class="grid md:grid-cols-2 gap-3">
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="enable-chat" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Enable Chat</span>
+                    </label>
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="enable-qa" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Enable Q&A</span>
+                    </label>
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="enable-polls" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Enable Polls</span>
+                    </label>
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="enable-recording" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Enable Recording</span>
+                    </label>
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="enable-screen-share" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Enable Screen Share</span>
+                    </label>
+                    <label class="flex items-center space-x-3 p-3 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                        <input type="checkbox" id="requires-enrollment" checked class="w-5 h-5 text-blue-600 bg-dark-bg border-dark-border rounded focus:ring-2 focus:ring-blue-500">
+                        <span>Require Enrollment</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Max Participants -->
+            <div>
+                <label class="block text-sm font-medium mb-2">Max Participants (optional)</label>
+                <input type="number" id="max-participants" min="1" placeholder="Unlimited"
+                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Submit Button -->
+            <div class="flex items-center space-x-3 pt-4 border-t border-dark-border">
+                <button type="submit" class="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    Create Live Session
+                </button>
+                <button type="button" onclick="hideCreateModal()" class="px-6 py-3 bg-dark-border hover:bg-dark-bg text-white rounded-lg font-semibold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+let userProfile = null;
+
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('=== Live Schedule Page Loaded ===');
+    
     // Check authentication
     const accessToken = localStorage.getItem('access_token');
+    console.log('Access token exists:', !!accessToken);
+    
     if (!accessToken) {
+        console.log('No access token, redirecting to login');
         window.location.href = '/auth/login/?next=/live/';
         return;
     }
 
+    // Load user profile to check role
+    console.log('Loading user profile...');
+    await loadUserProfile();
+    
+    console.log('Loading sessions...');
     loadSessions();
     
     // Refresh every 30 seconds to check for live sessions
     setInterval(loadSessions, 30000);
 });
 
+async function loadUserProfile() {
+    try {
+        userProfile = await apiRequest('/accounts/profile/');
+        
+        // Show create button if user is instructor
+        if (userProfile.role === 'instructor') {
+            document.getElementById('create-session-btn').classList.remove('hidden');
+            // Load instructor's courses
+            await loadInstructorCourses();
+        }
+    } catch (error) {
+        console.error('Error loading profile:', error);
+    }
+}
+
+async function loadInstructorCourses() {
+    try {
+        const response = await apiRequest('/courses/instructor/courses/');
+        const courses = response.results || response;
+        const select = document.getElementById('course-select');
+        
+        courses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.id;
+            option.textContent = course.title;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading courses:', error);
+    }
+}
+
 async function loadSessions() {
     const container = document.getElementById('sessions-container');
     const filterStatus = document.getElementById('filter-status').value;
     
+    // Show loading state
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <p class="text-gray-400 mt-2">Loading sessions...</p>
+        </div>
+    `;
+    
     try {
-        let url = '/api/live/sessions/';
+        let url = '/live/sessions/';
         if (filterStatus !== 'all') {
             url += `?status=${filterStatus}`;
         }
 
         const response = await apiRequest(url);
         const sessions = response.results || response;
+        
+        console.log('Loaded sessions:', sessions);
 
         // Update stats
         updateStats(sessions);
@@ -149,17 +350,12 @@ async function loadSessions() {
 
 function updateStats(sessions) {
     const now = new Date();
-    const liveNow = sessions.filter(s => {
-        const start = new Date(s.start_time);
-        const end = new Date(s.end_time);
-        return start <= now && now <= end;
-    });
-    const upcoming = sessions.filter(s => new Date(s.start_time) > now);
-    const attended = sessions.filter(s => s.is_attended);
+    const liveNow = sessions.filter(s => s.status === 'live' || s.is_live);
+    const upcoming = sessions.filter(s => s.status === 'scheduled' || s.is_upcoming);
+    const attended = sessions.filter(s => s.status === 'ended' && s.participant_count > 0);
     const totalHours = sessions.reduce((sum, s) => {
-        if (s.is_attended) {
-            const duration = (new Date(s.end_time) - new Date(s.start_time)) / (1000 * 60 * 60);
-            return sum + duration;
+        if (s.duration_minutes) {
+            return sum + (s.duration_minutes / 60);
         }
         return sum;
     }, 0);
@@ -171,14 +367,21 @@ function updateStats(sessions) {
 }
 
 function renderSession(session) {
-    const startTime = new Date(session.start_time);
-    const endTime = new Date(session.end_time);
+    const startTime = new Date(session.scheduled_start);
+    const endTime = new Date(session.scheduled_end);
     const now = new Date();
-    const isLive = startTime <= now && now <= endTime;
-    const isPast = endTime < now;
-    const isUpcoming = startTime > now;
+    const isLive = session.status === 'live' || session.is_live;
+    const isPast = session.status === 'ended' || session.is_past;
+    const isUpcoming = session.status === 'scheduled' || session.is_upcoming;
+    
+    console.log('Rendering session:', session.title);
+    console.log('  Status:', session.status);
+    console.log('  is_live flag:', session.is_live);
+    console.log('  Computed isLive:', isLive);
+    console.log('  Computed isPast:', isPast);
+    console.log('  Computed isUpcoming:', isUpcoming);
 
-    const duration = Math.round((endTime - startTime) / (1000 * 60));
+    const duration = session.duration_minutes || Math.round((endTime - startTime) / (1000 * 60));
     const timeUntil = isUpcoming ? Math.round((startTime - now) / (1000 * 60)) : 0;
 
     return `
@@ -239,12 +442,12 @@ function renderSession(session) {
                                 <span>${session.course_title}</span>
                             </div>
                         ` : ''}
-                        ${session.attendees_count ? `
+                        ${session.participant_count ? `
                             <div class="flex items-center space-x-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                                 </svg>
-                                <span>${session.attendees_count} attending</span>
+                                <span>${session.participant_count} participants</span>
                             </div>
                         ` : ''}
                     </div>
@@ -290,5 +493,94 @@ function formatTimeUntil(minutes) {
     const days = Math.floor(hours / 24);
     return `${days}d`;
 }
+
+// Modal functions
+function showCreateModal() {
+    document.getElementById('create-session-modal').classList.remove('hidden');
+    
+    // Set default start time to next hour
+    const now = new Date();
+    now.setHours(now.getHours() + 1, 0, 0, 0);
+    document.getElementById('scheduled-start').value = formatDateTimeLocal(now);
+    
+    // Set default end time to 1 hour after start
+    const endTime = new Date(now);
+    endTime.setHours(endTime.getHours() + 1);
+    document.getElementById('scheduled-end').value = formatDateTimeLocal(endTime);
+}
+
+function hideCreateModal() {
+    document.getElementById('create-session-modal').classList.add('hidden');
+    document.getElementById('create-session-form').reset();
+}
+
+function handlePlatformChange() {
+    const platform = document.getElementById('platform-select').value;
+    const externalDetails = document.getElementById('external-platform-details');
+    
+    if (platform === 'agora') {
+        externalDetails.classList.add('hidden');
+    } else {
+        externalDetails.classList.remove('hidden');
+    }
+}
+
+function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Form submit handler
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('create-session-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating...';
+        
+        try {
+            const formData = {
+                course: parseInt(document.getElementById('course-select').value),
+                title: document.getElementById('session-title').value,
+                description: document.getElementById('session-description').value,
+                session_type: document.getElementById('session-type').value,
+                scheduled_start: new Date(document.getElementById('scheduled-start').value).toISOString(),
+                scheduled_end: new Date(document.getElementById('scheduled-end').value).toISOString(),
+                platform: document.getElementById('platform-select').value,
+                meeting_link: document.getElementById('meeting-link').value,
+                meeting_id: document.getElementById('meeting-id').value,
+                meeting_password: document.getElementById('meeting-password').value,
+                max_participants: document.getElementById('max-participants').value ? parseInt(document.getElementById('max-participants').value) : null,
+                enable_chat: document.getElementById('enable-chat').checked,
+                enable_qa: document.getElementById('enable-qa').checked,
+                enable_polls: document.getElementById('enable-polls').checked,
+                enable_recording: document.getElementById('enable-recording').checked,
+                enable_screen_share: document.getElementById('enable-screen-share').checked,
+                requires_enrollment: document.getElementById('requires-enrollment').checked,
+                timezone_info: Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
+            
+            const response = await apiRequest('/live/sessions/create/', {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            });
+            
+            showAlert('Live session created successfully!', 'success');
+            hideCreateModal();
+            loadSessions();
+        } catch (error) {
+            console.error('Error creating session:', error);
+            showAlert(error.message || 'Failed to create live session', 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Live Session';
+        }
+    });
+});
 </script>
 {% endblock %}

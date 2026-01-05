@@ -38,8 +38,31 @@ class LiveSessionListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        
+        # Auto-update session statuses based on time
+        now = timezone.now()
+        
+        # Update scheduled sessions that should be live
+        LiveSession.objects.filter(
+            status='scheduled',
+            scheduled_start__lte=now,
+            scheduled_end__gt=now
+        ).update(status='live', actual_start=now)
+        
+        # Update live sessions that should be ended
+        LiveSession.objects.filter(
+            status='live',
+            scheduled_end__lte=now
+        ).update(status='ended', actual_end=now)
+        
         queryset = LiveSession.objects.select_related(
             'course', 'instructor'
+        ).prefetch_related(
+            'participants'
+        ).annotate(
+            participants_joined=Count('participants', filter=Q(participants__status='joined'))
         )
         
         # Filter by course if provided
@@ -197,12 +220,86 @@ def session_participants(request, session_id):
     
     participants = SessionParticipant.objects.filter(
         session=session
-    ).select_related('user').order_by('-joined_at')
+    ).select_related('user', 'user__profile').order_by('-joined_at')
     
-    serializer = SessionParticipantSerializer(participants, many=True)
+    serializer = SessionParticipantSerializer(participants, many=True, context={'request': request})
     return Response({
-        'participants': serializer.data,
-        'total': participants.count()
+        'results': serializer.data,
+        'count': participants.count()
+    })
+
+
+# Streaming Control Views
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_streaming(request, session_id):
+    """Start streaming for a session (instructor only)."""
+    session = get_object_or_404(LiveSession, id=session_id)
+    
+    # Check if user is the instructor
+    if session.instructor != request.user:
+        return Response(
+            {'error': 'Only the instructor can start streaming'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    stream_type = request.data.get('stream_type', 'camera')  # 'camera', 'screen', or 'both'
+    
+    session.is_streaming = True
+    session.stream_type = stream_type
+    session.save(update_fields=['is_streaming', 'stream_type'])
+    
+    return Response({
+        'message': 'Streaming started',
+        'is_streaming': True,
+        'stream_type': stream_type
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def stop_streaming(request, session_id):
+    """Stop streaming for a session (instructor only)."""
+    session = get_object_or_404(LiveSession, id=session_id)
+    
+    # Check if user is the instructor
+    if session.instructor != request.user:
+        return Response(
+            {'error': 'Only the instructor can stop streaming'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    session.is_streaming = False
+    session.stream_type = ''
+    session.save(update_fields=['is_streaming', 'stream_type'])
+    
+    return Response({
+        'message': 'Streaming stopped',
+        'is_streaming': False
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def streaming_status(request, session_id):
+    """Get streaming status for a session."""
+    session = get_object_or_404(LiveSession, id=session_id)
+    
+    # Get instructor name from profile if available
+    instructor_name = session.instructor.email
+    if hasattr(session.instructor, 'profile') and session.instructor.profile:
+        profile = session.instructor.profile
+        full_name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
+        instructor_name = full_name or session.instructor.username or session.instructor.email
+    elif session.instructor.username:
+        instructor_name = session.instructor.username
+    
+    return Response({
+        'is_streaming': session.is_streaming,
+        'stream_type': session.stream_type,
+        'instructor': session.instructor.id,
+        'instructor_name': instructor_name
     })
 
 

@@ -7,7 +7,7 @@ from django.db import transaction
 
 from courses.models import Lesson
 from .models import Quiz, QuizQuestion, QuestionOption
-from .serializers import QuizDetailSerializer
+from .serializers import ManageQuizDetailSerializer
 
 
 class ManageQuizView(APIView):
@@ -34,7 +34,7 @@ class ManageQuizView(APIView):
             }
         )
         
-        return Response(QuizDetailSerializer(quiz).data)
+        return Response(ManageQuizDetailSerializer(quiz).data)
 
     @transaction.atomic
     def post(self, request, lesson_id):
@@ -61,7 +61,8 @@ class ManageQuizView(APIView):
         # Update quiz settings
         quiz.title = request.data.get('title', quiz.title)
         quiz.passing_percentage = request.data.get('passing_percentage', quiz.passing_percentage)
-        quiz.time_limit_minutes = request.data.get('time_limit_minutes')
+        time_limit_minutes = request.data.get('time_limit_minutes')
+        quiz.time_limit_minutes = None if time_limit_minutes in (None, '', 0) else time_limit_minutes
         
         # Delete existing questions
         quiz.questions.all().delete()
@@ -93,5 +94,5 @@ class ManageQuizView(APIView):
         
         return Response({
             'message': 'Quiz saved successfully',
-            'quiz': QuizDetailSerializer(quiz).data
+            'quiz': ManageQuizDetailSerializer(quiz).data
         }, status=status.HTTP_200_OK)

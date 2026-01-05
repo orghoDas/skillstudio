@@ -20,6 +20,11 @@ urlpatterns = [
     path('sessions/<int:session_id>/leave/', views.leave_session, name='session-leave'),
     path('sessions/<int:session_id>/participants/', views.session_participants, name='session-participants'),
     
+    # Streaming Control
+    path('sessions/<int:session_id>/streaming/start/', views.start_streaming, name='streaming-start'),
+    path('sessions/<int:session_id>/streaming/stop/', views.stop_streaming, name='streaming-stop'),
+    path('sessions/<int:session_id>/streaming/status/', views.streaming_status, name='streaming-status'),
+    
     # Chat
     path('sessions/<int:session_id>/chat/', views.session_chat_messages, name='session-chat'),
     path('sessions/<int:session_id>/chat/send/', views.send_chat_message, name='chat-send'),

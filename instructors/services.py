@@ -7,7 +7,7 @@ from decimal import Decimal
 from courses.models import Course
 from enrollments.models import Enrollment, LessonProgress
 from payments.models import Payment, Payout
-from events.models import Event
+# from events.models import Event  # Removed - events app disabled
 from .models import InstructorProfile, InstructorPayout
 
 
@@ -70,9 +70,10 @@ def get_revenue_summary(instructor):
     return earnings, payouts
 
 
-def get_instructor_events(instructor):
-    """Get events hosted by instructor."""
-    return Event.objects.filter(host=instructor)
+# Removed - events app disabled
+# def get_instructor_events(instructor):
+#     """Get events hosted by instructor."""
+#     return Event.objects.filter(host=instructor)
 
 
 @transaction.atomic

@@ -20,7 +20,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ['status', 'payment_method', 'created_at']
     search_fields = ['user__email', 'provider_id', 'billing_email']
     readonly_fields = [
-        'id', 'user', 'instructor', 'course', 'event',
+        'id', 'user', 'instructor', 'course',  # Removed 'event' - events app disabled
         'platform_fee', 'instructor_earnings', 'provider_id',
         'created_at', 'updated_at', 'completed_at'
     ]
@@ -53,8 +53,7 @@ class PaymentAdmin(admin.ModelAdmin):
     def item_display(self, obj):
         if obj.course:
             return f"Course: {obj.course.title}"
-        elif obj.event:
-            return f"Event: {obj.event.title}"
+        # Removed event reference - events app disabled
         return "N/A"
     item_display.short_description = 'Item'
 
@@ -145,7 +144,7 @@ class CouponAdmin(admin.ModelAdmin):
     search_fields = ['code']
     readonly_fields = ['id', 'current_usage', 'is_valid', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
-    filter_horizontal = ['specific_courses', 'specific_events']
+    filter_horizontal = ['specific_courses']  # Removed 'specific_events' - events app disabled
     
     def discount_display(self, obj):
         if obj.discount_type == Coupon.PERCENT:

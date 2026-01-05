@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+
+{% block title %}My Wallet - SkillStudio{% endblock %}
+
+{% block sidebar %}
+{% include 'components/sidebar.html' %}
+{% endblock %}
+
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">My Wallet</h1>
+        <p class="text-gray-400">Manage your wallet balance and view transaction history</p>
+    </div>
+
+    <!-- Wallet Balance Card -->
+    <div class="bg-gradient-to-br from-yellow-600 to-yellow-700 border border-yellow-500 rounded-lg p-8 mb-8">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+            <div>
+                <p class="text-yellow-100 text-sm mb-2">Current Balance</p>
+                <p class="text-5xl font-bold text-white mb-4" id="wallet-balance">$0.00</p>
+            </div>
+            <button onclick="openAddFundsModal()" 
+                    class="bg-white text-yellow-700 px-6 py-3 rounded-lg font-medium hover:bg-yellow-100 transition-colors flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                <span>Add Funds</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Transaction History -->
+    <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-6">Transaction History</h2>
+        
+        <div id="transactions-container">
+            <!-- Loading skeleton -->
+            <div class="space-y-4">
+                <div class="animate-pulse flex items-center justify-between p-4 bg-dark-bg rounded-lg">
+                    <div class="space-y-2 flex-1">
+                        <div class="h-4 bg-gray-700 rounded w-1/4"></div>
+                        <div class="h-3 bg-gray-700 rounded w-1/3"></div>
+                    </div>
+                    <div class="h-6 bg-gray-700 rounded w-20"></div>
+                </div>
+                <div class="animate-pulse flex items-center justify-between p-4 bg-dark-bg rounded-lg">
+                    <div class="space-y-2 flex-1">
+                        <div class="h-4 bg-gray-700 rounded w-1/4"></div>
+                        <div class="h-3 bg-gray-700 rounded w-1/3"></div>
+                    </div>
+                    <div class="h-6 bg-gray-700 rounded w-20"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadWallet();
+    await loadTransactions();
+});
+
+async function loadWallet() {
+    try {
+        const data = await apiRequest('/students/wallet/');
+        const balanceElement = document.getElementById('wallet-balance');
+        balanceElement.textContent = `$${parseFloat(data.balance).toFixed(2)}`;
+    } catch (error) {
+        console.error('Error loading wallet:', error);
+    }
+}
+
+async function loadTransactions() {
+    try {
+        const data = await apiRequest('/students/wallet/transactions/');
+        const container = document.getElementById('transactions-container');
+        
+        if (data.results && data.results.length > 0) {
+            container.innerHTML = data.results.map(transaction => {
+                const isCredit = transaction.transaction_type === 'credit';
+                const date = new Date(transaction.created_at);
+                
+                return `
+                    <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg hover:bg-opacity-80 transition-colors">
+                        <div class="flex items-center space-x-4">
+                            <div class="${isCredit ? 'bg-green-600' : 'bg-red-600'} bg-opacity-20 p-3 rounded-lg">
+                                <svg class="w-5 h-5 ${isCredit ? 'text-green-500' : 'text-red-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    ${isCredit 
+                                        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>'
+                                        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>'
+                                    }
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="font-medium">${transaction.description}</p>
+                                <p class="text-sm text-gray-400">
+                                    ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-bold ${isCredit ? 'text-green-500' : 'text-red-500'}">
+                                ${isCredit ? '+' : '-'}$${parseFloat(transaction.amount).toFixed(2)}
+                            </p>
+                            <p class="text-xs text-gray-400">
+                                Balance: $${parseFloat(transaction.balance_after).toFixed(2)}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <svg class="w-16 h-16 text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <p class="text-gray-400">No transactions yet</p>
+                    <p class="text-sm text-gray-500 mt-2">Add funds to get started</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading transactions:', error);
+        const container = document.getElementById('transactions-container');
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <p class="text-red-400">Failed to load transactions</p>
+            </div>
+        `;
+    }
+}
+
+function openAddFundsModal() {
+    const modal = document.createElement('div');
+    modal.id = 'add-funds-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-dark-surface border border-dark-border rounded-lg p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Add Funds to Wallet</h3>
+                <button onclick="closeAddFundsModal()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Amount ($)</label>
+                    <input type="number" id="amount-input" min="1" step="1" 
+                           class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                           placeholder="Enter amount">
+                </div>
+                <div id="add-funds-error" class="hidden text-red-500 text-sm"></div>
+                <div class="flex space-x-3">
+                    <button onclick="closeAddFundsModal()" 
+                            class="flex-1 px-4 py-2 border border-dark-border rounded-lg hover:bg-dark-bg transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="addFunds()" 
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                        Add Funds
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function closeAddFundsModal() {
+    const modal = document.getElementById('add-funds-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+async function addFunds() {
+    const amountInput = document.getElementById('amount-input');
+    const errorDiv = document.getElementById('add-funds-error');
+    const amount = parseFloat(amountInput.value);
+    
+    if (!amount || amount < 1) {
+        errorDiv.textContent = 'Please enter a valid amount (minimum $1)';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const data = await apiRequest('/students/wallet/', {
+            method: 'POST',
+            body: JSON.stringify({ amount: amount })
+        });
+        
+        // Update balance display
+        const balanceElement = document.getElementById('wallet-balance');
+        balanceElement.textContent = `$${parseFloat(data.balance).toFixed(2)}`;
+        
+        // Reload transactions
+        await loadTransactions();
+        
+        // Close modal
+        closeAddFundsModal();
+        
+        // Show success message
+        showNotification('Success', data.message || 'Funds added successfully', 'success');
+    } catch (error) {
+        console.error('Error adding funds:', error);
+        errorDiv.textContent = error.message || 'Failed to add funds';
+        errorDiv.classList.remove('hidden');
+    }
+}
+
+function showNotification(title, message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 bg-dark-surface border ${
+        type === 'success' ? 'border-green-500' : type === 'error' ? 'border-red-500' : 'border-blue-500'
+    } rounded-lg p-4 shadow-lg max-w-sm`;
+    notification.innerHTML = `
+        <div class="flex items-start">
+            <div class="flex-1">
+                <h4 class="font-bold ${
+                    type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500'
+                }">${title}</h4>
+                <p class="text-sm text-gray-400 mt-1">${message}</p>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-white ml-4">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 5000);
+}
+</script>
+{% endblock %}

@@ -236,6 +236,18 @@ def join_learning_circle(circle, user, join_code=None):
         PermissionDenied: If join code is invalid
         ValidationError: If circle is full or user is already a member
     """
+    # Check if already an active member
+    existing_membership = CircleMembership.objects.filter(
+        circle=circle, 
+        user=user, 
+        status='active'
+    ).first()
+    
+    if existing_membership:
+        # If user is already a member, return the existing membership
+        # This handles the case where the creator tries to "join" their own circle
+        return existing_membership
+    
     # Check if private
     if circle.is_private:
         if not join_code or join_code != circle.join_code:
@@ -244,10 +256,6 @@ def join_learning_circle(circle, user, join_code=None):
     # Check if full
     if circle.is_full():
         raise ValidationError("Circle is full")
-    
-    # Check if already member
-    if CircleMembership.objects.filter(circle=circle, user=user, status='active').exists():
-        raise ValidationError("Already a member")
     
     membership = CircleMembership.objects.create(
         circle=circle,

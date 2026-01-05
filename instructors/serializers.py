@@ -9,6 +9,7 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
     """Serializer for instructor profile."""
     
     user_email = serializers.EmailField(source='user.email', read_only=True)
+    role = serializers.CharField(source='user.role', read_only=True)
     
     class Meta:
         model = InstructorProfile
@@ -16,6 +17,7 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'user_email',
+            'role',
             'bio',
             'headline',
             'website',

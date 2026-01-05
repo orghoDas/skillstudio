@@ -5,13 +5,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Max
 from django.core.exceptions import ValidationError as DjangoValidationError, PermissionDenied as DjangoPermissionDenied
+from decimal import Decimal
 
 from accounts.mixins import StudentOnlyMixin
 from accounts.permissions import IsStudent
 from enrollments.models import Enrollment, LessonProgress
 from courses.models import Lesson
 from enrollments.services import get_resume_lesson
-from .models import StudentProfile, StudentNote, StudentBookmark
+from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .serializers import (
     StudentProfileSerializer,
     StudentNoteSerializer,
@@ -19,6 +20,9 @@ from .serializers import (
     StudentBookmarkSerializer,
     StudentDashboardSerializer,
     StudentActivityFeedSerializer,
+    WalletSerializer,
+    WalletTransactionSerializer,
+    AddFundsSerializer,
 )
 from .services import (
     get_student_activity_feed,
@@ -171,6 +175,58 @@ class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+class WalletView(APIView):
+    """Get or manage student wallet."""
+    permission_classes = [IsAuthenticated, IsStudent]
+    
+    def get(self, request):
+        """Get wallet details and recent transactions."""
+        wallet, created = Wallet.objects.get_or_create(user=request.user)
+        serializer = WalletSerializer(wallet)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Add funds to wallet."""
+        wallet, created = Wallet.objects.get_or_create(user=request.user)
+        
+        serializer = AddFundsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        amount = serializer.validated_data['amount']
+        
+        try:
+            new_balance = wallet.add_money(amount)
+            
+            # Create transaction record
+            WalletTransaction.objects.create(
+                wallet=wallet,
+                transaction_type='credit',
+                amount=amount,
+                description='Funds added to wallet',
+                balance_after=new_balance
+            )
+            
+            return Response({
+                'success': True,
+                'balance': new_balance,
+                'message': f'Successfully added ${amount} to wallet'
+            })
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class WalletTransactionsView(ListAPIView):
+    """List all wallet transactions."""
+    permission_classes = [IsAuthenticated, IsStudent]
+    serializer_class = WalletTransactionSerializer
+    
+    def get_queryset(self):
+        wallet, created = Wallet.objects.get_or_create(user=self.request.user)
+        return WalletTransaction.objects.filter(wallet=wallet)
 
 class StudentBookmarkListCreateView(ListCreateAPIView):
     """List and create student bookmarks."""
