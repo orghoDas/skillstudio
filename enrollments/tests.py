@@ -11,6 +11,7 @@ from .services import (
     mark_lesson_completed,
     check_and_complete_course,
     auto_complete_lesson,
+    evaluate_and_complete_enrollment,
     get_resume_lesson,
     get_next_lesson,
 )
@@ -300,6 +301,49 @@ class EnrollmentServicesTest(TestCase):
         self.enrollment.refresh_from_db()
         self.assertTrue(self.enrollment.is_completed)
         self.assertEqual(self.enrollment.status, 'completed')
+
+    def test_free_lessons_do_not_satisfy_required_paid_lessons(self):
+        """Completing preview lessons must not complete the course."""
+        free_lesson1 = Lesson.objects.create(
+            module=self.module,
+            title='Preview 1',
+            content_type='video',
+            duration_seconds=0,
+            position=3,
+            is_free=True
+        )
+        free_lesson2 = Lesson.objects.create(
+            module=self.module,
+            title='Preview 2',
+            content_type='video',
+            duration_seconds=0,
+            position=4,
+            is_free=True
+        )
+
+        mark_lesson_completed(self.enrollment, free_lesson1)
+        mark_lesson_completed(self.enrollment, free_lesson2)
+
+        result = check_and_complete_course(self.enrollment)
+
+        self.assertFalse(result)
+        self.enrollment.refresh_from_db()
+        self.assertFalse(self.enrollment.is_completed)
+        self.assertEqual(self.enrollment.status, 'active')
+
+    def test_completion_evaluation_is_idempotent(self):
+        mark_lesson_completed(self.enrollment, self.lesson1)
+        mark_lesson_completed(self.enrollment, self.lesson2)
+
+        first = evaluate_and_complete_enrollment(self.enrollment.id)
+        self.enrollment.refresh_from_db()
+        completed_at = self.enrollment.completed_at
+        second = evaluate_and_complete_enrollment(self.enrollment.id)
+        self.enrollment.refresh_from_db()
+
+        self.assertTrue(first)
+        self.assertTrue(second)
+        self.assertEqual(self.enrollment.completed_at, completed_at)
     
     def test_get_resume_lesson(self):
         """Test getting the next lesson to resume."""
@@ -343,8 +387,28 @@ class EnrollmentAPITest(APITestCase):
             title='Test Course',
             instructor=self.instructor,
             category=self.category,
-            price=Decimal('49.99'),
+            price=Decimal('0.00'),
+            is_free=True,
             status='published'
+        )
+        self.module = Module.objects.create(
+            course=self.course,
+            title='Module 1',
+            position=1
+        )
+        self.lesson1 = Lesson.objects.create(
+            module=self.module,
+            title='Lesson 1',
+            content_type='video',
+            duration_seconds=600,
+            position=1
+        )
+        self.lesson2 = Lesson.objects.create(
+            module=self.module,
+            title='Lesson 2',
+            content_type='video',
+            duration_seconds=600,
+            position=2
         )
         
         self.client.force_authenticate(user=self.user)
@@ -376,7 +440,8 @@ class EnrollmentAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 1)
     
     def test_cancel_enrollment(self):
         """Test canceling an enrollment."""
@@ -388,6 +453,34 @@ class EnrollmentAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         enrollment.refresh_from_db()
         self.assertEqual(enrollment.status, 'canceled')
+
+    def test_course_progress_get_does_not_complete_enrollment(self):
+        enrollment = Enrollment.objects.create(user=self.user, course=self.course)
+        mark_lesson_completed(enrollment, self.lesson1)
+        mark_lesson_completed(enrollment, self.lesson2)
+
+        response = self.client.get(f'/api/enrollments/courses/{self.course.id}/progress/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['progress_percentage'], 100.0)
+        enrollment.refresh_from_db()
+        self.assertFalse(enrollment.is_completed)
+        self.assertEqual(enrollment.status, 'active')
+
+    def test_manual_complete_requires_watch_threshold_for_video(self):
+        enrollment = Enrollment.objects.create(user=self.user, course=self.course)
+        LessonProgress.objects.create(
+            enrollment=enrollment,
+            user=self.user,
+            lesson=self.lesson1,
+            watch_time=100
+        )
+
+        response = self.client.post(f'/api/enrollments/lessons/{self.lesson1.id}/complete/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        progress = LessonProgress.objects.get(enrollment=enrollment, lesson=self.lesson1)
+        self.assertFalse(progress.is_completed)
 
 
 class WishlistAPITest(APITestCase):
@@ -447,7 +540,8 @@ class WishlistAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 1)
     
     def test_remove_from_wishlist(self):
         """Test removing course from wishlist."""
@@ -458,4 +552,3 @@ class WishlistAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(Wishlist.objects.filter(id=wishlist.id).exists())
-

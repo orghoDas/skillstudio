@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied
 
@@ -21,36 +22,81 @@ def mark_lesson_completed(enrollment, lesson):
 
     return progress
 
-def check_and_complete_course(enrollment):
-    total_lessons = Lesson.objects.filter(
-        module__course=enrollment.course,
+
+def get_required_lessons(course):
+    return Lesson.objects.filter(
+        module__course=course,
         is_free=False
-    ).count()
+    ).order_by('module__position', 'position')
 
-    completed_lessons = enrollment.lesson_progress.filter(
-        is_completed=True
-    ).count()
 
-    if total_lessons == 0:
-        return False
+def get_completed_required_lesson_ids(enrollment):
+    return set(
+        enrollment.lesson_progress.filter(
+            is_completed=True,
+            lesson__is_free=False,
+            lesson__module__course=enrollment.course
+        ).values_list('lesson_id', flat=True)
+    )
 
-    if completed_lessons >= total_lessons:
-        if not enrollment.is_completed:
-            enrollment.status = 'completed'
-            enrollment.is_completed = True
-            enrollment.completed_at = timezone.now()
-            enrollment.save(update_fields=[
-                'status',
-                'is_completed',
-                'completed_at'
-            ])
 
-            # 🎓 Issue certificate automatically
-            issue_certificate(enrollment.user, enrollment.course)
+def get_lesson_completion_stats(enrollment):
+    required_lessons = get_required_lessons(enrollment.course)
+    required_ids = set(required_lessons.values_list('id', flat=True))
+    completed_required_ids = get_completed_required_lesson_ids(enrollment)
+    completed_count = len(required_ids & completed_required_ids)
+    total_count = len(required_ids)
 
+    return {
+        'total_lessons': total_count,
+        'completed_lessons': completed_count,
+        'completed_lesson_ids': sorted(required_ids & completed_required_ids),
+        'progress_percentage': round((completed_count / total_count * 100), 2) if total_count else 0,
+        'all_required_completed': total_count > 0 and completed_count == total_count,
+    }
+
+
+def assessment_requirements_met(enrollment):
+    try:
+        from assessments.services import is_lesson_assessment_completed
+    except ImportError:
         return True
 
-    return False
+    for lesson in get_required_lessons(enrollment.course):
+        if not is_lesson_assessment_completed(enrollment.user, lesson):
+            return False
+
+    return True
+
+
+@transaction.atomic
+def evaluate_and_complete_enrollment(enrollment_id):
+    enrollment = Enrollment.objects.select_for_update().select_related(
+        'user',
+        'course'
+    ).get(id=enrollment_id)
+
+    stats = get_lesson_completion_stats(enrollment)
+    if not stats['all_required_completed'] or not assessment_requirements_met(enrollment):
+        return False
+
+    if not enrollment.is_completed:
+        enrollment.status = 'completed'
+        enrollment.is_completed = True
+        enrollment.completed_at = timezone.now()
+        enrollment.save(update_fields=[
+            'status',
+            'is_completed',
+            'completed_at'
+        ])
+
+        issue_certificate(enrollment.user, enrollment.course)
+
+    return True
+
+
+def check_and_complete_course(enrollment):
+    return evaluate_and_complete_enrollment(enrollment.id)
 
 
 def auto_complete_lesson(progress):
@@ -82,17 +128,8 @@ def get_previous_lesson(lesson):
     return pre_module.lessons.order_by('-position').first()
 
 def get_resume_lesson(enrollment):
-    lessons = Lesson.objects.filter(
-        module__course=enrollment.course,
-        is_free=False
-    ).order_by('module__position', 'position')
-
-    completed_ids = set(
-        LessonProgress.objects.filter(
-            enrollment=enrollment,
-            is_completed=True
-        ).values_list('lesson_id', flat=True)
-    )
+    lessons = get_required_lessons(enrollment.course)
+    completed_ids = get_completed_required_lesson_ids(enrollment)
 
     for lesson in lessons:
         if lesson.id not in completed_ids:
@@ -101,16 +138,8 @@ def get_resume_lesson(enrollment):
     return None
 
 def get_next_lesson(enrollment, current_lesson):
-    lessons = Lesson.objects.filter(
-        module__course=enrollment.course
-    ).order_by('module__position', 'position')
-
-    completed_ids = set(
-        LessonProgress.objects.filter(
-            enrollment=enrollment,
-            is_completed=True
-        ).values_list('lesson_id', flat=True)
-    )
+    lessons = get_required_lessons(enrollment.course)
+    completed_ids = get_completed_required_lesson_ids(enrollment)
 
     lesson_list = list(lessons)
     try:
@@ -118,13 +147,8 @@ def get_next_lesson(enrollment, current_lesson):
     except ValueError:
         return None
 
-    # Look for next incomplete lesson after current
+    # Look for next incomplete required lesson after current.
     for lesson in lesson_list[current_index + 1:]:
-        # Skip free lessons in progression
-        if lesson.is_free:
-            continue
-
-        # Return first non-free lesson that's not completed
         if lesson.id not in completed_ids:
             return lesson
 

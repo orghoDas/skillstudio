@@ -157,6 +157,45 @@ class CurriculumModuleSerializer(serializers.ModelSerializer):
         ).data
 
 
+class CourseDetailLessonSerializer(serializers.ModelSerializer):
+    is_locked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lesson
+        fields = [
+            'id', 'title', 'position', 'is_free', 'content_type',
+            'duration_seconds', 'is_locked'
+        ]
+
+    def get_is_locked(self, lesson):
+        if lesson.is_free or lesson.module.course.is_free:
+            return False
+
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return True
+
+        user = request.user
+        course = lesson.module.course
+        if user.is_staff or course.instructor_id == user.id:
+            return False
+
+        return not course.enrollments.filter(user=user, status='active').exists()
+
+
+class CourseDetailModuleSerializer(serializers.ModelSerializer):
+    lessons = CourseDetailLessonSerializer(many=True, read_only=True)
+    lesson_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Module
+        fields = ['id', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
+        read_only_fields = ['created_at']
+
+    def get_lesson_count(self, obj):
+        return obj.lessons.count()
+
+
 # ===== COURSE SERIALIZERS =====
 
 class CourseListSerializer(serializers.ModelSerializer):
@@ -216,7 +255,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     tags = TagSerializer(many=True, read_only=True)
-    modules = ModuleSerializer(many=True, read_only=True)
+    modules = CourseDetailModuleSerializer(many=True, read_only=True)
     enrollment_count = serializers.SerializerMethodField()
     enrollments_count = serializers.SerializerMethodField()  # Alias for template compatibility
     is_enrolled = serializers.SerializerMethodField()
@@ -289,7 +328,7 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
         model = Course
         fields = [
             'id', 'slug', 'title', 'description', 'thumbnail', 'price', 'is_free',
-            'level', 'category', 'tag_ids', 'status'
+            'level', 'category', 'tag_ids'
         ]
         read_only_fields = ['id', 'slug']
 

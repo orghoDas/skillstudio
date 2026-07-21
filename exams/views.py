@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
@@ -16,7 +17,56 @@ from .services import (
     get_exam_analytics, grade_manual_questions
 )
 from courses.models import Course
-from accounts.permissions import IsInstructor, IsStudent
+from accounts.permissions import IsInstructor
+from enrollments.models import Enrollment
+
+
+def is_admin_user(user):
+    return getattr(user, 'role', None) == 'admin' or user.is_staff
+
+
+def owns_course(user, course):
+    return is_admin_user(user) or course.instructor_id == user.id
+
+
+def owns_exam_course(user, exam):
+    return owns_course(user, exam.course)
+
+
+def has_active_course_enrollment(user, course):
+    return Enrollment.objects.filter(
+        user=user,
+        course=course,
+        status='active'
+    ).exists()
+
+
+def ensure_student_can_access_exam(user, exam):
+    if is_admin_user(user) or owns_exam_course(user, exam):
+        return
+
+    if exam.status != 'published':
+        raise PermissionDenied("Exam is not available.")
+
+    if not has_active_course_enrollment(user, exam.course):
+        raise PermissionDenied("Active course enrollment required.")
+
+
+def get_manageable_exam_or_404(user, exam_id):
+    exam = get_object_or_404(Exam.objects.select_related('course'), id=exam_id)
+    if not owns_exam_course(user, exam):
+        raise PermissionDenied("You do not have permission to manage this exam.")
+    return exam
+
+
+def get_manageable_attempt_or_404(user, attempt_id):
+    attempt = get_object_or_404(
+        ExamAttempt.objects.select_related('exam__course', 'user'),
+        id=attempt_id
+    )
+    if not owns_exam_course(user, attempt.exam):
+        raise PermissionDenied("You do not have permission to manage this attempt.")
+    return attempt
 
 
 # ===========================
@@ -34,11 +84,20 @@ class QuestionBankListView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         course_id = self.request.query_params.get('course_id')
+        queryset = QuestionBank.objects.select_related('course', 'created_by')
+
+        if not is_admin_user(self.request.user):
+            queryset = queryset.filter(course__instructor=self.request.user)
+
         if course_id:
-            return QuestionBank.objects.filter(course_id=course_id)
-        return QuestionBank.objects.all()
+            queryset = queryset.filter(course_id=course_id)
+
+        return queryset
     
     def perform_create(self, serializer):
+        course = serializer.validated_data.get('course')
+        if not course or not owns_course(self.request.user, course):
+            raise PermissionDenied("You do not have permission to create questions for this course.")
         serializer.save(created_by=self.request.user)
 
 
@@ -46,7 +105,12 @@ class QuestionBankDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Get, update, or delete a question."""
     permission_classes = [IsAuthenticated, IsInstructor]
     serializer_class = QuestionBankSerializer
-    queryset = QuestionBank.objects.all()
+
+    def get_queryset(self):
+        queryset = QuestionBank.objects.select_related('course', 'created_by')
+        if is_admin_user(self.request.user):
+            return queryset
+        return queryset.filter(course__instructor=self.request.user)
 
 
 # ===========================
@@ -63,33 +127,63 @@ class ExamListCreateView(generics.ListCreateAPIView):
         return ExamListSerializer
     
     def get_queryset(self):
+        if is_admin_user(self.request.user):
+            return Exam.objects.select_related('course', 'created_by').all()
+
         if self.request.user.role == 'instructor':
-            # Instructors see all exams they created
-            return Exam.objects.filter(created_by=self.request.user)
+            # Instructors see exams for courses they own.
+            return Exam.objects.select_related('course', 'created_by').filter(
+                course__instructor=self.request.user
+            )
         else:
             # Students see published exams for their enrolled courses
-            from enrollments.models import Enrollment
             enrolled_courses = Enrollment.objects.filter(
                 user=self.request.user,
                 status='active'
             ).values_list('course_id', flat=True)
             
-            return Exam.objects.filter(
+            return Exam.objects.select_related('course', 'created_by').filter(
                 course_id__in=enrolled_courses,
                 status='published'
             )
     
     def perform_create(self, serializer):
+        if self.request.user.role != 'instructor' and not is_admin_user(self.request.user):
+            raise PermissionDenied("Only instructors can create exams.")
+
+        course = serializer.validated_data.get('course')
+        if not course or not owns_course(self.request.user, course):
+            raise PermissionDenied("You do not have permission to create exams for this course.")
+
         serializer.save(created_by=self.request.user)
 
 
 class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Get, update, or delete an exam."""
     permission_classes = [IsAuthenticated]
-    queryset = Exam.objects.all()
+
+    def get_queryset(self):
+        queryset = Exam.objects.select_related('course', 'created_by').prefetch_related('questions')
+        user = self.request.user
+
+        if is_admin_user(user):
+            return queryset
+
+        if user.role == 'instructor':
+            return queryset.filter(course__instructor=user)
+
+        if self.request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            return queryset.none()
+
+        enrolled_courses = Enrollment.objects.filter(
+            user=user,
+            status='active'
+        ).values_list('course_id', flat=True)
+
+        return queryset.filter(course_id__in=enrolled_courses, status='published')
     
     def get_serializer_class(self):
-        if self.request.user.role == 'instructor':
+        if self.request.user.role == 'instructor' or is_admin_user(self.request.user):
             return ExamSerializer
         return ExamDetailSerializer
 
@@ -102,6 +196,10 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
 @permission_classes([IsAuthenticated])
 def get_exam_for_course(request, course_id):
     """Get all exams for a course."""
+    course = get_object_or_404(Course, id=course_id)
+    if not owns_course(request.user, course) and not has_active_course_enrollment(request.user, course):
+        raise PermissionDenied("Active course enrollment required.")
+
     exams = Exam.objects.filter(
         course_id=course_id,
         status='published'
@@ -115,7 +213,8 @@ def get_exam_for_course(request, course_id):
 @permission_classes([IsAuthenticated])
 def start_exam(request, exam_id):
     """Start a new exam attempt."""
-    exam = get_object_or_404(Exam, id=exam_id)
+    exam = get_object_or_404(Exam.objects.select_related('course'), id=exam_id)
+    ensure_student_can_access_exam(request.user, exam)
     
     try:
         attempt = start_exam_attempt(exam, request.user)
@@ -140,7 +239,13 @@ def submit_exam(request, exam_id):
     attempt_id = serializer.validated_data['attempt_id']
     answers = serializer.validated_data['answers']
     
-    attempt = get_object_or_404(ExamAttempt, id=attempt_id, user=request.user)
+    attempt = get_object_or_404(
+        ExamAttempt.objects.select_related('exam__course'),
+        id=attempt_id,
+        exam_id=exam_id,
+        user=request.user
+    )
+    ensure_student_can_access_exam(request.user, attempt.exam)
     
     try:
         submitted_attempt = submit_exam_attempt(attempt, answers)
@@ -171,6 +276,9 @@ def submit_exam(request, exam_id):
 @permission_classes([IsAuthenticated])
 def exam_attempts_history(request, exam_id):
     """Get user's attempt history for an exam."""
+    exam = get_object_or_404(Exam.objects.select_related('course'), id=exam_id)
+    ensure_student_can_access_exam(request.user, exam)
+
     attempts = ExamAttempt.objects.filter(
         exam_id=exam_id,
         user=request.user
@@ -187,7 +295,18 @@ def exam_attempts_history(request, exam_id):
 @permission_classes([IsAuthenticated])
 def exam_result_detail(request, attempt_id):
     """Get detailed result for an attempt."""
-    attempt = get_object_or_404(ExamAttempt, id=attempt_id, user=request.user)
+    attempt = get_object_or_404(
+        ExamAttempt.objects.select_related('exam__course'),
+        id=attempt_id
+    )
+
+    if attempt.user_id != request.user.id and not owns_exam_course(request.user, attempt.exam):
+        raise PermissionDenied("You do not have permission to view this result.")
+
+    if attempt.user_id == request.user.id:
+        ensure_student_can_access_exam(request.user, attempt.exam)
+        if not attempt.exam.show_results_immediately:
+            raise PermissionDenied("Result is not available yet.")
     
     if not hasattr(attempt, 'result'):
         return Response({
@@ -206,7 +325,7 @@ def exam_result_detail(request, attempt_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def exam_analytics(request, exam_id):
     """Get analytics for an exam."""
-    exam = get_object_or_404(Exam, id=exam_id)
+    exam = get_manageable_exam_or_404(request.user, exam_id)
     
     analytics_data = get_exam_analytics(exam)
     return Response(analytics_data)
@@ -216,7 +335,7 @@ def exam_analytics(request, exam_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def exam_attempts_list(request, exam_id):
     """Get all attempts for an exam (instructor view)."""
-    exam = get_object_or_404(Exam, id=exam_id)
+    exam = get_manageable_exam_or_404(request.user, exam_id)
     
     attempts = ExamAttempt.objects.filter(exam=exam).select_related('user')
     serializer = ExamAttemptSerializer(attempts, many=True)
@@ -231,7 +350,7 @@ def exam_attempts_list(request, exam_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def grade_manual_exam(request, attempt_id):
     """Manually grade essay/short answer questions."""
-    attempt = get_object_or_404(ExamAttempt, id=attempt_id)
+    attempt = get_manageable_attempt_or_404(request.user, attempt_id)
     
     manual_grades = request.data.get('manual_grades', {})
     
@@ -253,7 +372,7 @@ def grade_manual_exam(request, attempt_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def publish_exam(request, exam_id):
     """Publish an exam."""
-    exam = get_object_or_404(Exam, id=exam_id, created_by=request.user)
+    exam = get_manageable_exam_or_404(request.user, exam_id)
     
     if exam.get_question_count() == 0:
         return Response({
@@ -274,7 +393,7 @@ def publish_exam(request, exam_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def archive_exam(request, exam_id):
     """Archive an exam."""
-    exam = get_object_or_404(Exam, id=exam_id, created_by=request.user)
+    exam = get_manageable_exam_or_404(request.user, exam_id)
     
     exam.status = 'archived'
     exam.save()
@@ -284,4 +403,3 @@ def archive_exam(request, exam_id):
         'exam': serializer.data,
         'message': 'Exam archived successfully'
     })
-

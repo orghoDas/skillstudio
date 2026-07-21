@@ -1,6 +1,81 @@
 from django.utils import timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
+
+
+def _decimal_marks(value, default='0'):
+    try:
+        return Decimal(str(value))
+    except (TypeError, ValueError, InvalidOperation):
+        return Decimal(default)
+
+
+def _answer_matches_options(answer, options):
+    if answer is None or answer == '':
+        return False
+
+    options = options or []
+    answer_text = str(answer).strip()
+
+    try:
+        answer_idx = int(answer) if isinstance(answer, str) else answer
+    except (TypeError, ValueError):
+        answer_idx = None
+
+    if isinstance(answer_idx, int) and 0 <= answer_idx < len(options):
+        return bool(options[answer_idx].get('is_correct', False))
+
+    for option in options:
+        if (
+            option.get('is_correct', False)
+            and answer_text.lower() == str(option.get('text', '')).strip().lower()
+        ):
+            return True
+
+    return False
+
+
+def _custom_question_key(question, index):
+    return str(
+        question.get('id')
+        or question.get('question_id')
+        or question.get('key')
+        or f'custom_{index}'
+    )
+
+
+def _custom_question_marks(question):
+    return _decimal_marks(question.get('marks', question.get('max_marks', 1)), default='1')
+
+
+def get_exam_total_possible_marks(exam):
+    total = sum((question.marks for question in exam.questions.all()), Decimal('0'))
+    total += sum((_custom_question_marks(question) for question in exam.custom_questions or []), Decimal('0'))
+    return total
+
+
+def calculate_exam_attempt_score(attempt):
+    exam = attempt.exam
+    answers = attempt.answers or {}
+    earned = Decimal('0')
+    total_possible = Decimal('0')
+
+    for question in exam.questions.all():
+        total_possible += question.marks
+        answer = answers.get(str(question.id))
+
+        if question.question_type in ['mcq', 'tf'] and _answer_matches_options(answer, question.options):
+            earned += question.marks
+
+    for index, question in enumerate(exam.custom_questions or []):
+        marks = _custom_question_marks(question)
+        total_possible += marks
+        answer = answers.get(_custom_question_key(question, index))
+
+        if _answer_matches_options(answer, question.get('options', [])):
+            earned += marks
+
+    return earned, total_possible
 
 
 def start_exam_attempt(exam, user):
@@ -82,9 +157,22 @@ def submit_exam_attempt(attempt, answers):
     attempt.completed_at = timezone.now()
     attempt.time_spent_seconds = int((attempt.completed_at - attempt.started_at).total_seconds())
     attempt.status = 'completed'
-    
-    # Calculate score
-    attempt.calculate_score()
+
+    earned, total_possible = calculate_exam_attempt_score(attempt)
+    attempt.score = earned
+    attempt.percentage = (earned / total_possible * 100) if total_possible > 0 else Decimal('0')
+    attempt.passed = attempt.score >= attempt.exam.passing_marks
+    attempt.auto_graded_at = timezone.now()
+    attempt.save(update_fields=[
+        'answers',
+        'completed_at',
+        'time_spent_seconds',
+        'status',
+        'score',
+        'percentage',
+        'passed',
+        'auto_graded_at',
+    ])
     
     # Create detailed result
     create_exam_result(attempt)
@@ -126,36 +214,56 @@ def create_exam_result(attempt):
             }
             continue
         
-        # Check if correct (for MCQ and TF)
         is_correct = False
-        marks_earned = 0
+        marks_earned = Decimal('0')
         
         if question.question_type in ['mcq', 'tf']:
-            try:
-                answer_idx = int(answer) if isinstance(answer, str) else answer
-                options = question.options or []
-                
-                # Check if the selected option is correct
-                if 0 <= answer_idx < len(options):
-                    selected_option = options[answer_idx]
-                    is_correct = selected_option.get('is_correct', False)
-                    
-                    if is_correct:
-                        marks_earned = float(question.marks)
-                        correct_count += 1
-                        difficulty_correct[question.difficulty] += 1
-                    else:
-                        incorrect_count += 1
-                else:
-                    incorrect_count += 1
-            except (ValueError, TypeError):
-                incorrect_count += 1
+            is_correct = _answer_matches_options(answer, question.options)
+
+        if is_correct:
+            marks_earned = question.marks
+            correct_count += 1
+            difficulty_correct[question.difficulty] += 1
+        else:
+            incorrect_count += 1
         
         question_results[q_id] = {
             'correct': is_correct,
-            'marks_earned': marks_earned,
+            'marks_earned': float(marks_earned),
             'difficulty': question.difficulty,
             'answer': answer
+        }
+
+    for index, question in enumerate(exam.custom_questions or []):
+        q_id = _custom_question_key(question, index)
+        answer = answers.get(q_id)
+        difficulty = question.get('difficulty', 'medium')
+        if difficulty not in difficulty_correct:
+            difficulty = 'medium'
+
+        if answer is None or answer == '':
+            unanswered_count += 1
+            question_results[q_id] = {
+                'correct': False,
+                'marks_earned': 0,
+                'difficulty': difficulty,
+            }
+            continue
+
+        is_correct = _answer_matches_options(answer, question.get('options', []))
+        marks_earned = _custom_question_marks(question) if is_correct else Decimal('0')
+        if is_correct:
+            correct_count += 1
+            difficulty_correct[difficulty] += 1
+        else:
+            incorrect_count += 1
+
+        question_results[q_id] = {
+            'correct': is_correct,
+            'marks_earned': float(marks_earned),
+            'difficulty': difficulty,
+            'answer': answer,
+            'custom': True,
         }
     
     # Create or update result
@@ -185,27 +293,7 @@ def calculate_exam_score(attempt):
     Returns:
         Decimal: Total score earned
     """
-    total_score = Decimal('0')
-    
-    for question in attempt.exam.questions.filter(question_type__in=['mcq', 'tf']):
-        q_id = str(question.id)
-        answer = attempt.answers.get(q_id)
-        
-        # Answer is the index of the selected option (0-based)
-        if answer is not None and answer != '':
-            try:
-                answer_idx = int(answer) if isinstance(answer, str) else answer
-                options = question.options or []
-                
-                # Check if the selected option is correct
-                if 0 <= answer_idx < len(options):
-                    selected_option = options[answer_idx]
-                    if selected_option.get('is_correct', False):
-                        total_score += question.marks
-            except (ValueError, TypeError):
-                # Invalid answer format, skip
-                continue
-    
+    total_score, _ = calculate_exam_attempt_score(attempt)
     return total_score
 
 
@@ -286,27 +374,48 @@ def grade_manual_questions(attempt, manual_grades, graded_by):
     Returns:
         Updated ExamAttempt instance
     """
-    # Add manual grades to auto-calculated score
-    additional_marks = sum(Decimal(str(marks)) for marks in manual_grades.values())
-    
-    attempt.score = (attempt.score or Decimal('0')) + additional_marks
-    attempt.percentage = (attempt.score / attempt.exam.total_marks * 100) if attempt.exam.total_marks > 0 else Decimal('0')
+    result = getattr(attempt, 'result', None) or create_exam_result(attempt)
+    question_results = result.question_results
+
+    max_marks_by_key = {
+        str(question.id): question.marks
+        for question in attempt.exam.questions.all()
+    }
+    for index, question in enumerate(attempt.exam.custom_questions or []):
+        max_marks_by_key[_custom_question_key(question, index)] = _custom_question_marks(question)
+
+    for q_id, marks in manual_grades.items():
+        q_id = str(q_id)
+        awarded = _decimal_marks(marks)
+        max_marks = max_marks_by_key.get(q_id)
+        if max_marks is not None:
+            awarded = min(max(awarded, Decimal('0')), max_marks)
+
+        question_results.setdefault(q_id, {})
+        question_results[q_id]['marks_earned'] = float(awarded)
+        question_results[q_id]['correct'] = awarded > 0
+        question_results[q_id]['manually_graded'] = True
+
+    result.question_results = question_results
+    result.save(update_fields=['question_results'])
+
+    total_score = sum(
+        (_decimal_marks(data.get('marks_earned')) for data in question_results.values()),
+        Decimal('0')
+    )
+    total_possible = get_exam_total_possible_marks(attempt.exam)
+
+    attempt.score = total_score
+    attempt.percentage = (attempt.score / total_possible * 100) if total_possible > 0 else Decimal('0')
     attempt.passed = attempt.score >= attempt.exam.passing_marks
     attempt.manually_graded_at = timezone.now()
     attempt.graded_by = graded_by
-    attempt.save()
-    
-    # Update result with manual grades
-    if hasattr(attempt, 'result'):
-        result = attempt.result
-        question_results = result.question_results
-        
-        for q_id, marks in manual_grades.items():
-            if q_id in question_results:
-                question_results[q_id]['marks_earned'] = float(marks)
-                question_results[q_id]['manually_graded'] = True
-        
-        result.question_results = question_results
-        result.save()
+    attempt.save(update_fields=[
+        'score',
+        'percentage',
+        'passed',
+        'manually_graded_at',
+        'graded_by',
+    ])
     
     return attempt

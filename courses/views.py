@@ -1,11 +1,11 @@
 from django.utils import timezone
-from django.forms import ValidationError
 from django.shortcuts import get_object_or_404
 from django.db.models import F, Q, Avg, Count, Prefetch
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.exceptions import ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
 from courses.permissions import CanEditCourse
@@ -187,21 +187,18 @@ class CourseUpdateView(generics.UpdateAPIView):
         # Only course owner can update
         if course.instructor != self.request.user:
             raise ValidationError("You don't have permission to edit this course.")
+
+        if course.status not in ['draft', 'under_review']:
+            raise ValidationError("Cannot edit published or archived courses.")
         
         return course
     
     def update(self, request, *args, **kwargs):
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.error(f"Update request data: {request.data}")
-        
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         
         if not serializer.is_valid():
-            logger.error(f"Validation errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         self.perform_update(serializer)
@@ -358,7 +355,7 @@ class ModuleDeleteView(generics.DestroyAPIView):
 class LessonListView(generics.ListCreateAPIView):
     """List and create lessons for a module/section"""
     serializer_class = LessonSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_queryset(self):
         # Support both module_id and section id (they're the same)
@@ -379,9 +376,8 @@ class LessonListView(generics.ListCreateAPIView):
         if module.course.instructor != self.request.user:
             raise ValidationError("You don't have permission to add lessons to this module.")
         
-        # Allow instructors to add lessons to their own courses even if published
-        # if module.course.status not in ['draft', 'under_review']:
-        #     raise ValidationError("Cannot add lessons to published courses.")
+        if module.course.status not in ['draft', 'under_review']:
+            raise ValidationError("Cannot add lessons to published courses.")
         
         serializer.save(module=module)
 
@@ -397,7 +393,8 @@ class LessonCreateView(generics.CreateAPIView):
         if module.course.instructor != self.request.user:
             raise ValidationError("You don't have permission to add lessons.")
 
-        # Allow instructors to add lessons to their own courses even if published
+        if module.course.status not in ['draft', 'under_review']:
+            raise ValidationError("Cannot add lessons to published courses.")
         
         serializer.save()
 
@@ -433,6 +430,9 @@ class LessonRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         
         if lesson.module.course.instructor != self.request.user:
             raise ValidationError("You don't have permission to edit this lesson.")
+
+        if lesson.module.course.status not in ['draft', 'under_review']:
+            raise ValidationError("Cannot edit lessons in published courses.")
         
         return lesson
 

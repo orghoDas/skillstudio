@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.urls import resolve
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APITestCase, APIClient
@@ -261,7 +262,9 @@ class QuizServicesTest(TestCase):
         attempt.save()
         
         score = calculate_quiz_score(attempt)
-        self.assertEqual(score, Decimal('2'))  # 2 correct answers
+        self.assertEqual(score, Decimal('10'))  # Uses configured question marks
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.passed)
     
     def test_calculate_quiz_score_partial(self):
         """Test calculating partial score."""
@@ -273,7 +276,32 @@ class QuizServicesTest(TestCase):
         attempt.save()
         
         score = calculate_quiz_score(attempt)
-        self.assertEqual(score, Decimal('1'))  # 1 correct answer
+        self.assertEqual(score, Decimal('5'))  # Uses configured question marks
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.passed)
+
+    def test_submit_paths_use_same_quiz_scoring(self):
+        answers = {
+            str(self.q1.id): str(self.opt1_correct.id),
+            str(self.q2.id): str(self.opt2_wrong.id)
+        }
+        service_attempt = QuizAttempt.objects.create(quiz=self.quiz, user=self.student)
+        legacy_attempt = QuizAttempt.objects.create(quiz=self.quiz, user=self.instructor)
+
+        submit_quiz_attempt(service_attempt, answers)
+        legacy_attempt.answers = answers
+        legacy_attempt.save(update_fields=['answers'])
+        legacy_score = calculate_quiz_score(legacy_attempt)
+
+        service_attempt.refresh_from_db()
+        legacy_attempt.refresh_from_db()
+        self.assertEqual(service_attempt.score, legacy_score)
+        self.assertEqual(legacy_attempt.score, Decimal('5'))
+
+    def test_quiz_submit_url_resolves_to_single_batch_submit_view(self):
+        match = resolve('/api/assessments/quiz/attempt/123/submit/')
+
+        self.assertEqual(match.func.view_class.__name__, 'SubmitQuizView')
 
 
 class GradingServicesTest(TestCase):
