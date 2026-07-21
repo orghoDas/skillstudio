@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction, IntegrityError
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
@@ -5,9 +7,11 @@ from django.utils import timezone
 # Import PDF generation function
 from .pdf import generate_certificate_pdf
 
+logger = logging.getLogger(__name__)
+
 
 @transaction.atomic
-def issue_certificate(user, course):
+def issue_certificate(user, course, schedule_pdf=True):
     """
     Issue a certificate for a completed course.
     
@@ -50,73 +54,137 @@ def issue_certificate(user, course):
             }
         )
         
-        # Generate PDF if new certificate or PDF doesn't exist
-        try:
-            has_pdf = bool(certificate.pdf.name and certificate.pdf.name.strip())
-        except (ValueError, AttributeError):
-            has_pdf = False
-            
-        if created or not has_pdf:
-            pdf_file = generate_certificate_pdf(certificate)
-            certificate.pdf.save(pdf_file.name, pdf_file)
-            certificate.save(update_fields=['pdf'])
+        if schedule_pdf:
+            schedule_certificate_pdf_render(certificate.id, force=False)
         
         return certificate
     
     except IntegrityError:
         # Another process created it simultaneously
-        return Certificate.objects.get(
+        certificate = Certificate.objects.get(
             user=enrollment.user,
             course=enrollment.course
         )
+        if schedule_pdf:
+            schedule_certificate_pdf_render(certificate.id, force=False)
+        return certificate
+
+
+def certificate_has_pdf(certificate):
+    try:
+        return bool(certificate.pdf.name and certificate.pdf.name.strip())
+    except (ValueError, AttributeError):
+        return False
+
+
+def schedule_certificate_pdf_render(certificate_id, force=False):
+    """
+    Schedule PDF rendering after the surrounding transaction commits.
+
+    Rendering is deliberately outside certificate issuance so storage/PDF
+    failures cannot roll back course completion or the certificate record.
+    """
+    transaction.on_commit(
+        lambda: safely_render_certificate_pdf(certificate_id, force=force),
+        robust=True
+    )
+
+
+def safely_render_certificate_pdf(certificate_id, force=False):
+    try:
+        return render_certificate_pdf(certificate_id, force=force)
+    except Exception:
+        logger.exception("Certificate PDF rendering failed for certificate %s", certificate_id)
+        return None
+
+
+def render_certificate_pdf(certificate_id, force=False):
+    """
+    Render and persist a certificate PDF idempotently.
+
+    Args:
+        certificate_id: Certificate primary key
+        force: Regenerate even if a PDF already exists
+    """
+    from .models import Certificate
+
+    certificate = Certificate.objects.select_related('user', 'course').get(id=certificate_id)
+    if certificate_has_pdf(certificate) and not force:
+        return certificate
+
+    if force and certificate_has_pdf(certificate):
+        certificate.pdf.delete(save=False)
+
+    pdf_file = generate_certificate_pdf(certificate)
+    certificate.pdf.save(pdf_file.name, pdf_file, save=False)
+    certificate.save(update_fields=['pdf'])
+    return certificate
 
 
 def calculate_course_grade(user, course):
     """
-    Calculate final course grade from assessments and progress.
+    Calculate final course grade from completed, graded assessment evidence.
+
+    Current certificate policy:
+    - quiz score: best completed attempt per quiz
+    - assignment score: graded submission for each assignment
+    - no graded assessment evidence: no grade (`None`)
     
     Args:
         user: User instance
         course: Course instance
     
     Returns:
-        Decimal: Grade percentage (0-100)
+        Decimal|None: Grade percentage (0-100), or None when there is no
+        graded assessment evidence for the course.
     """
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_HALF_UP
     from assessments.models import QuizAttempt, Submission
     
-    # Get completed quiz attempts
     quiz_attempts = QuizAttempt.objects.filter(
         user=user,
         quiz__lesson__module__course=course,
-        completed_at__isnull=False
-    )
+        quiz__is_published=True,
+        completed_at__isnull=False,
+        score__isnull=False,
+        quiz__total_marks__gt=0
+    ).select_related('quiz')
     
-    # Get assignment scores
     submissions = Submission.objects.filter(
         user=user,
         assignment__lesson__module__course=course,
-        grade__isnull=False
-    )
-    
+        grade__isnull=False,
+        assignment__max_score__gt=0
+    ).select_related('assignment')
+
     total_score = Decimal('0.0')
     total_possible = Decimal('0.0')
-    
-    # Calculate quiz average
+    best_quiz_attempts = {}
+
     for attempt in quiz_attempts:
-        if attempt.quiz.total_marks > 0:
-            total_score += attempt.score
-            total_possible += attempt.quiz.total_marks
-    
-    # Calculate assignment average
+        existing = best_quiz_attempts.get(attempt.quiz_id)
+        if existing is None or attempt.score > existing.score:
+            best_quiz_attempts[attempt.quiz_id] = attempt
+
+    for attempt in best_quiz_attempts.values():
+        quiz_total = Decimal(attempt.quiz.total_marks)
+        score = max(Decimal('0.0'), min(attempt.score, quiz_total))
+        total_score += score
+        total_possible += quiz_total
+
     for submission in submissions:
-        total_score += submission.grade
-        total_possible += submission.assignment.max_score
+        assignment_total = Decimal(submission.assignment.max_score)
+        score = max(Decimal('0.0'), min(submission.grade, assignment_total))
+        total_score += score
+        total_possible += assignment_total
     
     if total_possible > 0:
-        return (total_score / total_possible) * 100
+        return ((total_score / total_possible) * 100).quantize(
+            Decimal('0.01'),
+            rounding=ROUND_HALF_UP
+        )
     
-    return Decimal('100.0')  # Default if no assessments
+    return None
 
 
 def verify_certificate(verification_code):
@@ -163,19 +231,7 @@ def regenerate_certificate_pdf(certificate_id, user):
     if not user.is_staff:
         raise PermissionDenied("Only staff can regenerate certificate PDFs")
     
-    # Get certificate
     try:
-        certificate = Certificate.objects.get(id=certificate_id)
+        return render_certificate_pdf(certificate_id, force=True)
     except Certificate.DoesNotExist:
         raise ValidationError(f"Certificate with ID {certificate_id} not found")
-    
-    # Delete old PDF if exists
-    if certificate.pdf:
-        certificate.pdf.delete(save=False)
-    
-    # Generate new PDF
-    pdf_file = generate_certificate_pdf(certificate)
-    certificate.pdf.save(pdf_file.name, pdf_file)
-    certificate.save(update_fields=['pdf'])
-    
-    return certificate

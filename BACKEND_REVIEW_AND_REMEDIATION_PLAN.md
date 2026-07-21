@@ -1,84 +1,128 @@
 # SkillStudio Backend Review and Remediation Plan
 
-**Review date:** 2026-07-21  
-**Last remediation update:** 2026-07-21  
+**Review date:** 2026-07-21
+
+**Deep re-audit:** 2026-07-21
+
+**Last remediation update:** 2026-07-21
+
 **Scope:** Django project configuration and all backend applications: `accounts`, `courses`, `enrollments`, `assessments`, `exams`, `certificates`, `students`, `instructors`, `social`, `live`, `payments`, and `core`.
 
 ## 1. Executive summary
 
-The backend is a substantial prototype with a broad feature set, meaningful model coverage, and a sizeable test directory. It is not currently safe to deploy as a production learning and payments platform.
+The backend is a substantial Django prototype with clear domain separation, 27,698 lines of project Python, 241 authored test methods, and several recent security/correctness fixes. It is still **not safe for production deployment** as either a learning platform or a money-moving system.
 
-The main concern is not style or isolated technical debt. Several core workflows have two or more competing sources of truth, and some public API paths either bypass authorization or do not match the current models. The highest-risk areas are:
+The deep re-audit changed three earlier conclusions:
 
-1. **Payments are currently broken and insecure.** The main payment creation service still supplies a deleted `event` model field, webhook signatures are not verified, the client supplies the purchase amount, and successful payments do not reliably grant enrollment.
-2. **Object-level authorization is missing from several instructor, exam, live-session, social, and WebSocket operations.** A role check is not sufficient when one instructor must not modify another instructor's data.
-3. **Paid course content exposure was remediated.** Public course/module responses now use catalog-safe lesson summaries rather than full paid lesson payloads.
-4. **Financial state has competing implementations.** There are two wallet representations and two payout models. Fee calculations also differ between workflows. This makes balance correctness and reconciliation impossible to guarantee.
-5. **Course completion and scoring were consolidated.** Completion now has one evaluator and assessment/exam scoring has one authoritative path per assessment type; certificate rendering/operational concerns still need later hardening.
-6. **Several endpoints have direct model/API drift.** The payments and social modules reference deleted or nonexistent fields, one certificate action calls its service with the wrong arguments, assessment routes collide, and assessment analytics references a nonexistent model field.
-7. **The repository is not fully reproducible or hygienic.** A real `.env`, a Windows virtual environment, bytecode, and caches are tracked. A fresh local `.venv` was created and ignored for testing, but the dependency file is still UTF-16, there is no CI pipeline, and the checked-in virtual environment cannot be used on the current host.
+1. **Paid-content containment is incomplete.** The public course-detail serializer is safe, but the public module/section and lesson-list endpoints still reuse `LessonSerializer` and return `content_text`, `video_url`, `metadata`, and resources. A runtime probe retrieved the marker `PAID_SECRET` anonymously with HTTP 200.
+2. **Assessment authorization still has a parallel bypass.** The canonical quiz-start endpoint enforces publication and active enrollment, but `/quiz/<id>/attempt/start/` creates an attempt for any authenticated user. The probe returned 200 for an unenrolled student while the canonical route returned 403.
+3. **The executable baseline exists, but it is red.** `manage.py check` and migration-drift checks pass; `check --deploy` reports five security warnings; the full suite discovers 227 cases and ends with 214 passing, 12 account-route failures, and one payment test-module import error.
+
+The highest-risk current facts are:
+
+1. **Payments remain broken and insecure.** Payment creation passes a deleted `event` field, public requests control the amount, coupon serialization references `specific_events`, webhook signatures are not verified, and fulfillment is disconnected from payment success.
+2. **Financial state remains irreconcilable.** `accounts.Profile.wallet` and `students.Wallet` both hold balances; `payments.Payout` and `instructors.InstructorPayout` both represent payouts; the enrollment wallet path charges a 10% fee while the payment service uses 20%; students can credit their own wallet.
+3. **Paid lesson content is still publicly reachable through alternate routes.** Fixes must be applied as a policy at every representation and download boundary, not only at course detail.
+4. **Assessment attempt and authoring paths still disagree.** One start route bypasses enrollment, quiz replacement deletes question rows after attempts may exist, student submission can create curriculum assignments, and question analytics crashes against a nonexistent field.
+5. **Several routed endpoints are demonstrably broken.** Course resume, admin course analytics, and quiz-question analytics return 500 in runtime probes. Payment creation and coupon serializer initialization fail before a valid workflow can complete.
+6. **Recent exam, completion, social, live-containment, and certificate fixes are real and covered.** They should be preserved while the remaining parallel paths are removed.
+7. **Repository and production configuration are not clean.** `.env`, 5,965 files under a Windows `venv`, and 158 bytecode/cache files remain tracked; `requirements.txt` is UTF-16; there is no CI/deployment definition; production HTTPS/cookie hardening is absent.
 
 ### Remediation status as of 2026-07-21
 
-| Finding | Status | Implemented change | Verification |
+| Finding | Status | Current evidence / decision | Verification |
 |---|---|---|---|
-| P0-06 paid lesson content exposure | Remediated | Public course detail now uses catalog-safe module/lesson serializers; paid `content_text`, `video_url`, `metadata`, resources, and file URLs are not emitted from the public course detail response. | `courses.tests.CourseDetailContentExposureTest`; included in `courses enrollments assessments exams certificates` suite. |
+| P0-01 payment model drift | Open / runtime-broken | `create_payment()` still supplies `event=...`; coupon serializers/views still reference deleted event relationships. Remove the event concept completely before deeper payment work. | Runtime probe: `TypeError: Payment() got unexpected keyword arguments: 'event'`; `CouponSerializer` raises `ImproperlyConfigured`. |
+| P0-02 client-controlled payment amount | Open | `PaymentCreateSerializer.amount` is accepted and used as the purchase price. Price must be loaded and snapshotted from the course on the server. | Static contract inspection; payment suite cannot currently import. |
+| P0-03 unsigned webhooks | Open | Stripe and PayPal webhook views parse raw JSON but perform no cryptographic signature verification. | `payments/webhooks.py`; no signed provider contract tests. |
+| P0-04 disconnected fulfillment | Open | Marking payment completed does not atomically/idempotently create or reactivate enrollment and ledger effects. | Payment/enrollment service inspection. |
+| P0-05 duplicate wallets/payouts | Open | Two balance fields/models, two payout models, different fee rates, and a student self-credit endpoint remain active. | `accounts.Profile.wallet`, `students.Wallet`, `payments.Payout`, `instructors.InstructorPayout`; `/api/students/wallet/` POST. |
+| P0-06 paid lesson content exposure | **Partially remediated / still open** | Course detail is catalog-safe, but `ModuleListView` and `LessonListView` still serialize full paid lessons for anonymous/read-only requests. Decision: reopen P0-06 and centralize content access policy before any further feature work. | Runtime probe: anonymous `GET /api/courses/<id>/modules/` returned HTTP 200 with `content_text=PAID_SECRET`. |
 | P0-07 moderation bypass | Remediated | Generic course create/update no longer accepts writable `status`; instructors cannot publish through normal payloads; published/archived course content cannot be changed through course/module/lesson authoring endpoints. | `courses.tests.CourseModerationWorkflowAPITest`; included in `courses enrollments assessments exams certificates` suite. |
 | P0-08 exam ownership/access | Remediated | Exam/question querysets and instructor endpoints are scoped by course ownership; students must be actively enrolled to view/start/submit exams and can only submit their own attempts. | `exams.tests.ExamAccessControlAPITest`; included in `courses enrollments assessments exams certificates` suite. |
 | P0-09 exam answer disclosure | Remediated | Student exam serializers recursively strip answer metadata such as `is_correct`, `correct_answer`, `answer`, model answers, and explanations from standard and custom questions. | `exams.tests.ExamAccessControlAPITest`; included in `courses enrollments assessments exams certificates` suite. |
 | P0-10 assessment/exam scoring drift | Remediated | Quiz scoring now delegates to one service; the duplicate quiz-submit URL was removed; exam scoring uses actual question/custom-question marks and manual grading overwrites marks rather than adding repeatedly. | Assessment/exam regression tests; included in `courses enrollments assessments exams certificates` suite. |
-| P0-11 premature/inconsistent completion | Remediated | Required lesson progress is computed from non-free required lessons only; completion uses one atomic evaluator; GET progress is read-only; manual lesson completion requires watch threshold and assessment requirements. | Enrollment regression tests; included in `courses enrollments assessments exams certificates` suite. |
+| P0-11 premature/inconsistent completion | Remediated | Required lesson progress is computed from non-free required lessons only; completion uses one atomic evaluator; course-progress reads no longer complete enrollment; manual lesson completion requires watch threshold and assessment requirements. A separate lesson-progress GET side effect remains under P1-13. | Enrollment regression tests; included in `courses enrollments assessments exams certificates` suite. |
+| P0-12 social-circle schema drift and privacy leaks | Remediated | Social circle policies now scope private circle visibility and child resources to active members/admins; `join_code` is removed from general serializers; legacy request fields are mapped to current model fields; rejoin reactivates existing memberships; last admin cannot leave without transfer. | `social.tests.LearningCircleAccessControlAPITest`; included in `courses enrollments assessments exams certificates live social` suite. |
+| P0-13 live HTTP/WebSocket authorization and provider layer | Provider integrated / containment hardened | Live access policy now scopes HTTP list/detail/child resources; meeting credentials are hidden except for managers or successful joins; WebSocket connections require authenticated, authorized users and derive sender identity server-side; LiveKit is now the default built-in provider with backend-issued room tokens and subscribe-only student grants. Redis channel layer is selected when `REDIS_URL` is configured. | `live.tests.LiveAccessControlAPITestCase` and `live.tests.LiveWebSocketAccessControlTestCase`; included in `courses enrollments assessments exams certificates live` suite. |
+| P0-14 parallel quiz-start authorization bypass | Open | `/quiz/<id>/attempt/start/` bypasses `require_active_enrollment()` and `quiz.is_published`; remove the duplicate path and route all starts through the canonical service. | Runtime probe: alternate route HTTP 200 for unenrolled student; canonical route HTTP 403. |
+| P1-01 account verification/reset lifecycle | Open | Accounts are active before verification; email delivery, throttling, token hashing, and issued-token revocation are absent. Self-registration can grant instructor role immediately. | Accounts model/serializer/view/settings inspection. |
+| P1-02 role/superuser invariants | Open | Platform permissions rely on `role`; `create_superuser()` does not set `role=admin`, and staff/superuser handling varies by domain. | Accounts manager and permission inspection. |
+| P1-03 API key lifecycle | Open / unsupported | Full API-key secrets are stored and listed, but no authentication backend consumes them. | Accounts model/serializer/DRF settings inspection. |
+| P1-04 profile sources of truth | Open | Shared identity data and display-name assumptions span three profile models and inconsistent response contracts. | Accounts/students/instructors inspection. |
+| P1-05 watch-progress trust/concurrency | Open | Client can jump absolute watch time to duration; no elapsed-time plausibility check or row lock protects updates. | Enrollment progress view/service inspection. |
+| P1-06 enrollment purchase/reactivation | Open / unsafe | Serializer owns debit/payment/enrollment workflow, contains fail-open/best-effort branches, lacks idempotency/locking, and reports reactivation incorrectly. | Enrollment serializer inspection. |
+| P1-07 certificate lifecycle/request coupling | Remediated | Certificate issuance now creates/gets the certificate record atomically and schedules PDF rendering after commit with an idempotent renderer; PDF/storage failures are logged and no longer block completion or certificate record creation. Regeneration now uses the correct service contract, and invalid verification codes return a clean invalid response. | `certificates.tests.IssueCertificateTests`, `RenderCertificatePDFTests`, and `CertificateViewTests`; included in `courses enrollments assessments exams certificates live social` suite. |
+| P1-08 certificate grade calculation | Remediated | Certificate grade calculation now uses a deterministic points policy: best completed attempt per published quiz, graded assignment submissions, bounded earned points, and `None` when no graded assessment evidence exists instead of a fake 100%. | `certificates.tests.CalculateCourseGradeTests`; included in `courses enrollments assessments exams certificates live social` suite. |
+| P1-09 invalid assessment mutations | Open | Student-by-lesson submission creates assignments; quiz management deletes/recreates questions and does not validate objective-question invariants or upload policy. | Direct code inspection in `assessments/views.py` and `views_quiz_management.py`. |
+| P1-10 attempt/concurrency invariants | Open | Multiple start services use incompatible uniqueness assumptions; no meaningful attempt number or database-enforced one-active-attempt rule exists. | Models/services/URL inspection plus P0-14 probe. |
+| P1-11 live counters/attendance | Open | Poll changes/upvotes/counters and participant finalization rely on drift-prone read-modify-save behavior. | Live model/service inspection. |
+| P1-12 refund/payout invariants | Open | Cumulative refund, entitlement reversal, payout allocation, and concurrent earnings reservation are not safely enforced. | Payments/instructors models and services inspection. |
+| P1-13 GET side effects/error exposure | Open | Lesson-progress GET creates rows, quiz-management GET creates quizzes, live-list GET changes lifecycle state, and multiple views expose raw exception strings. | Routed view inspection. |
+| P1-14 routed API/model drift | Open / runtime-broken | Course resume passes an integer where a course object is required; admin course analytics aggregates nonexistent `Enrollment.amount_paid`; assessment analytics reads nonexistent `QuizQuestion.correct_answer`. | Runtime probes: all three endpoints returned HTTP 500. |
+| Staticfiles configuration warning | Remediated | Added tracked `.gitkeep` files for the static source/output directories so configured static paths exist without committing generated static assets. | `DATABASE_URL=sqlite:////private/tmp/skillstudio-static-check.sqlite3 .venv/bin/python manage.py check` returns no issues. |
 
-Latest verification command:
+Latest full-suite command:
 
 ```bash
-DATABASE_URL=sqlite:////private/tmp/skillstudio-test.sqlite3 .venv/bin/python manage.py test courses enrollments assessments exams certificates
+DATABASE_URL=sqlite:////private/tmp/skillstudio-deep-review-tests.sqlite3 .venv/bin/python manage.py test
 ```
 
 Latest result:
 
 ```text
-Ran 105 tests in 33.542s
+Found 227 test(s).
+Ran 227 tests in 79.161s
 
-OK
+FAILED (failures=12, errors=1)
 ```
 
-Additional checks passed: `git diff --check`, focused `py_compile` for touched modules, and `.venv/bin/python manage.py check`. The only remaining check warning is the existing missing static directory warning: `staticfiles.W004`.
+The 12 failures are stale account tests requesting an extra `/api/` path segment and receiving 404. The single error is `payments.tests` failing import because it still imports `events.models.Event`; therefore its 15 authored tests do not collect. The other 214 discovered tests pass. The prior focused seven-app regression command still passes 169 tests.
+
+Additional results:
+
+- `manage.py check`: passes with no issues.
+- `manage.py makemigrations --check --dry-run`: no model drift detected.
+- `manage.py check --deploy`: five warnings (`security.W004`, `W008`, `W009`, `W012`, `W016`) for HSTS, HTTPS redirect, insecure fallback secret, and secure session/CSRF cookies.
+- Clean SQLite migrations: all project migrations, including the LiveKit platform migration, apply successfully.
+- Runtime contract probes: paid-content leak confirmed; alternate quiz-start bypass confirmed; course resume/admin analytics/quiz analytics return 500; payment creation and coupon serializer fail against current models.
 
 ### Overall assessment
 
 | Area | Current state | Priority |
 |---|---|---|
-| Authentication and account lifecycle | Partially implemented; verification/reset delivery and revocation missing | P1 |
-| Authorization | Role checks exist, object ownership and enrollment checks are inconsistent | P0 |
-| Courses and content access | Useful data model; publication workflow and paid-content boundary are unsafe | P0 |
-| Enrollment and progress | Functional concepts, but completion logic and concurrency are inconsistent | P0 |
-| Assessments and exams | Duplicate implementations and correctness/ownership defects | P0 |
-| Payments, wallets, refunds, payouts | Broken model contract and unsafe financial invariants | P0 |
-| Certificates | Core flow exists; eligibility, transaction boundary, and runtime defects remain | P1 |
-| Social and live | Large schema/authorization drift; WebSocket access is unsafe | P0 |
-| Operations and deployment | No reproducible clean install, CI, production channel layer, or deployment recipe | P0 |
+| Authentication and account lifecycle | Registration is immediately active, verification/reset email delivery is absent, roles conflict with staff flags, and auth tests target stale URLs | P1 |
+| Authorization | Exam/social/live containment improved; paid content and parallel quiz-start routes still bypass the intended policy | P0 |
+| Courses and content access | Moderation and course-detail serialization improved; module/lesson list leak remains; resume/admin analytics are broken | P0 |
+| Enrollment and progress | Completion evaluator is consolidated; purchase/wallet flow, watch-time trust, locking, and reactivation semantics remain unsafe | P0 |
+| Assessments and exams | Exam access/scoring improved; assessment authoring, alternate starts, history preservation, concurrency, and analytics remain unsafe | P0 |
+| Payments, wallets, refunds, payouts | Runtime-broken model contract plus unsafe pricing, webhook, ledger, refund, and payout invariants | P0 |
+| Certificates | Record/PDF lifecycle and immediate grade policy are safer; immutable/versioned evidence and async status remain | P1 |
+| Social | Private-circle containment and schema mapping are substantially improved; retain policy regression tests | P2 follow-up |
+| Live | HTTP/WebSocket containment and LiveKit token provider are implemented; state-on-GET, counters, attendance, rate limits, Redis deployment, and recording automation remain | P1 |
+| Operations and deployment | Local environment works, but full suite/deploy checks are red; tracked secrets/generated artifacts, UTF-16 requirements, no CI/runbook | P0 |
 
-**Recommendation:** freeze production release work and first complete the P0 containment sequence in section 12. Do not begin by refactoring every app. Establish security and financial invariants, repair the executable baseline, then consolidate duplicated domains behind tested services.
+**Recommendation:** keep production release frozen. If payments remain intentionally deferred, the next implementation order is: (1) close P0-06 across every module/lesson/resource route, (2) remove the P0-14 alternate attempt path, and (3) repair P1-09/P1-10 assessment history and concurrency. For an actual production release, payment P0-01 through P0-05 and repository-secret rotation remain mandatory before launch.
 
 ---
 
 ## 2. Review method and limitations
 
-The review covered:
+The deep re-audit covered:
 
 - project settings, routing, ASGI, and Celery configuration;
 - models, serializers, permissions, services, views, URL routing, admin modules, signals, and management commands;
 - migrations and cross-app model relationships;
-- test inventory and static Python parsing;
+- all routed backend URL configurations and the template routes that consume them;
+- test inventory, static Python parsing, model/serializer drift searches, authorization boundaries, and transaction/locking sites;
 - repository/dependency/deployment hygiene;
 - frontend-to-backend route use where it exposed an API contract mismatch.
 
-Static parsing succeeded for the source Python files. A full Django check and test execution could not be completed in this environment because Django is not installed in the host Python environment and the tracked virtual environment contains Windows executables that cannot run on macOS. This is itself a release blocker, not a reason to discount the code-level findings.
+The current source contains 27,698 lines of project Python and 241 authored `test_*` methods. A local `.venv` is available and was used for real Django checks, migrations, the full test suite, and focused runtime probes. The tracked Windows `venv` remains unusable on this host and should not be part of the repository.
 
-The review found approximately 26k lines of Python and 195 test methods. Test quantity is encouraging, but the current payment test module imports the removed `events` application, so the suite is expected to fail during collection even after dependencies are installed.
+Runtime validation used isolated SQLite databases under `/private/tmp`; it did not modify application data. This validates URL dispatch, serializers, migrations, and ordinary ORM behavior, but it does **not** validate PostgreSQL row locking, concurrent transactions, Redis multi-process delivery, LiveKit connectivity, object-storage behavior, Celery workers, or real Stripe/PayPal signatures. Those require integration environments.
 
-The first remediation PR must create a clean, repeatable test environment. After that, runtime checks may reveal additional defects that static review cannot expose, particularly around migrations, serializer initialization, URL behavior, and PostgreSQL constraints.
+The full test result is evidence, not a clean bill of health: 214 discovered tests passed, 12 account API tests failed because their paths have an extra `/api/`, and `payments.tests` failed import before its 15 test methods could collect. Several high-risk routes have no regression tests, which is why the explicit runtime probes found failures outside the passing suites.
 
 ---
 
@@ -246,15 +290,20 @@ Balances cannot be reconciled reliably. Concurrent requests can lose updates or 
 
 ### P0-06 — Public APIs expose paid lesson content
 
-**Current status:** Remediated on 2026-07-21. Public course detail now emits catalog-safe lesson summaries and no longer exposes paid lesson bodies, video URLs, private metadata, resources, or file URLs. Covered by `CourseDetailContentExposureTest`.
+**Current status:** Partially remediated and reopened on 2026-07-21. Public course detail now emits catalog-safe lesson summaries, but alternate public module/lesson list endpoints still expose the original rich serializer.
 
 **Evidence**
 
-Public course detail uses nested module/lesson serializers containing fields such as `content_text`, `video_url`, and resources. The same rich lesson serializer is reused for catalog and enrolled learning use cases.
+- `CourseDetailView` now uses `CourseDetailModuleSerializer` and `CourseDetailLessonSerializer`, which correctly omit lesson bodies and resource URLs.
+- `ModuleListView` has `AllowAny`, returns `ModuleSerializer`, and `ModuleSerializer` nests `LessonSerializer`.
+- `LessonListView` uses `IsAuthenticatedOrReadOnly`, so anonymous GET is permitted and returns `LessonSerializer` directly.
+- `LessonSerializer` includes `content_text`, `video_url`, `metadata`, and nested `LessonResource.file_url` for every lesson; neither list queryset applies an enrollment/publication policy.
+- Runtime probe: anonymous `GET /api/courses/<published-paid-course-id>/modules/` returned HTTP 200 and included the deliberately stored `content_text` marker `PAID_SECRET`.
+- Existing `CourseDetailContentExposureTest` covers only the course-detail representation, so it produced a false sense of closure for the domain boundary.
 
 **Impact**
 
-Unauthenticated users can receive content intended for paying students.
+Unauthenticated users can retrieve paid course material without purchasing or enrolling. Draft/free course routes also do not consistently apply publication visibility, so unpublished curriculum metadata/content can be exposed through list/detail variants.
 
 **Fix approach**
 
@@ -262,13 +311,16 @@ Unauthenticated users can receive content intended for paying students.
    - `CatalogCourseSerializer` / `CatalogLessonSummarySerializer`: IDs, titles, order, duration, preview flag only;
    - `LearningCourseSerializer` / `AccessibleLessonSerializer`: content only after access policy succeeds;
    - management serializers: instructor-only authoring fields.
-2. Centralize `can_access_course_content(user, course)` and `can_access_lesson(user, lesson)` policies.
-3. Apply the policy to lesson detail, resources, recordings, downloads, curriculum, bookmarks, and related assessment endpoints.
-4. Avoid relying on a client to hide fields.
+2. Centralize `can_view_course_catalog(user, course)`, `can_access_course_content(user, course)`, and `can_access_lesson(user, lesson)` policies.
+3. Make public module/lesson routes use summary serializers and restrict unpublished courses to owner/admin. Rich lesson routes must require free-preview status, active enrollment, course ownership, or admin.
+4. Apply the same policy to resources, recordings, downloads, curriculum, bookmarks, assignment files, and assessment definitions.
+5. Inventory routes by representation rather than view name so aliases such as `/modules/`, `/sections/`, and slug/id forms cannot diverge.
+6. Avoid relying on a client to hide fields.
 
 **Acceptance criteria**
 
 - Anonymous and unenrolled API snapshots contain no paid content URLs/text/resources.
+- Every alias of module, section, lesson, resource, and curriculum endpoints is included in the negative snapshot matrix.
 - Active learners, course owners, and admins receive the correct view.
 - Revoked/refunded/expired enrollment removes access immediately according to policy.
 
@@ -385,7 +437,7 @@ Grades depend on the endpoint used and can be wrong or inflated. Some attempt re
 
 ### P0-11 — Course completion can be awarded prematurely and inconsistently
 
-**Current status:** Remediated on 2026-07-21. Completion now uses one atomic enrollment evaluator, required progress counts only completed non-free required lessons, progress GET is read-only, and manual completion requires watch threshold plus assessment requirements. Covered by enrollment regression tests.
+**Current status:** Remediated on 2026-07-21 for completion correctness. Completion now uses one atomic enrollment evaluator, required progress counts only completed non-free required lessons, course-progress reads no longer award completion, and manual completion requires watch threshold plus assessment requirements. `LessonProgressView.get()` still creates a progress row and remains tracked separately under P1-13.
 
 **Evidence**
 
@@ -415,6 +467,8 @@ Completion and certificate eligibility vary by call order. Users can self-comple
 - Assessment requirements are enforced before certificate issuance.
 
 ### P0-12 — Social-circle endpoints are out of sync with their models and leak private data
+
+**Current status:** Remediated on 2026-07-21. Private circle detail and child resources now require visibility/member policies, general circle serializers no longer expose `join_code`, stale request fields are mapped to the current models, left memberships are reactivated instead of creating duplicates, and last-admin leave is blocked until ownership/admin coverage exists. Covered by `LearningCircleAccessControlAPITest`.
 
 **Evidence**
 
@@ -451,12 +505,14 @@ Several create/update paths fail or silently discard relationships. Authenticate
 
 ### P0-13 — Live session HTTP and WebSocket authorization is unsafe
 
+**Current status:** Provider integrated and containment hardened on 2026-07-21. HTTP live-session resources now use shared access policies, meeting credentials are only returned to managers or authorized join responses, WebSocket connections are rejected unless the user is authenticated and already authorized for the live session, sender identity is derived server-side, and LiveKit is now the default built-in provider path. Django issues short-lived LiveKit room tokens after enrollment/ownership checks; instructors receive publish/admin grants and students receive subscribe-only grants. Recording/egress automation remains a follow-up.
+
 **Evidence**
 
 - Live session detail/update/delete is broadly authenticated rather than owner-scoped.
 - The WebSocket consumer accepts anonymous connections and trusts client messages/sender IDs without checking enrollment, session visibility, participant status, or instructor-only message types.
 - JWTs are accepted in query strings.
-- The project uses `InMemoryChannelLayer`, which does not coordinate multiple server processes.
+- The project previously hard-coded `InMemoryChannelLayer`. Settings now select Redis when `REDIS_URL` is present, but silently fall back to in-memory delivery otherwise; production configuration does not fail closed when Redis is absent.
 
 **Impact**
 
@@ -479,6 +535,35 @@ Unauthorized users can observe or inject live-session signaling/chat, impersonat
 - A student cannot emit instructor-only control/signaling actions or spoof another user.
 - Messages work across separate application processes using Redis.
 
+### P0-14 — A parallel quiz-start route bypasses enrollment and publication policy
+
+**Evidence**
+
+- The canonical `StartQuizView` loads the quiz, calls `require_active_enrollment()`, and delegates to `start_quiz_attempt()`, which rejects unpublished quizzes.
+- `StartQuizAttemptView` independently calls `QuizAttempt.objects.get_or_create()` and checks neither active enrollment nor `quiz.is_published`.
+- Both are routed: `/quiz/<id>/start/` and `/quiz/<id>/attempt/start/`.
+- Runtime probe using the same published quiz and unenrolled student: the alternate route returned HTTP 200 and created an attempt; the canonical route returned HTTP 403.
+- The incremental answer route belongs to the alternate implementation and writes arbitrary `question_id`/`option_id` pairs into JSON without first proving the question and option belong to the attempt's quiz. Scoring later ignores invalid pairs, but stored attempt evidence is still untrusted.
+
+**Impact**
+
+Any authenticated user can start attempts for courses they do not own or attend, including unpublished quizzes if the ID is known. Parallel attempt state also undermines attempt-limit and historical-evidence decisions.
+
+**Fix approach**
+
+1. Choose one public attempt API. Recommended: keep the canonical service-backed start/submit flow and remove the duplicate route/views.
+2. If incremental answer saving is required, move it behind the same `can_take_quiz()` policy and validate question/option ownership before writing.
+3. Scope all attempt reads/mutations to `user=request.user`, active enrollment (or course manager), published quiz/course, and the exact nested quiz.
+4. Put eligibility, active-attempt allocation, and attempt limits in one atomic service used by every transport.
+5. Add a permission matrix for anonymous, unenrolled student, enrolled student, other instructor, owner, staff, unpublished quiz, canceled enrollment, and completed attempt.
+
+**Acceptance criteria**
+
+- Only one routed start command exists.
+- Unenrolled/canceled users and users of unpublished courses cannot create or update attempts.
+- Every stored option belongs to the stored question, and every question belongs to the attempt quiz snapshot.
+- Concurrent starts cannot allocate more active/total attempts than policy allows.
+
 ---
 
 ## 5. P1 findings: high-priority correctness and lifecycle work
@@ -486,6 +571,14 @@ Unauthorized users can observe or inject live-session signaling/chat, impersonat
 ### P1-01 — Account verification and password reset are incomplete
 
 Registration creates a verification token but users are active immediately and no verification email is sent. Password reset similarly creates a token without a delivery path. Tokens are stored directly and there is no endpoint throttling or access-token revocation strategy after a password change.
+
+Additional current evidence:
+
+- `User.is_active` defaults to `True`, and registration never changes it, so the verification token has no effect on login eligibility.
+- Resend-verification requires `IsAuthenticated` but immediately rejects active users as already verified; under the current default, a newly registered user cannot exercise a meaningful resend flow.
+- The registration serializer allows anyone to self-select `role="instructor"`, immediately granting instructor permissions even though `InstructorProfile.is_verified` defaults to false and role permissions do not consult it.
+- The repository defines no email backend/default sender/task and contains no `send_mail`/email-delivery implementation.
+- Password change/reset does not revoke already-issued refresh tokens.
 
 **Approach**
 
@@ -506,6 +599,7 @@ Registration creates a verification token but users are active immediately and n
 - Set/validate the admin role in `create_superuser` if the role is intended to mirror platform administration.
 - Add a data migration for existing staff/superusers and tests for all permission classes.
 - Prevent unrestricted self-registration as instructor if instructors require approval; introduce an application/approval state.
+- Make all admin permission helpers treat `is_superuser`/`is_staff` consistently, or deliberately separate Django administration from platform administration and document that decision.
 
 ### P1-03 — API keys exist but are not an authentication mechanism
 
@@ -531,7 +625,7 @@ Identity/profile data is split across `accounts.Profile`, `students.StudentProfi
 
 ### P1-05 — Progress reporting trusts absolute client state
 
-Watch-time APIs accept client-supplied absolute time and can jump directly to the duration. Type/monotonicity validation is incomplete. This makes lesson thresholds easy to bypass and permits lost updates.
+Watch-time APIs accept client-supplied absolute time and can jump directly to the lesson duration. Negative/type checks and capping now exist, but there is no rate/elapsed-time plausibility check and the progress row is not locked before the read-modify-save. This makes the 90% threshold easy to bypass and permits lost updates under concurrency.
 
 **Approach**
 
@@ -544,6 +638,8 @@ Watch-time APIs accept client-supplied absolute time and can jump directly to th
 
 The enrollment serializer performs wallet lookup, debit, payment creation, fee allocation, reactivation, and enrollment changes with broad exception handling and best-effort mirrors. Reactivation reporting is calculated incorrectly, and concurrent requests are not locked.
 
+The deep re-audit also found a fail-open branch: if no wallet balance is available, the serializer logs a warning, creates a completed payment, and continues to enrollment without a debit. When a dedicated wallet exists, it attempts to mirror `Profile.wallet` and create `WalletTransaction` inside nested broad `except Exception: pass` blocks. The enrollment path uses a 10% platform fee, while `payments.services.PLATFORM_FEE_RATE` is 20%.
+
 **Approach**
 
 - Move business logic out of the serializer into the unified purchase/fulfillment command.
@@ -552,41 +648,73 @@ The enrollment serializer performs wallet lookup, debit, payment creation, fee a
 - Remove broad `except Exception` fallbacks and never silently pass failed money writes.
 - Return a typed result describing `created`, `reactivated`, or `already_active`.
 
-### P1-07 — Certificate lifecycle is coupled to request transactions
+### P1-07 — Certificate lifecycle was coupled to request transactions
 
-PDF generation occurs synchronously near enrollment completion. A PDF/storage failure can block or roll back a valid completion. The regenerate view calls `regenerate_certificate_pdf` with a signature that does not match the service, and invalid verification codes do not follow the view's expected error flow.
+Original issue: PDF generation occurred synchronously near enrollment completion, so a PDF/storage failure could block or roll back a valid completion. The regenerate view also called `regenerate_certificate_pdf` with a signature that did not match the service, and invalid verification codes did not follow the view's expected error flow.
 
-**Approach**
+**Current status — remediated on 2026-07-21**
 
-- Separate certificate eligibility, certificate record issuance, and document rendering.
-- Create the certificate record atomically and enqueue PDF rendering with `transaction.on_commit`.
-- Make rendering retryable/idempotent and store generation status/error.
-- Correct the regenerate service contract and add an end-to-end test.
-- Define verification response and privacy policy; map invalid/revoked codes to deliberate HTTP statuses.
-- Use `F()` updates for counters.
+Certificate record issuance is now separated from PDF rendering. `issue_certificate()` creates or reuses the certificate record inside the transaction and schedules document rendering after commit; rendering is idempotent and logs failures instead of rolling back enrollment completion or certificate creation. The regenerate endpoint now uses the service contract correctly, staff-only regeneration forces a fresh render, and invalid verification codes return a deliberate invalid/404 response.
 
-### P1-08 — Certificate grade calculation is not defensible
-
-Grade calculation aggregates all quiz attempts rather than an explicit best/latest policy, mixes assignment data without clear weights, and can default to 100 when no assessments exist.
+This does not yet introduce a Celery-backed certificate rendering worker or a persisted generation-status/error model. Those remain useful operational upgrades under the broader background-task and observability work, but the request-transaction coupling and broken view/service contract are fixed.
 
 **Approach**
 
-- Define and version grading policy at course publication time.
-- Use required assessment weights that sum to 100, or explicitly define points-based calculation.
-- Choose best/latest/first attempt policy per assessment.
-- Store the completion/grade evidence snapshot used for a certificate so later content edits do not rewrite history.
+- Completed: separate certificate record issuance from document rendering.
+- Completed: create/reuse the certificate record atomically and schedule PDF rendering with `transaction.on_commit`.
+- Completed: make rendering idempotent for normal render/regenerate paths.
+- Completed: correct the regenerate service contract and cover it with API tests.
+- Completed: map invalid verification codes to a deliberate invalid response.
+- Remaining operational hardening: move rendering to a Celery task, persist generation status/error for admin retry visibility, and use `F()` updates for simple certificate counters.
+
+### P1-08 — Certificate grade calculation was not defensible
+
+Original issue: grade calculation aggregated all quiz attempts rather than an explicit best/latest policy, mixed assignment data without clear weights, and defaulted to 100 when no assessments existed.
+
+**Current status — remediated on 2026-07-21**
+
+The immediate certificate-grade policy is now deterministic and safer: use the best completed attempt per published quiz, use graded assignment submissions, cap earned points to the assessment maximum, calculate `earned / possible * 100`, and return `None` when no graded assessment evidence exists. Certificates therefore no longer print a fake perfect grade for courses without assessed work, and repeated quiz attempts no longer inflate or dilute a learner's certificate grade.
+
+This is a pragmatic policy-level fix. The later product-grade version should still snapshot the exact grading/evidence policy at course publication or certificate issuance so historical certificates remain explainable after curriculum edits.
+
+**Approach**
+
+- Completed: explicitly define the current points-based calculation in `calculate_course_grade()`.
+- Completed: choose best completed attempt per published quiz.
+- Completed: include graded assignment submissions and ignore ungraded work.
+- Completed: return no grade when there is no graded assessment evidence instead of defaulting to 100%.
+- Remaining product hardening: version the grading policy at course publication time and store the completion/grade evidence snapshot used for each certificate.
 
 ### P1-09 — Assignment and quiz management permit invalid mutations
 
 A student submission endpoint creates an `Assignment` automatically when one is missing. Question replacement deletes all existing questions and recreates them, which can invalidate attempt history. File uploads lack a clear server-enforced type/size/storage policy.
 
+**Evidence**
+
+- `SubmitAssignmentByLessonView` calls `Assignment.objects.get_or_create()` after checking only student enrollment. Curriculum definition is therefore mutated by the learner-facing submission endpoint.
+- Uploaded file names are embedded directly in a storage path and saved without explicit size, MIME, extension, quarantine, or malware-scanning policy.
+- Resubmission uses `update_or_create()` but does not clear the prior grade, feedback, grader, or graded timestamp; a changed submission can remain graded with stale feedback.
+- `ManageQuizView.get()` creates a quiz as a side effect of GET.
+- `ManageQuizView.post()` executes `quiz.questions.all().delete()` before recreating questions. Existing attempt answers contain only the old row IDs, so later explanation/regrade/audit cannot reconstruct the assessment.
+- Raw dictionaries are accepted without serializer validation. A question may have no correct option, multiple correct options, empty text/options, invalid question type, invalid passing percentage, or inconsistent total marks.
+
 **Approach**
 
 - Only course managers may create curriculum assessments.
+- Make GET read-only; use an explicit POST to create a quiz definition.
 - Snapshot attempt questions/answers before allowing mutable authoring; do not delete rows referenced by historical attempts.
 - Validate that objective questions have exactly the permitted correct-option configuration.
 - Generate storage keys server-side and validate file size, content type, extension, and malware-scanning status.
 - Prefer direct-to-object-storage signed uploads with a finalized-upload record.
+- On resubmission, deliberately clear grade/feedback/grader state or create a versioned submission attempt according to product policy.
+
+**Acceptance criteria**
+
+- A learner cannot create or edit an assignment/quiz definition through any submission route.
+- GET never creates a quiz.
+- Editing a quiz after attempts exist either creates a new version or is rejected; historical results remain reproducible.
+- Invalid objective-question shapes are rejected atomically without deleting existing valid content.
+- Assignment upload and resubmission behavior is explicitly tested.
 
 ### P1-10 — Attempt count and concurrency invariants are ineffective
 
@@ -598,6 +726,9 @@ Quiz attempts can be created through different paths with incompatible assumptio
 - Add conditional database constraints where possible (e.g. one active attempt per user/exam).
 - Lock the user/exam enrollment or a dedicated attempt-counter row while allocating an attempt number.
 - Replace timestamp-based uniqueness with `(user, exam, attempt_number)`.
+- Make submit idempotent under two concurrent requests by locking the attempt and accepting only an allowed one-way transition.
+
+The canonical quiz service currently behaves as one lifetime attempt per user/quiz because `get_or_create(quiz, user)` has no completion filter, while the alternate route behaves as one active attempt and permits new attempts after completion. Exam start counts attempts in application code before insert, so two concurrent transactions can both pass `max_attempts`. These are product-policy differences, not merely implementation details.
 
 ### P1-11 — Live polling, attendance, and counters drift
 
@@ -626,12 +757,38 @@ Refunds do not clearly prevent cumulative over-refunding or consistently reverse
 
 Course progress and live-session list requests mutate state. Course update error handling logs the full request body. Some views return raw exception strings.
 
+Current examples include `LessonProgressView.get()` creating a progress row, `ManageQuizView.get()` creating a quiz, and `LiveSessionListView.get_queryset()` advancing scheduled/live/ended states. Payment webhook logs persist full provider payload JSON, and many payment/live views expose `str(exception)` directly to clients.
+
 **Approach**
 
 - Make GET/HEAD strictly read-only.
 - Move lifecycle advancement to explicit commands, domain events, or scheduled tasks.
 - Log request IDs, actor ID, resource ID, error class, and safe context—not full content, tokens, addresses, or provider payloads.
 - Return stable public error codes/messages and capture detailed exceptions only in server logs/error monitoring.
+
+### P1-14 — Routed course and assessment endpoints have verified API/model drift
+
+Three non-payment endpoints are currently routed but return HTTP 500 under ordinary valid setup:
+
+1. `ResumeLearningView` calls `require_active_enrollment(user, course_id)` with an integer. The service expects a `Course` and reads `course.instructor`.
+2. `AdminCourseStatsView` calculates revenue using `Sum('amount_paid')`, but `Enrollment` has no `amount_paid` field.
+3. `get_quiz_question_analytics()` reads `QuizQuestion.correct_answer`, but correctness lives on `QuestionOption.is_correct`.
+
+The full suite does not cover these routes. They were confirmed with authenticated runtime probes against a migrated isolated database; each returned HTTP 500.
+
+**Approach**
+
+- Repair resume to load/authorize a course or use the already-tested enrollment resume service; remove the duplicate course-level implementation if it adds no distinct contract.
+- Derive revenue from canonical captured/fulfilled payment or ledger records, never enrollment rows.
+- Rebuild quiz analytics from validated option IDs and completed attempt snapshots; distinguish unanswered from wrong and exclude in-progress attempts.
+- Add API tests through the real URLs, including empty datasets and permissions.
+- Add schema-generation/import smoke tests so nonexistent serializer/model fields fail CI early.
+
+**Acceptance criteria**
+
+- All three routes return a documented response for valid authorized requests and a stable 403/404 for unauthorized requests.
+- No analytics query references fields absent from migrations/models.
+- Revenue, question correctness, and resume position each use the domain's canonical source of truth.
 
 ---
 
@@ -651,24 +808,39 @@ Profile statistics are updated on selected paths or profile creation and do not 
 
 ### P2-04 — Analytics code is not contract-tested
 
-Assessment analytics references a nonexistent `correct_answer` field, and exam analytics expects an answer representation different from scoring. Build analytics only from the versioned attempt snapshot/result schema and cover every analytics query with database tests.
+The immediate 500-level defects are promoted to P1-14. Beyond those crashes, analytics definitions remain inconsistent: some averages include incomplete attempts, question analytics cannot reliably distinguish unanswered/wrong without an attempt snapshot, enrollment analytics derives progress repeatedly in Python, and denormalized counters can disagree with source rows. Define metric names, numerator/denominator, inclusion windows, and source records; then cover every analytics endpoint with database and query-budget tests.
 
 ### P2-05 — Background-task configuration is incomplete
 
-Celery is configured but no meaningful beat schedule/application tasks are visible. Use tasks for email, certificate rendering, recording processing, reconciliation, and lifecycle scheduling. Tasks must be idempotent and should receive record IDs, not serialized model objects.
+Celery is configured with Redis defaults, but `CELERY_BEAT_SCHEDULE` is empty and no application task modules are present. Certificate rendering currently runs from an `on_commit` callback in the web process, and live-session state is advanced by GET requests. Use tasks for email, certificate rendering, recording processing, reconciliation, and lifecycle scheduling. Tasks must be idempotent, receive record IDs rather than serialized model objects, record retry/failure state, and be monitored.
 
 ### P2-06 — WebRTC architecture is suitable only for a narrow prototype
 
-The browser flow appears to use a single peer connection for multiple participants and there is no complete TURN/SFU production design. Decide the expected room size:
-
-- very small rooms: one peer connection per peer plus TURN and explicit signaling authorization;
-- larger rooms: use an SFU/provider rather than full-mesh WebRTC.
-
-Do not expose meeting passwords/links in general list serializers. Return join credentials only through a policy-protected, short-lived join action.
+LiveKit is now the selected SFU/provider and Django issues policy-checked, short-lived room tokens. That is the correct direction. Production completeness still requires verified LiveKit deployment credentials, webhook verification, disconnect/revocation behavior, room cleanup, recording/egress orchestration, TURN/network validation, token TTL/replay decisions, and load tests. Remove or explicitly isolate legacy browser peer-to-peer signaling so two competing media topologies do not remain active.
 
 ### P2-07 — API and frontend contracts have drifted
 
-Template JavaScript calls several routes or shapes that are not present in the backend, including search, checkout/transactions, generic assessment routes, and some instructor/resource/discussion endpoints. Introduce an OpenAPI schema, validate it in CI, and generate or centralize a small client instead of embedding ad hoc URL strings in templates.
+Template JavaScript calls several routes or shapes that are not present in the backend:
+
+- assessment pages call `/assessments/attempts/...` and `/assessments/<id>/start-attempt/`, while routed assessment URLs are quiz/assignment-specific;
+- payment pages call `/payments/checkout/` and `/payments/transactions/...`, while the backend exposes `/payments/create/` and payment-ID routes;
+- resource/discussion/search templates call applications/endpoints that are not installed or routed;
+- an enrollment certificate link is used even though certificate routes live under `/api/certificates/`;
+- account tests prepend `/api/accounts/api/...`, while the real include is already `/api/accounts/`.
+
+Introduce an OpenAPI schema, validate it in CI, test URL reversing instead of hardcoded test strings, and centralize/generate the first-party client instead of embedding ad hoc URL strings in templates.
+
+### P2-08 — Database constraints do not encode important domain invariants
+
+Most constraints are legacy `unique_together` declarations; critical numeric/state relationships are application-only. Examples include course price versus `is_free`, passing percentages, quiz/exam marks, lesson/module position uniqueness, poll vote cardinality, provider payment IDs, payout/refund totals, and cross-field enrollment completion state.
+
+Add constraints only after reconciliation/backfill. Prioritize uniqueness/checks that protect money, entitlement, one-active-attempt rules, and immutable evidence. Serializer validation remains necessary for friendly errors, but it is not a concurrency boundary.
+
+### P2-09 — Error contracts, throttling, health checks, and observability are absent
+
+There is no DRF throttling configuration, no health/readiness endpoint, no structured logging configuration, and no error-monitoring integration. Several views catch broad exceptions and return raw messages; the instructor dashboard prints tracebacks to stdout and returns HTTP 200 with fabricated zero values when internal queries fail.
+
+Define a stable error envelope/codes, let unexpected errors reach centralized monitoring, add request/correlation IDs, configure endpoint-specific throttles, and expose liveness/readiness separately. Dashboard partial-data behavior should be explicit and observable rather than silently indistinguishable from real zero activity.
 
 ---
 
@@ -798,7 +970,17 @@ Only after at least one verified release should legacy wallet/payout fields/mode
 
 ### 9.1 Establish a runnable baseline
 
-Use a supported Python version for Django 6, convert dependencies to UTF-8, and prefer a `pyproject.toml` plus a locked dependency artifact. Build a new local virtual environment; do not reuse or commit one.
+A runnable local `.venv` now exists and isolated SQLite migrations/checks/tests execute. The baseline is not green or reproducible from a clean clone: `requirements.txt` is UTF-16, the full suite is red, the payment test module cannot import, and no lockfile or CI validates installation. Convert dependencies to UTF-8, use a supported Python version for Django 6, and prefer a `pyproject.toml` plus a locked dependency artifact. Do not reuse or commit the tracked platform-specific environment.
+
+Current test triage:
+
+| Result | Count | Meaning |
+|---|---:|---|
+| Authored `test_*` methods | 241 | Source inventory across backend test modules. |
+| Discovered by `manage.py test` | 227 | The payment module import failure replaces its 15 tests with one loader error. |
+| Passing | 214 | Useful regression base, especially recent course/exam/completion/certificate/social/live fixes. |
+| Failing | 12 | Account tests call stale `/api/accounts/api/...` URLs and receive 404. |
+| Loader errors | 1 | `payments.tests` imports removed `events.models.Event`. |
 
 Baseline CI commands should include:
 
@@ -810,6 +992,8 @@ python manage.py test
 ```
 
 Add coverage, linting, and formatting after the suite runs. A reasonable initial coverage gate is based on the measured baseline, followed by a ratchet; require high branch coverage for permissions, pricing, ledger, scoring, completion, and webhooks.
+
+Before accepting the suite as a gate, add direct regressions for the six runtime probes in this review; otherwise a green subset can coexist with publicly exposed content and routed 500s.
 
 ### 9.2 Required test layers
 
@@ -874,7 +1058,7 @@ The templates store JWTs in `localStorage`, which increases impact of an XSS def
 
 ## 11. Repository and deployment baseline
 
-The repository currently lacks a Dockerfile/process declaration/CI workflow and has no verified clean installation path.
+The repository currently lacks a Dockerfile/process declaration/CI workflow and has no verified clean-clone installation path. A local `.venv` proves that the code can run on this host, but the repository still tracks `.env`, 5,965 `venv/` files (about 54 MB), and 158 bytecode/cache files. Ignore rules are present but do not untrack them.
 
 Recommended baseline:
 
@@ -894,101 +1078,89 @@ Do not use SQLite as the only CI database because locking, constraints, and conc
 
 ## 12. Recommended implementation sequence
 
-Estimates below are relative and assume one experienced backend engineer with review support. Runtime findings or real-data reconciliation may change them.
+Estimates are relative and assume one experienced backend engineer with review support. Previously remediated exam, moderation, completion, social, live-containment, and certificate work should remain in place; the sequence below starts from the newly audited state.
 
-### Phase 0 — Reproducible baseline (1–2 engineering days)
+### Phase 0 — Security/repository gate and trustworthy test baseline (1–3 engineering days)
 
-1. Rotate/remove tracked secrets and generated artifacts.
-2. Convert dependency declaration to UTF-8 and build a clean environment.
-3. Remove stale `events` references until tests collect.
-4. Add CI with PostgreSQL/Redis, Django checks, migration checks, tests, and secret scanning.
-5. Capture the initial failing test/check report; do not suppress failures.
+1. Rotate credentials from the tracked `.env`; untrack `.env`, `venv/`, bytecode, and caches without deleting local developer files.
+2. Add a safe `.env.example`; remove the insecure production secret fallback; convert dependency metadata to UTF-8 and lock it.
+3. Remove remaining event references so payment serializers import and payment tests collect.
+4. Correct account test URLs using `reverse()` and add serializer/schema import smoke tests.
+5. Add CI with PostgreSQL and Redis services, full tests, `check --deploy`, migration drift, secret scan, and dependency scan.
 
-**Exit gate:** a clean clone installs deterministically, Django starts, serializers import, migrations apply, and CI produces a trustworthy result.
+**Exit gate:** clean clone/install succeeds; all 241+ intended tests collect; full suite and deployment checks are green; no real secret/generated environment is tracked.
 
-### Phase 1 — Contain security and money risk (3–6 engineering days)
+### Phase 1 — Immediate non-payment containment (2–5 engineering days)
 
-1. Disable arbitrary wallet credit.
-2. Remove public paid-content fields and protect resources/recordings.
-3. Lock down exam, live, social, grading, and WebSocket object access.
-4. Remove client-controlled payment amounts.
-5. Verify webhook signatures and make event handling idempotent.
-6. Prevent new writes through duplicate wallet/payout paths.
+1. **P0-06 first:** replace public module/lesson representations with catalog summaries and enforce one content-access policy across every alias/resource/download.
+2. **P0-14 second:** remove the alternate quiz-start route or delegate it to the canonical eligibility/attempt service.
+3. **P1-09/P1-10 third:** stop student-created assignments, make quiz GET read-only, version/freeze attempted questions, validate quiz definitions, and enforce attempt allocation under lock.
+4. **P1-14 fourth:** repair course resume and analytics 500s with real URL tests.
+5. Lock down upload type/size/storage policy and remove raw exception responses in the touched surfaces.
 
-**Exit gate:** adversarial P0 tests pass; no untrusted client controls money, answers, publication, ownership, or sender identity.
+**Exit gate:** anonymous/unenrolled content and attempt adversarial matrices pass; assessment history is reproducible; the verified course/assessment 500s are gone.
 
-### Phase 2 — Restore core workflow correctness (1–2 engineering weeks)
+### Phase 2 — Payment and entitlement containment (4–8 engineering days; currently deferred, but mandatory for release)
 
-1. Implement canonical payment pricing and fulfillment.
-2. Consolidate assessment/exam attempt schemas and scoring.
-3. Implement single enrollment completion/eligibility service.
-4. Decouple certificate record issuance from PDF rendering.
-5. Repair social schema drift and live attendance/poll state.
-6. Publish an OpenAPI v1 contract and align the template client.
+1. Disable student self-credit and fail-open enrollment purchase paths.
+2. Remove client-controlled price and all event drift; snapshot server-derived pricing with one fee formula.
+3. Verify Stripe/PayPal signatures and make provider-event processing idempotent.
+4. Implement one payment state machine and idempotent fulfillment/reversal command connecting payment, enrollment, coupon, and ledger.
+5. Stop new writes through duplicate wallet/payout models and add reconciliation reports.
 
-**Exit gate:** purchase-to-enrollment, learn-to-completion, exam-to-grade, and completion-to-certificate pass end-to-end and retry tests.
+**Exit gate:** forged/replayed webhooks do nothing; price cannot be altered by the client; one captured payment creates exactly one entitlement and ledger result; concurrent financial tests pass on PostgreSQL.
 
-### Phase 3 — Data-model consolidation (1–2 engineering weeks plus reconciliation)
+### Phase 3 — Account and lifecycle correctness (about 1 engineering week)
 
-1. Add canonical ledger and payout allocations.
-2. Reconcile/backfill duplicate wallet and payout data.
-3. Consolidate common profile/name fields.
-4. Add attempt snapshots/numbers and completion evidence.
-5. Add constraints after backfill and retire legacy writes.
+1. Implement real verification/reset delivery, token hashing/consumption, throttling, and refresh-token revocation.
+2. Resolve role/staff/superuser and instructor-approval policy; migrate inconsistent users.
+3. Consolidate shared profile/name contracts and remove unsupported API-key behavior or implement it securely.
+4. Add immutable attempt/completion/certificate evidence versions and persisted certificate render status.
+5. Fix live poll/attendance/counter state and move state transitions off GET.
 
-**Exit gate:** reconciliation reports zero unexplained differences and legacy paths are read-only or removed.
+**Exit gate:** account and lifecycle transitions have one policy, one transactional command, and idempotent tests.
 
-### Phase 4 — Production reliability and scale (about 1 engineering week)
+### Phase 4 — Data consolidation and production reliability (1–2 engineering weeks plus reconciliation)
 
-1. Redis channel layer and production-safe Celery/outbox tasks.
-2. Rate limiting, upload security, structured logs, monitoring, and alerts.
-3. Query optimization and performance budgets.
-4. Backup/restore, webhook replay, reconciliation, and rollback runbooks.
-5. Decide and implement appropriate live-video topology/provider.
+1. Add canonical ledger/payout allocations and reconcile/backfill duplicate financial state.
+2. Enforce post-backfill database constraints and retire legacy writes.
+3. Add Celery/outbox tasks, Redis multi-process tests, LiveKit webhook/egress operations, and storage lifecycle policy.
+4. Publish OpenAPI v1 and align all template/client routes.
+5. Add throttling, structured logs, monitoring, readiness, query budgets, backup/restore, webhook replay, reconciliation, and rollback runbooks.
 
-**Exit gate:** deployment, rollback, restoration, task retry, and multi-process live-message tests pass in staging.
+**Exit gate:** reconciliation has zero unexplained differences, client/schema contracts agree, and deployment/rollback/restore/multi-process tests pass in staging.
 
 ---
 
 ## 13. Suggested pull-request breakdown
 
-Keep each PR deployable and narrowly reviewable:
+Keep each PR deployable and narrowly reviewable. The next recommended PRs from the current state are:
 
-1. **PR 01 — Repository hygiene and executable CI**  
-   Secrets rotation support, untrack generated files, UTF-8 dependencies, clean environment, remove stale test imports, CI.
+1. **PR A — Close the paid-content boundary**
+   Central course-content policy; catalog/learning/management serializers on every alias; negative payload matrix for anonymous, unenrolled, canceled, enrolled, owner, and admin users.
 
-2. **PR 02 — Authorization policy foundation**  
-   Shared object policies plus permission matrix tests; owner-scope exams, grading, live HTTP, social, recordings.
+2. **PR B — One assessment attempt/authoring path**
+   Remove duplicate start route; validate incremental answers; prevent learner curriculum mutation; version or freeze quiz questions; resubmission and upload policy tests.
 
-3. **PR 03 — Content serialization boundary**  
-   Catalog/learning/management serializers; protect paid lessons/resources and correct answers.
+3. **PR C — Repair routed contract drift**
+   Course resume and analytics fixes, account URL tests via `reverse()`, serializer/schema smoke tests, documented errors.
 
-4. **PR 04 — Payment contract repair**  
-   Remove event drift, server-side pricing, one fee calculator, provider intent abstraction.
+4. **PR D — Repository hygiene and CI**
+   Credential rotation support, untrack generated files, UTF-8 locked dependencies, PostgreSQL/Redis CI, deploy/migration/secret/dependency checks.
 
-5. **PR 05 — Verified idempotent webhooks and fulfillment**  
-   Signature verification, webhook dedupe, state machine, enrollment fulfillment.
+5. **PR E — Payment contract and wallet containment**
+   Remove event drift and client amount, disable self-credit/fail-open purchase, server pricing, one fee formula, reconciliation report.
 
-6. **PR 06 — Ledger and wallet containment**  
-   Disable public credit, canonical service, locking/idempotency; add reconciliation report before migration.
+6. **PR F — Verified webhooks and fulfillment**
+   Provider verification, event dedupe, state machine, ledger postings, enrollment fulfillment/reversal.
 
-7. **PR 07 — Assessment/exam attempt and scoring consolidation**  
-   Versioned snapshot/schema, duplicate route/service removal, idempotent submit/manual grade.
+7. **PR G — Account lifecycle and authorization invariants**
+   Verification/reset delivery, throttling/revocation, role/staff policy, instructor approval, API-key decision.
 
-8. **PR 08 — Completion and certificate orchestration**  
-   Single eligibility service, immutable evidence, async idempotent PDF generation.
+8. **PR H — Data consolidation and production operations**
+   Ledger/payout/profile migrations, constraints, Celery/outbox, LiveKit operations, OpenAPI/client alignment, monitoring/runbooks.
 
-9. **PR 09 — Social schema repair and membership policy**  
-   Align fields/services, private access, join/rejoin/capacity/admin rules.
-
-10. **PR 10 — Live WebSocket and attendance hardening**  
-    Auth ticket/cookie flow, per-message policy, Redis, counters/attendance.
-
-11. **PR 11 — Profile/payout consolidation migrations**  
-    Backfill, switch reads/writes, constraints, then legacy removal in a later PR.
-
-12. **PR 12 — API schema, performance, and production runbook**  
-    OpenAPI, frontend alignment, query budgets, monitoring, deployment/restore procedures.
+Already-completed remediation work for moderation, exam ownership/answer disclosure/scoring, course completion, social privacy, live HTTP/WebSocket containment/provider tokens, and certificate issuance/grade calculation should be treated as regression-protected foundations, not repeated projects.
 
 ---
 

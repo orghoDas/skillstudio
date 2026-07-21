@@ -11,7 +11,7 @@ The Live Streaming module provides comprehensive real-time video streaming capab
 - **Interactive Polls**: Create and conduct polls with real-time results
 - **Session Recording**: Automatic recording with progress tracking
 - **Attendance Tracking**: Automated attendance calculation based on participation
-- **Multiple Platforms**: Support for Agora, Zoom, Google Meet, Microsoft Teams
+- **Multiple Platforms**: Built-in LiveKit support plus legacy/custom links for Agora, Zoom, Google Meet, Microsoft Teams
 
 ### Advanced Features
 - **Participant Management**: Track join/leave times, engagement metrics
@@ -19,6 +19,24 @@ The Live Streaming module provides comprehensive real-time video streaming capab
 - **Watch Progress**: Track recording viewing with completion detection
 - **Session Analytics**: Comprehensive metrics on participation and engagement
 - **Access Control**: Enrollment-based access, password protection, capacity limits
+
+---
+
+## Provider Configuration
+
+LiveKit is the default built-in real-time provider. Django remains the source of truth for session access and issues short-lived LiveKit room tokens only after enrollment/ownership checks pass.
+
+Required environment variables:
+
+```env
+LIVEKIT_ENABLED=True
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+LIVEKIT_TOKEN_TTL_SECONDS=3600
+```
+
+Students receive subscribe-only room grants by default. Session instructors/admins receive publish/admin grants. External meeting platforms still use protected `meeting_link`, `meeting_id`, and `meeting_password` fields returned only through authorized join responses.
 
 ---
 
@@ -34,7 +52,7 @@ Main model for live streaming sessions.
 - `session_type`: class, workshop, webinar, qa, office_hours
 - `scheduled_start`, `scheduled_end`: Session timing
 - `actual_start`, `actual_end`: Actual session duration
-- `platform`: agora, zoom, meet, teams, custom
+- `platform`: livekit, agora, zoom, meet, teams, custom
 - `meeting_link`, `meeting_id`, `meeting_password`: Access credentials
 - `stream_key`, `channel_name`: Streaming credentials
 - `max_participants`: Capacity limit

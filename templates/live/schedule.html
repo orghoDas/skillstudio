@@ -162,7 +162,8 @@
                 <label class="block text-sm font-medium mb-2">Platform *</label>
                 <select id="platform-select" required onchange="handlePlatformChange()"
                     class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="agora">Agora (Built-in)</option>
+                    <option value="livekit">LiveKit (Built-in)</option>
+                    <option value="agora">Legacy WebRTC Signaling</option>
                     <option value="zoom">Zoom</option>
                     <option value="meet">Google Meet</option>
                     <option value="teams">Microsoft Teams</option>
@@ -170,7 +171,7 @@
                 </select>
             </div>
 
-            <!-- External Platform Details (shown only for non-Agora platforms) -->
+            <!-- External Platform Details (shown only for external platforms) -->
             <div id="external-platform-details" class="hidden space-y-4">
                 <div>
                     <label class="block text-sm font-medium mb-2">Meeting Link</label>
@@ -518,7 +519,7 @@ function handlePlatformChange() {
     const platform = document.getElementById('platform-select').value;
     const externalDetails = document.getElementById('external-platform-details');
     
-    if (platform === 'agora') {
+    if (platform === 'livekit' || platform === 'agora') {
         externalDetails.classList.add('hidden');
     } else {
         externalDetails.classList.remove('hidden');

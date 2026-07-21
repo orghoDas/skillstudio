@@ -126,11 +126,15 @@ def create_post(thread, user, content, **kwargs):
     if thread.is_locked:
         raise PermissionDenied("Thread is locked")
     
+    parent = kwargs.get('parent')
+    if parent is None and kwargs.get('parent_id'):
+        parent = Post.objects.get(id=kwargs['parent_id'], thread=thread)
+
     post = Post.objects.create(
         thread=thread,
         user=user,
         content=content,
-        parent=kwargs.get('parent')
+        parent=parent
     )
     
     # Update thread timestamp
@@ -196,11 +200,19 @@ def create_learning_circle(name, user, **kwargs):
         LearningCircle instance
     """
     import secrets
+
+    course = kwargs.get('course')
+    if course is None and kwargs.get('course_id'):
+        from courses.models import Course
+        try:
+            course = Course.objects.get(id=kwargs['course_id'])
+        except Course.DoesNotExist:
+            raise ValidationError("Course does not exist")
     
     circle = LearningCircle.objects.create(
         name=name,
         description=kwargs.get('description', ''),
-        course=kwargs.get('course'),
+        course=course,
         max_members=kwargs.get('max_members'),
         is_private=kwargs.get('is_private', False),
         join_code=secrets.token_urlsafe(8) if kwargs.get('is_private') else '',
@@ -236,17 +248,19 @@ def join_learning_circle(circle, user, join_code=None):
         PermissionDenied: If join code is invalid
         ValidationError: If circle is full or user is already a member
     """
-    # Check if already an active member
-    existing_membership = CircleMembership.objects.filter(
-        circle=circle, 
-        user=user, 
-        status='active'
+    circle = LearningCircle.objects.select_for_update().get(pk=circle.pk)
+    existing_membership = CircleMembership.objects.select_for_update().filter(
+        circle=circle,
+        user=user,
     ).first()
     
-    if existing_membership:
+    if existing_membership and existing_membership.status == 'active':
         # If user is already a member, return the existing membership
         # This handles the case where the creator tries to "join" their own circle
         return existing_membership
+
+    if existing_membership and existing_membership.status == 'removed':
+        raise PermissionDenied("You cannot rejoin this circle")
     
     # Check if private
     if circle.is_private:
@@ -257,10 +271,18 @@ def join_learning_circle(circle, user, join_code=None):
     if circle.is_full():
         raise ValidationError("Circle is full")
     
+    if existing_membership:
+        existing_membership.status = 'active'
+        existing_membership.left_at = None
+        existing_membership.joined_at = timezone.now()
+        existing_membership.save(update_fields=['status', 'left_at', 'joined_at'])
+        return existing_membership
+
     membership = CircleMembership.objects.create(
         circle=circle,
         user=user,
-        role='member'
+        role='member',
+        status='active',
     )
     
     return membership
@@ -282,13 +304,22 @@ def leave_learning_circle(circle, user):
         ValidationError: If user is not an active member
     """
     try:
-        membership = CircleMembership.objects.get(
+        membership = CircleMembership.objects.select_for_update().get(
             circle=circle,
             user=user,
             status='active'
         )
     except CircleMembership.DoesNotExist:
         raise ValidationError("You are not an active member of this circle")
+
+    if membership.role == 'admin':
+        other_admin_exists = CircleMembership.objects.filter(
+            circle=circle,
+            role='admin',
+            status='active',
+        ).exclude(pk=membership.pk).exists()
+        if not other_admin_exists:
+            raise ValidationError("Transfer admin ownership before leaving this circle")
     
     membership.status = 'left'
     membership.left_at = timezone.now()
@@ -321,13 +352,20 @@ def send_circle_message(circle, user, message, **kwargs):
         status='active'
     ).exists():
         raise PermissionDenied("You are not a member of this circle")
+
+    if not message:
+        raise ValidationError("Message is required")
+
+    reply_to = kwargs.get('reply_to')
+    if reply_to is None and kwargs.get('reply_to_id'):
+        reply_to = CircleMessage.objects.get(id=kwargs['reply_to_id'], circle=circle)
     
     msg = CircleMessage.objects.create(
         circle=circle,
         user=user,
         message=message,
         attachment=kwargs.get('attachment'),
-        reply_to=kwargs.get('reply_to')
+        reply_to=reply_to
     )
     
     return msg

@@ -5,6 +5,8 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import patch, MagicMock
+from rest_framework.test import APITestCase, APIClient
+from rest_framework import status
 
 from courses.models import Course, Module, Lesson
 from enrollments.models import Enrollment
@@ -15,6 +17,7 @@ from .services import (
     calculate_course_grade,
     verify_certificate,
     regenerate_certificate_pdf,
+    render_certificate_pdf,
 )
 
 User = get_user_model()
@@ -154,6 +157,55 @@ class CalculateCourseGradeTests(TestCase):
         
         grade = calculate_course_grade(self.user, self.course)
         self.assertEqual(grade, Decimal('80.0'))
+
+    def test_grade_calculation_uses_best_completed_quiz_attempt_once(self):
+        """Multiple attempts for one quiz should contribute only the best score."""
+        quiz = Quiz.objects.create(
+            lesson=self.lesson,
+            title='Quiz 1',
+            total_marks=100
+        )
+
+        QuizAttempt.objects.create(
+            user=self.user,
+            quiz=quiz,
+            score=Decimal('50.0'),
+            completed_at=timezone.now()
+        )
+        QuizAttempt.objects.create(
+            user=self.user,
+            quiz=quiz,
+            score=Decimal('90.0'),
+            completed_at=timezone.now()
+        )
+        QuizAttempt.objects.create(
+            user=self.user,
+            quiz=quiz,
+            score=Decimal('100.0'),
+            completed_at=None
+        )
+
+        grade = calculate_course_grade(self.user, self.course)
+        self.assertEqual(grade, Decimal('90.0'))
+
+    def test_grade_calculation_ignores_unpublished_quizzes(self):
+        """Unpublished quiz evidence should not be printed on certificates."""
+        quiz = Quiz.objects.create(
+            lesson=self.lesson,
+            title='Quiz 1',
+            total_marks=100,
+            is_published=False
+        )
+
+        QuizAttempt.objects.create(
+            user=self.user,
+            quiz=quiz,
+            score=Decimal('100.0'),
+            completed_at=timezone.now()
+        )
+
+        grade = calculate_course_grade(self.user, self.course)
+        self.assertIsNone(grade)
     
     def test_grade_calculation_with_assignments_only(self):
         """Test grade calculation with only assignments."""
@@ -209,7 +261,7 @@ class CalculateCourseGradeTests(TestCase):
     def test_grade_calculation_no_assessments(self):
         """Test grade calculation with no assessments."""
         grade = calculate_course_grade(self.user, self.course)
-        self.assertEqual(grade, Decimal('100.0'))  # Default grade when no assessments
+        self.assertIsNone(grade)
 
 
 class IssueCertificateTests(TestCase):
@@ -252,6 +304,18 @@ class IssueCertificateTests(TestCase):
         # PDF generation may or may not be called depending on timing
         # Just verify the certificate was created
         self.assertTrue(Certificate.objects.filter(user=self.user, course=self.course).exists())
+
+    @patch('certificates.services.generate_certificate_pdf')
+    def test_issue_certificate_pdf_failure_does_not_block_record(self, mock_pdf_gen):
+        """PDF failures should not roll back certificate issuance."""
+        mock_pdf_gen.side_effect = RuntimeError("storage unavailable")
+
+        cert = issue_certificate(self.user, self.course)
+
+        self.assertIsNotNone(cert)
+        self.assertTrue(Certificate.objects.filter(user=self.user, course=self.course).exists())
+        cert.refresh_from_db()
+        self.assertFalse(cert.pdf)
     
     def test_issue_certificate_no_enrollment(self):
         """Test certificate issuance without enrollment."""
@@ -405,3 +469,115 @@ class RegenerateCertificatePDFTests(TestCase):
         """Test regenerating non-existent certificate."""
         with self.assertRaises(ValidationError):
             regenerate_certificate_pdf(99999, self.staff)
+
+
+class RenderCertificatePDFTests(TestCase):
+    """Test idempotent PDF rendering."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='render-user',
+            email='render@example.com',
+            password='testpass123'
+        )
+        self.course = Course.objects.create(
+            title='Render Course',
+            description='Test',
+            instructor=self.user,
+            price=Decimal('99.99')
+        )
+        self.enrollment = Enrollment.objects.create(
+            user=self.user,
+            course=self.course,
+            status='active',
+            is_completed=True
+        )
+        self.cert = Certificate.objects.create(
+            user=self.user,
+            course=self.course,
+            enrollment=self.enrollment
+        )
+
+    @patch('certificates.services.generate_certificate_pdf')
+    def test_render_skips_existing_pdf_without_force(self, mock_pdf):
+        from django.core.files.base import ContentFile
+
+        self.cert.pdf.save('existing.pdf', ContentFile(b'existing'), save=True)
+
+        render_certificate_pdf(self.cert.id, force=False)
+
+        mock_pdf.assert_not_called()
+
+    @patch('certificates.services.generate_certificate_pdf')
+    def test_render_force_regenerates_existing_pdf(self, mock_pdf):
+        from django.core.files.base import ContentFile
+
+        self.cert.pdf.save('existing.pdf', ContentFile(b'existing'), save=True)
+        mock_pdf.return_value = ContentFile(b'new pdf content', name='new.pdf')
+
+        render_certificate_pdf(self.cert.id, force=True)
+
+        mock_pdf.assert_called_once()
+        self.cert.refresh_from_db()
+        self.assertTrue(self.cert.pdf)
+
+
+class CertificateViewTests(APITestCase):
+    """Test certificate API lifecycle behavior."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='view-user',
+            email='view@example.com',
+            password='testpass123'
+        )
+        self.staff = User.objects.create_user(
+            username='view-staff',
+            email='view-staff@example.com',
+            password='testpass123',
+            is_staff=True
+        )
+        self.course = Course.objects.create(
+            title='View Course',
+            description='Test',
+            instructor=self.staff,
+            price=Decimal('99.99')
+        )
+        self.enrollment = Enrollment.objects.create(
+            user=self.user,
+            course=self.course,
+            status='active',
+            is_completed=True
+        )
+        self.cert = Certificate.objects.create(
+            user=self.user,
+            course=self.course,
+            enrollment=self.enrollment,
+            grade=Decimal('91.0')
+        )
+
+    def test_invalid_verification_code_returns_clean_404(self):
+        response = self.client.get('/api/certificates/verify/not-real/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data['valid'], False)
+
+    @patch('certificates.services.generate_certificate_pdf')
+    def test_regenerate_certificate_view_uses_service_contract(self, mock_pdf):
+        from django.core.files.base import ContentFile
+
+        mock_pdf.return_value = ContentFile(b'mock pdf content', name='certificate.pdf')
+        self.client.force_authenticate(user=self.staff)
+
+        response = self.client.post(f'/api/certificates/regenerate/{self.course.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_pdf.assert_called_once()
+
+    def test_regenerate_certificate_requires_staff(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(f'/api/certificates/regenerate/{self.course.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
