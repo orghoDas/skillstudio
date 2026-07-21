@@ -29,6 +29,7 @@ from .services import (
     auto_complete_lesson,
     get_resume_lesson,
     get_next_lesson,
+    get_lesson_completion_stats,
 )
 
 
@@ -158,12 +159,9 @@ class CourseProgressView(APIView):
             status='active'
         )
 
-        total_lessons = Lesson.objects.filter(
-            module__course_id=course_id,
-            is_free=False
-        ).count()
+        stats = get_lesson_completion_stats(enrollment)
 
-        if total_lessons == 0:
+        if stats['total_lessons'] == 0:
             return Response({
                 'course_id': course_id,
                 'course_title': enrollment.course.title,
@@ -173,25 +171,12 @@ class CourseProgressView(APIView):
                 'is_completed': False,
             })
 
-        completed_lessons = enrollment.lesson_progress.filter(
-            is_completed=True
-        ).count()
-
-        progress_percentage = round((completed_lessons / total_lessons * 100), 2)
-
-        # Auto-complete course if all lessons done
-        if completed_lessons == total_lessons and not enrollment.is_completed:
-            enrollment.is_completed = True
-            enrollment.status = 'completed'
-            enrollment.completed_at = timezone.now()
-            enrollment.save(update_fields=['is_completed', 'status', 'completed_at'])
-
         return Response({
             'course_id': course_id,
             'course_title': enrollment.course.title,
-            'total_lessons': total_lessons,
-            'completed_lessons': completed_lessons,
-            'progress_percentage': progress_percentage,
+            'total_lessons': stats['total_lessons'],
+            'completed_lessons': stats['completed_lessons'],
+            'progress_percentage': stats['progress_percentage'],
             'is_completed': enrollment.is_completed,
         })
 
@@ -234,6 +219,14 @@ class LessonWatchTimeView(APIView):
         )
 
         watch_time = request.data.get('watch_time', 0)
+        try:
+            watch_time = int(watch_time)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Watch time must be an integer number of seconds.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if watch_time < 0:
             return Response(
                 {'error': 'Watch time cannot be negative.'},
@@ -246,14 +239,14 @@ class LessonWatchTimeView(APIView):
             lesson=lesson
         )
 
-        # Update watch time (don't exceed lesson duration)
+        # Update watch time monotonically and do not exceed lesson duration.
         max_duration = lesson.duration_seconds
-        progress.watch_time = min(watch_time, max_duration)
+        progress.watch_time = max(progress.watch_time, min(watch_time, max_duration))
         progress.save(update_fields=['watch_time'])
 
         # Auto-complete lesson if threshold reached
         if auto_complete_lesson(progress) and not progress.is_completed:
-            mark_lesson_completed(enrollment, lesson)
+            progress = mark_lesson_completed(enrollment, lesson)
             check_and_complete_course(enrollment)
 
         return Response({
@@ -335,6 +328,31 @@ class CompleteLessonView(APIView):
             course=lesson.module.course,
             status='active'
         )
+
+        progress, _ = LessonProgress.objects.get_or_create(
+            enrollment=enrollment,
+            user=request.user,
+            lesson=lesson
+        )
+
+        if lesson.duration_seconds > 0 and not auto_complete_lesson(progress):
+            return Response(
+                {'error': 'Lesson completion threshold has not been met.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from assessments.services import is_lesson_assessment_completed
+        except ImportError:
+            is_assessment_completed = True
+        else:
+            is_assessment_completed = is_lesson_assessment_completed(request.user, lesson)
+
+        if not is_assessment_completed:
+            return Response(
+                {'error': 'Lesson assessment requirements have not been met.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         progress = mark_lesson_completed(enrollment, lesson)
         check_and_complete_course(enrollment)
@@ -442,13 +460,9 @@ class EnrollmentStatsView(APIView):
         if active_enroll.exists():
             progress_sum = 0
             for enrollment in active_enroll:
-                total_lessons = Lesson.objects.filter(
-                    module__course=enrollment.course,
-                    is_free=False
-                ).count()
-                if total_lessons > 0:
-                    completed = enrollment.lesson_progress.filter(is_completed=True).count()
-                    progress_sum += (completed / total_lessons) * 100
+                stats = get_lesson_completion_stats(enrollment)
+                if stats['total_lessons'] > 0:
+                    progress_sum += stats['progress_percentage']
             average_progress = round(progress_sum / active_enroll.count(), 2) if active_enroll.count() > 0 else 0
         else:
             average_progress = 0
@@ -485,14 +499,7 @@ class LearningProgressDashboardView(APIView):
 
         progress_data = []
         for enrollment in enrollments:
-            total_lessons = Lesson.objects.filter(
-                module__course=enrollment.course,
-                is_free=False
-            ).count()
-            
-            completed_lessons = enrollment.lesson_progress.filter(
-                is_completed=True
-            ).count()
+            stats = get_lesson_completion_stats(enrollment)
             
             total_duration = Lesson.objects.filter(
                 module__course=enrollment.course,
@@ -503,16 +510,12 @@ class LearningProgressDashboardView(APIView):
                 total=Sum('watch_time')
             )['total'] or 0
             
-            progress_percentage = 0
-            if total_lessons > 0:
-                progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
-            
             progress_data.append({
                 'course_id': enrollment.course.id,
                 'course_title': enrollment.course.title,
-                'total_lessons': total_lessons,
-                'completed_lessons': completed_lessons,
-                'progress_percentage': progress_percentage,
+                'total_lessons': stats['total_lessons'],
+                'completed_lessons': stats['completed_lessons'],
+                'progress_percentage': stats['progress_percentage'],
                 'total_duration_seconds': total_duration,
                 'watched_time_seconds': watched_time,
                 'is_completed': enrollment.is_completed,

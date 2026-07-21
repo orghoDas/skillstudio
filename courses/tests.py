@@ -158,6 +158,179 @@ class ModuleLessonModelTest(TestCase):
         self.assertEqual(modules[1], module2)
 
 
+class CourseDetailContentExposureTest(APITestCase):
+    """Tests that public course detail responses do not expose lesson payloads."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            email='instructor@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.student = User.objects.create_user(
+            email='student@test.com',
+            password='testpass123',
+            role='student'
+        )
+        self.category = Category.objects.create(name="Programming", slug="programming")
+        self.course = Course.objects.create(
+            title="Secure Python Course",
+            slug="secure-python-course",
+            description="Learn Python securely",
+            instructor=self.instructor,
+            category=self.category,
+            price=Decimal('99.99'),
+            is_free=False,
+            status='published',
+            published_at=timezone.now()
+        )
+        self.module = Module.objects.create(
+            course=self.course,
+            title="Paid Module",
+            position=1
+        )
+        self.lesson = Lesson.objects.create(
+            module=self.module,
+            title="Paid Lesson",
+            content_type='video',
+            content_text="private paid lesson text",
+            video_url="https://cdn.example.com/private-paid-video.mp4",
+            metadata={'private_key': 'private metadata'},
+            position=1,
+            duration_seconds=600,
+            is_free=False
+        )
+        LessonResource.objects.create(
+            lesson=self.lesson,
+            file_url="https://cdn.example.com/private-resource.pdf",
+            resource_type="pdf"
+        )
+        self.url = reverse('course-detail', kwargs={'id': self.course.id})
+
+    def test_anonymous_course_detail_does_not_expose_paid_lesson_payload(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        lesson_data = response.data['modules'][0]['lessons'][0]
+
+        self.assertEqual(lesson_data['title'], self.lesson.title)
+        self.assertTrue(lesson_data['is_locked'])
+        self.assertNotIn('content_text', lesson_data)
+        self.assertNotIn('video_url', lesson_data)
+        self.assertNotIn('metadata', lesson_data)
+        self.assertNotIn('resources', lesson_data)
+
+    def test_enrolled_course_detail_still_uses_catalog_lesson_shape(self):
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active'
+        )
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        lesson_data = response.data['modules'][0]['lessons'][0]
+
+        self.assertTrue(response.data['is_enrolled'])
+        self.assertFalse(lesson_data['is_locked'])
+        self.assertNotIn('content_text', lesson_data)
+        self.assertNotIn('video_url', lesson_data)
+        self.assertNotIn('metadata', lesson_data)
+        self.assertNotIn('resources', lesson_data)
+
+
+class CourseModerationWorkflowAPITest(APITestCase):
+    """Tests that generic authoring endpoints cannot bypass moderation."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.instructor = User.objects.create_user(
+            email='instructor@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.category = Category.objects.create(name="Programming", slug="programming")
+        self.client.force_authenticate(user=self.instructor)
+
+    def test_course_create_payload_cannot_set_published_status(self):
+        response = self.client.post(
+            '/api/courses/create/',
+            {
+                'title': 'Bypass Course',
+                'description': 'Trying to publish directly',
+                'price': '10.00',
+                'is_free': False,
+                'level': 'beginner',
+                'category': self.category.id,
+                'status': 'published',
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        course = Course.objects.get(id=response.data['id'])
+        self.assertEqual(course.status, 'draft')
+
+    def test_course_update_payload_cannot_publish_course(self):
+        course = Course.objects.create(
+            title='Draft Course',
+            instructor=self.instructor,
+            category=self.category,
+            status='draft'
+        )
+
+        response = self.client.patch(
+            f'/api/courses/{course.id}/update/',
+            {'status': 'published'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        course.refresh_from_db()
+        self.assertEqual(course.status, 'draft')
+
+    def test_instructor_cannot_use_publish_endpoint(self):
+        course = Course.objects.create(
+            title='Course Under Review',
+            instructor=self.instructor,
+            category=self.category,
+            status='under_review',
+            submitted_for_review_at=timezone.now()
+        )
+
+        response = self.client.post(f'/api/courses/{course.id}/publish/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        course.refresh_from_db()
+        self.assertEqual(course.status, 'under_review')
+
+    def test_published_course_cannot_receive_new_lessons(self):
+        course = Course.objects.create(
+            title='Published Course',
+            instructor=self.instructor,
+            category=self.category,
+            status='published',
+            published_at=timezone.now()
+        )
+        module = Module.objects.create(course=course, title='Published Module', position=1)
+
+        response = self.client.post(
+            f'/api/courses/sections/{module.id}/lessons/',
+            {
+                'title': 'Late Lesson',
+                'content_type': 'text',
+                'content_text': 'Should not be added directly',
+                'position': 1,
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Lesson.objects.filter(module=module, title='Late Lesson').exists())
+
+
 class CourseVersionModelTest(TestCase):
     """Tests for CourseVersion model"""
 

@@ -23,7 +23,6 @@ from .view_gradings import (
 
 from .views_attempt import (
     StartQuizAttemptView,
-    SubmitQuizAttemptView,
     SubmitQuizAnswerView
 )
 
@@ -53,6 +52,5 @@ urlpatterns = [
 
     # Quiz Attempts
     path("quiz/<int:quiz_id>/attempt/start/", StartQuizAttemptView.as_view()),
-    path("quiz/attempt/<int:attempt_id>/submit/", SubmitQuizAttemptView.as_view()),
     path("quiz/attempt/<int:attempt_id>/answer/submit/", SubmitQuizAnswerView.as_view()),
 ]

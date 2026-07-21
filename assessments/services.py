@@ -200,10 +200,12 @@ def validate_course_completion(user, course) -> bool:
     Ensures all lessons with assessments are completed.
     """
 
-    lessons = course.modules.prefetch_related(
-        "lessons__quiz",
-        "lessons__assignment"
-    ).values_list("lessons", flat=True)
+    from courses.models import Lesson
+
+    lessons = Lesson.objects.filter(
+        module__course=course,
+        is_free=False
+    ).select_related("module").order_by("module__position", "position")
 
     for lesson in lessons:
         if not is_lesson_assessment_completed(user, lesson):

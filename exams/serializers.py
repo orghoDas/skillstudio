@@ -4,6 +4,32 @@ from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 from accounts.serializers import UserBasicSerializer
 
 
+PRIVATE_STUDENT_QUESTION_KEYS = {
+    'is_correct',
+    'correct_answer',
+    'correct_option',
+    'correct_options',
+    'answer',
+    'answers',
+    'model_answer',
+    'explanation',
+}
+
+
+def hide_student_answer_data(value):
+    if isinstance(value, list):
+        return [hide_student_answer_data(item) for item in value]
+
+    if isinstance(value, dict):
+        return {
+            key: hide_student_answer_data(item)
+            for key, item in value.items()
+            if key not in PRIVATE_STUDENT_QUESTION_KEYS
+        }
+
+    return value
+
+
 class QuestionBankSerializer(serializers.ModelSerializer):
     """Serializer for question bank."""
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
@@ -24,6 +50,18 @@ class QuestionBankListSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuestionBank
         fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'options', 'tags']
+
+
+class StudentExamQuestionSerializer(serializers.ModelSerializer):
+    """Question serializer for students taking an exam."""
+    options = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuestionBank
+        fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'options', 'tags']
+
+    def get_options(self, obj):
+        return hide_student_answer_data(obj.options or [])
 
 
 class ExamSerializer(serializers.ModelSerializer):
@@ -72,8 +110,9 @@ class ExamListSerializer(serializers.ModelSerializer):
 
 class ExamDetailSerializer(serializers.ModelSerializer):
     """Detailed exam serializer with questions (for students taking exam)."""
-    questions = QuestionBankListSerializer(many=True, read_only=True)
+    questions = StudentExamQuestionSerializer(many=True, read_only=True)
     course_name = serializers.CharField(source='course.title', read_only=True)
+    custom_questions = serializers.SerializerMethodField()
     
     class Meta:
         model = Exam
@@ -82,6 +121,9 @@ class ExamDetailSerializer(serializers.ModelSerializer):
             'duration_minutes', 'randomize_questions', 'questions',
             'custom_questions', 'max_attempts'
         ]
+
+    def get_custom_questions(self, obj):
+        return hide_student_answer_data(obj.custom_questions or [])
 
 
 class ExamAttemptSerializer(serializers.ModelSerializer):

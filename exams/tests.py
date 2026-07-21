@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from courses.models import Course, Category
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
-from .services import start_exam_attempt, submit_exam_attempt
+from .services import start_exam_attempt, submit_exam_attempt, grade_manual_questions
 # get_exam_analytics kept local to exams app
 
 User = get_user_model()
@@ -230,6 +230,52 @@ class ExamServicesTest(TestCase):
         self.assertIsNotNone(submitted.score)
         self.assertIsNotNone(submitted.completed_at)
 
+    def test_exam_scoring_uses_actual_question_marks_and_accepts_text_answer(self):
+        attempt = start_exam_attempt(self.exam, self.student)
+
+        submitted = submit_exam_attempt(attempt, {str(self.q1.id): "Correct"})
+
+        self.assertEqual(submitted.score, Decimal('10'))
+        self.assertEqual(submitted.percentage, Decimal('100'))
+
+    def test_exam_scoring_includes_custom_questions(self):
+        self.exam.custom_questions = [
+            {
+                'id': 'custom-1',
+                'question_text': 'Custom MCQ',
+                'marks': 5,
+                'options': [
+                    {'text': 'Wrong', 'is_correct': False},
+                    {'text': 'Right', 'is_correct': True},
+                ],
+            }
+        ]
+        self.exam.save(update_fields=['custom_questions'])
+        attempt = start_exam_attempt(self.exam, self.student)
+
+        submitted = submit_exam_attempt(
+            attempt,
+            {
+                str(self.q1.id): 0,
+                'custom-1': 'Right',
+            }
+        )
+
+        self.assertEqual(submitted.score, Decimal('15'))
+        self.assertEqual(submitted.percentage, Decimal('100'))
+
+    def test_manual_grading_overwrites_instead_of_adding_marks(self):
+        self.q1.question_type = 'essay'
+        self.q1.save(update_fields=['question_type'])
+        attempt = start_exam_attempt(self.exam, self.student)
+        submitted = submit_exam_attempt(attempt, {str(self.q1.id): 'essay answer'})
+
+        first = grade_manual_questions(submitted, {str(self.q1.id): 6}, self.instructor)
+        second = grade_manual_questions(first, {str(self.q1.id): 6}, self.instructor)
+
+        self.assertEqual(first.score, Decimal('6'))
+        self.assertEqual(second.score, Decimal('6'))
+
 
 # ===========================
 # 🌐 API Tests
@@ -276,6 +322,143 @@ class ExamAPITest(APITestCase):
         self.assertEqual(len(response.data), 1)
 
 
+class ExamAccessControlAPITest(APITestCase):
+    """Regression tests for exam access and answer disclosure."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email='student@test.com',
+            password='testpass123',
+            role='student'
+        )
+        self.other_student = User.objects.create_user(
+            email='other-student@test.com',
+            password='testpass123',
+            role='student'
+        )
+        self.instructor = User.objects.create_user(
+            email='instructor@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.other_instructor = User.objects.create_user(
+            email='other-instructor@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.category = Category.objects.create(name='Tech', slug='tech-access')
+        self.course = Course.objects.create(
+            title='Secure Exam Course',
+            instructor=self.instructor,
+            category=self.category,
+            status='published'
+        )
+        self.other_course = Course.objects.create(
+            title='Other Instructor Course',
+            instructor=self.other_instructor,
+            category=self.category,
+            status='published'
+        )
+        self.exam = Exam.objects.create(
+            course=self.course,
+            title='Secure Final Exam',
+            total_marks=100,
+            duration_minutes=60,
+            status='published',
+            custom_questions=[
+                {
+                    'question_text': 'Custom question',
+                    'options': [
+                        {'text': 'A', 'is_correct': False},
+                        {'text': 'B', 'is_correct': True},
+                    ],
+                    'correct_answer': 'B',
+                    'explanation': 'Private explanation',
+                }
+            ],
+            created_by=self.instructor
+        )
+        self.question = QuestionBank.objects.create(
+            course=self.course,
+            question_text='What is 2 + 2?',
+            question_type='mcq',
+            difficulty='easy',
+            options=[
+                {'text': '3', 'is_correct': False},
+                {'text': '4', 'is_correct': True},
+            ],
+            correct_answer='4',
+            explanation='Private explanation',
+            marks=5,
+            created_by=self.instructor
+        )
+        self.exam.questions.add(self.question)
+
+        from enrollments.models import Enrollment
+        Enrollment.objects.create(user=self.student, course=self.course, status='active')
+
+        self.other_exam = Exam.objects.create(
+            course=self.other_course,
+            title='Other Instructor Exam',
+            total_marks=100,
+            duration_minutes=60,
+            status='published',
+            created_by=self.other_instructor
+        )
+        self.other_attempt = ExamAttempt.objects.create(
+            exam=self.exam,
+            user=self.other_student
+        )
+
+    def test_student_exam_detail_hides_correct_answer_data(self):
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(f'/api/exams/{self.exam.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        question_data = response.data['questions'][0]
+        self.assertNotIn('correct_answer', question_data)
+        self.assertNotIn('explanation', question_data)
+        self.assertNotIn('is_correct', question_data['options'][0])
+        self.assertNotIn('is_correct', question_data['options'][1])
+
+        custom_question = response.data['custom_questions'][0]
+        self.assertNotIn('correct_answer', custom_question)
+        self.assertNotIn('explanation', custom_question)
+        self.assertNotIn('is_correct', custom_question['options'][0])
+        self.assertNotIn('is_correct', custom_question['options'][1])
+
+    def test_non_enrolled_student_cannot_start_exam(self):
+        self.client.force_authenticate(user=self.other_student)
+
+        response = self.client.post(f'/api/exams/{self.exam.id}/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_student_cannot_submit_another_students_attempt(self):
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.post(
+            f'/api/exams/{self.exam.id}/submit/',
+            {
+                'attempt_id': self.other_attempt.id,
+                'answers': {str(self.question.id): 1},
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_instructor_cannot_view_other_instructors_exam_attempts(self):
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.get(f'/api/exams/{self.other_exam.id}/all-attempts/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class QuestionBankAPITest(APITestCase):
     """Test question bank API endpoints."""
     
@@ -316,4 +499,3 @@ class QuestionBankAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(QuestionBank.objects.count(), 1)
-

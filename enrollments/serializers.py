@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
 from .models import Enrollment, LessonProgress, Wishlist
 from courses.models import Course, Module, Lesson
+from .services import get_lesson_completion_stats
 
 
 # ===========================
@@ -87,24 +88,15 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
         }
     
     def get_progress_percentage(self, obj):
-        total_lessons = Lesson.objects.filter(
-            module__course=obj.course,
-            is_free=False
-        ).count()
-        
-        if total_lessons == 0:
-            return 0
-        
-        completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
-        return round((completed_lessons / total_lessons) * 100, 2)
+        return get_lesson_completion_stats(obj)['progress_percentage']
     
     def get_completed_lessons(self, obj):
         """Return list of completed lesson IDs"""
-        return list(obj.lesson_progress.filter(is_completed=True).values_list('lesson_id', flat=True))
+        return get_lesson_completion_stats(obj)['completed_lesson_ids']
     
     def get_completed_lessons_count(self, obj):
         """Return count of completed lessons"""
-        return obj.lesson_progress.filter(is_completed=True).count()
+        return get_lesson_completion_stats(obj)['completed_lessons']
     
     def get_total_lessons_count(self, obj):
         """Return total lessons in course"""
@@ -149,16 +141,7 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
         }
     
     def get_progress(self, obj):
-        total_lessons = Lesson.objects.filter(
-            module__course=obj.course,
-            is_free=False
-        ).count()
-        
-        completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
-        
-        progress_percentage = 0
-        if total_lessons > 0:
-            progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
+        stats = get_lesson_completion_stats(obj)
         
         total_duration = Lesson.objects.filter(
             module__course=obj.course,
@@ -170,9 +153,9 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
         )['total'] or 0
         
         return {
-            'total_lessons': total_lessons,
-            'completed_lessons': completed_lessons,
-            'progress_percentage': progress_percentage,
+            'total_lessons': stats['total_lessons'],
+            'completed_lessons': stats['completed_lessons'],
+            'progress_percentage': stats['progress_percentage'],
             'total_duration_seconds': total_duration,
             'watched_time_seconds': watched_time,
         }
@@ -420,6 +403,3 @@ class CourseProgressStatsSerializer(serializers.Serializer):
     is_completed = serializers.BooleanField()
     enrolled_at = serializers.DateTimeField()
     completed_at = serializers.DateTimeField(allow_null=True)
-
-
-        
