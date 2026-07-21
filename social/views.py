@@ -22,6 +22,7 @@ from .services import (
     vote_post, create_learning_circle, join_learning_circle,
     leave_learning_circle, send_circle_message
 )
+from . import policies
 
 
 # ===========================
@@ -204,6 +205,27 @@ def vote_on_post(request, post_id):
 # Learning Circle Views
 # ===========================
 
+def get_visible_circle_or_404(request, circle_id):
+    return get_object_or_404(
+        LearningCircle.objects.filter(
+            policies.visible_circle_filter(request.user)
+        ).distinct(),
+        id=circle_id,
+    )
+
+
+def require_circle_member(user, circle):
+    if not policies.can_use_circle(user, circle):
+        raise PermissionDenied("You must be an active member of this circle")
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
 class LearningCircleListCreateView(generics.ListCreateAPIView):
     """List and create learning circles."""
     serializer_class = LearningCircleSerializer
@@ -212,19 +234,18 @@ class LearningCircleListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         from django.db.models import Count, Q
         
-        queryset = LearningCircle.objects.exclude(status='archived').annotate(
+        queryset = LearningCircle.objects.filter(
+            policies.visible_circle_filter(self.request.user)
+        ).annotate(
             member_count=Count('members', filter=Q(members__status='active'))
-        )
+        ).distinct()
         
         # Filter by course if provided
         course_id = self.request.query_params.get('course_id')
         if course_id:
             queryset = queryset.filter(course_id=course_id)
         
-        # Filter public circles only
-        queryset = queryset.filter(is_private=False)
-        
-        return queryset
+        return queryset.order_by('-created_at')
     
     def create(self, request, *args, **kwargs):
         try:
@@ -240,15 +261,15 @@ class LearningCircleListCreateView(generics.ListCreateAPIView):
                 name=request.data.get('name'),
                 user=request.user,
                 description=request.data.get('description', ''),
-                course_id=request.data.get('course_id'),
+                course_id=request.data.get('course_id') or request.data.get('course'),
                 max_members=max_members,
-                is_private=request.data.get('is_private', False),
+                is_private=parse_bool(request.data.get('is_private', False)),
                 learning_goal=request.data.get('learning_goal', ''),
                 weekly_target_hours=weekly_target
             )
             
             return Response(
-                LearningCircleSerializer(circle).data,
+                LearningCircleSerializer(circle, context={'request': request}).data,
                 status=status.HTTP_201_CREATED
             )
         
@@ -266,16 +287,18 @@ class LearningCircleDetailView(generics.RetrieveAPIView):
     
     def get_queryset(self):
         from django.db.models import Count, Q
-        return LearningCircle.objects.annotate(
+        return LearningCircle.objects.filter(
+            policies.visible_circle_filter(self.request.user)
+        ).annotate(
             member_count=Count('members', filter=Q(members__status='active'))
-        )
+        ).distinct()
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def join_circle(request, circle_id):
     """Join a learning circle."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_object_or_404(LearningCircle.objects.exclude(status='archived'), id=circle_id)
     join_code = request.data.get('join_code')
     
     try:
@@ -286,7 +309,9 @@ def join_circle(request, circle_id):
             status=status.HTTP_201_CREATED
         )
     
-    except (ValidationError, PermissionDenied) as e:
+    except PermissionDenied as e:
+        return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+    except ValidationError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -294,13 +319,15 @@ def join_circle(request, circle_id):
 @permission_classes([IsAuthenticated])
 def leave_circle(request, circle_id):
     """Leave a learning circle."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_visible_circle_or_404(request, circle_id)
     
     try:
         leave_learning_circle(circle, request.user)
         return Response({'message': 'Left circle successfully'})
     
-    except (ValidationError, PermissionDenied) as e:
+    except PermissionDenied as e:
+        return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+    except ValidationError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -333,7 +360,8 @@ def my_circles(request):
 @permission_classes([IsAuthenticated])
 def circle_messages(request, circle_id):
     """Get or send messages in a circle."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_visible_circle_or_404(request, circle_id)
+    require_circle_member(request.user, circle)
     
     if request.method == 'GET':
         messages = CircleMessage.objects.filter(circle=circle)
@@ -355,11 +383,10 @@ def circle_messages(request, circle_id):
                 status=status.HTTP_201_CREATED
             )
         
-        except (ValidationError, PermissionDenied) as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except PermissionDenied as e:
+            return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ===========================
@@ -370,7 +397,8 @@ def circle_messages(request, circle_id):
 @permission_classes([IsAuthenticated])
 def circle_goals(request, circle_id):
     """Get or create circle goals."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_visible_circle_or_404(request, circle_id)
+    require_circle_member(request.user, circle)
     
     if request.method == 'GET':
         goals = CircleGoal.objects.filter(circle=circle)
@@ -380,9 +408,11 @@ def circle_goals(request, circle_id):
     else:  # POST
         goal = CircleGoal.objects.create(
             circle=circle,
-            goal_text=request.data.get('goal_text'),
-            week_start_date=request.data.get('week_start_date'),
-            target_hours=request.data.get('target_hours')
+            title=request.data.get('title') or request.data.get('goal_text'),
+            description=request.data.get('description', ''),
+            start_date=request.data.get('start_date') or request.data.get('week_start_date'),
+            end_date=request.data.get('end_date') or request.data.get('week_start_date'),
+            created_by=request.user
         )
         
         return Response(
@@ -395,11 +425,14 @@ def circle_goals(request, circle_id):
 @permission_classes([IsAuthenticated])
 def update_goal_progress(request, goal_id):
     """Update goal completion status."""
-    goal = get_object_or_404(CircleGoal, id=goal_id)
-    
-    goal.is_completed = request.data.get('is_completed', goal.is_completed)
-    goal.actual_hours = request.data.get('actual_hours', goal.actual_hours)
-    goal.save()
+    goal = get_object_or_404(CircleGoal.objects.select_related('circle'), id=goal_id)
+    require_circle_member(request.user, goal.circle)
+
+    if 'status' in request.data:
+        goal.status = request.data['status']
+    elif 'is_completed' in request.data:
+        goal.status = 'completed' if parse_bool(request.data['is_completed']) else 'active'
+    goal.save(update_fields=['status'])
     
     return Response(CircleGoalSerializer(goal).data)
 
@@ -412,7 +445,8 @@ def update_goal_progress(request, goal_id):
 @permission_classes([IsAuthenticated])
 def circle_events(request, circle_id):
     """Get or create circle events."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_visible_circle_or_404(request, circle_id)
+    require_circle_member(request.user, circle)
     
     if request.method == 'GET':
         events = CircleEvent.objects.filter(circle=circle)
@@ -424,7 +458,8 @@ def circle_events(request, circle_id):
             circle=circle,
             title=request.data.get('title'),
             description=request.data.get('description', ''),
-            scheduled_time=request.data.get('scheduled_time'),
+            scheduled_at=request.data.get('scheduled_at') or request.data.get('scheduled_time'),
+            duration_minutes=request.data.get('duration_minutes') or 60,
             meeting_link=request.data.get('meeting_link', ''),
             created_by=request.user
         )
@@ -443,7 +478,8 @@ def circle_events(request, circle_id):
 @permission_classes([IsAuthenticated])
 def circle_resources(request, circle_id):
     """Get or upload circle resources."""
-    circle = get_object_or_404(LearningCircle, id=circle_id)
+    circle = get_visible_circle_or_404(request, circle_id)
+    require_circle_member(request.user, circle)
     
     if request.method == 'GET':
         resources = CircleResource.objects.filter(circle=circle)
@@ -457,8 +493,9 @@ def circle_resources(request, circle_id):
             description=request.data.get('description', ''),
             resource_type=request.data.get('resource_type'),
             file=request.data.get('file'),
-            link=request.data.get('link', ''),
-            uploaded_by=request.user
+            url=request.data.get('url') or request.data.get('link', ''),
+            note_content=request.data.get('note_content', ''),
+            shared_by=request.user
         )
         
         return Response(

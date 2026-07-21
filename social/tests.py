@@ -14,6 +14,12 @@ from enrollments.models import Enrollment
 User = get_user_model()
 
 
+def response_items(response):
+    if isinstance(response.data, dict):
+        return response.data.get('results', response.data)
+    return response.data
+
+
 class ReviewModelTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -118,7 +124,7 @@ class ReviewAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response_items(response)), 1)
 
 
 class ForumThreadTest(APITestCase):
@@ -175,7 +181,7 @@ class ForumThreadTest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response_items(response)), 1)
     
     def test_view_count_increments(self):
         """Test thread view count increments."""
@@ -335,7 +341,7 @@ class LearningCircleAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response_items(response)), 1)
     
     def test_create_circle(self):
         """Test creating a learning circle."""
@@ -376,6 +382,18 @@ class LearningCircleAPITest(APITestCase):
     
     def test_leave_circle(self):
         """Test leaving a learning circle."""
+        other_admin = User.objects.create_user(
+            username='circleadmin',
+            email='circleadmin@test.com',
+            password='pass123'
+        )
+        CircleMembership.objects.create(
+            circle=self.circle,
+            user=other_admin,
+            role='admin',
+            status='active'
+        )
+
         url = f'/api/social/circles/{self.circle.id}/leave/'
         response = self.client.post(url)
         
@@ -401,3 +419,157 @@ class LearningCircleAPITest(APITestCase):
             ).exists()
         )
 
+
+class LearningCircleAccessControlAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.creator = User.objects.create_user(
+            username='creator',
+            email='creator@test.com',
+            password='testpass123'
+        )
+        self.member = User.objects.create_user(
+            username='member',
+            email='member@test.com',
+            password='testpass123'
+        )
+        self.outsider = User.objects.create_user(
+            username='outsider',
+            email='outsider@test.com',
+            password='testpass123'
+        )
+        self.course = Course.objects.create(
+            title='Private Circle Course',
+            description='Private Description',
+            instructor=self.creator
+        )
+        self.private_circle = LearningCircle.objects.create(
+            name='Private Circle',
+            description='Private Description',
+            course=self.course,
+            is_private=True,
+            join_code='super-secret',
+            created_by=self.creator
+        )
+        CircleMembership.objects.create(
+            circle=self.private_circle,
+            user=self.creator,
+            role='admin',
+            status='active'
+        )
+        CircleMembership.objects.create(
+            circle=self.private_circle,
+            user=self.member,
+            role='member',
+            status='active'
+        )
+        CircleMessage.objects.create(
+            circle=self.private_circle,
+            user=self.member,
+            message='members only'
+        )
+
+    def test_private_circle_detail_hidden_from_non_member(self):
+        self.client.force_authenticate(user=self.outsider)
+
+        response = self.client.get(f'/api/social/circles/{self.private_circle.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_private_child_resources_hidden_from_non_member(self):
+        self.client.force_authenticate(user=self.outsider)
+
+        response = self.client.get(f'/api/social/circles/{self.private_circle.id}/messages/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_member_can_read_private_circle_without_join_code_leak(self):
+        self.client.force_authenticate(user=self.member)
+
+        response = self.client.get(f'/api/social/circles/{self.private_circle.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('join_code', response.data)
+
+    def test_list_does_not_leak_join_code_for_visible_private_circle(self):
+        self.client.force_authenticate(user=self.member)
+
+        response = self.client.get('/api/social/circles/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        circles = response_items(response)
+        self.assertEqual(len(circles), 1)
+        self.assertNotIn('join_code', circles[0])
+
+    def test_join_code_required_for_private_circle(self):
+        self.client.force_authenticate(user=self.outsider)
+
+        response = self.client.post(f'/api/social/circles/{self.private_circle.id}/join/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.post(
+            f'/api/social/circles/{self.private_circle.id}/join/',
+            {'join_code': 'super-secret'}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_rejoin_reactivates_existing_membership(self):
+        membership = CircleMembership.objects.get(circle=self.private_circle, user=self.member)
+        membership.status = 'left'
+        membership.save(update_fields=['status'])
+        self.client.force_authenticate(user=self.member)
+
+        response = self.client.post(
+            f'/api/social/circles/{self.private_circle.id}/join/',
+            {'join_code': 'super-secret'}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        membership.refresh_from_db()
+        self.assertEqual(membership.status, 'active')
+        self.assertEqual(
+            CircleMembership.objects.filter(circle=self.private_circle, user=self.member).count(),
+            1
+        )
+
+    def test_legacy_schema_fields_create_goal_event_and_resource(self):
+        self.client.force_authenticate(user=self.member)
+
+        goal_response = self.client.post(
+            f'/api/social/circles/{self.private_circle.id}/goals/',
+            {
+                'goal_text': 'Study together',
+                'week_start_date': '2026-07-21',
+            }
+        )
+        self.assertEqual(goal_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(CircleGoal.objects.filter(title='Study together').exists())
+
+        event_response = self.client.post(
+            f'/api/social/circles/{self.private_circle.id}/events/',
+            {
+                'title': 'Study call',
+                'scheduled_time': '2026-07-22T10:00:00Z',
+            }
+        )
+        self.assertEqual(event_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(CircleEvent.objects.filter(title='Study call').exists())
+
+        resource_response = self.client.post(
+            f'/api/social/circles/{self.private_circle.id}/resources/',
+            {
+                'title': 'Docs',
+                'resource_type': 'link',
+                'link': 'https://example.com/docs',
+            }
+        )
+        self.assertEqual(resource_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            CircleResource.objects.filter(
+                title='Docs',
+                url='https://example.com/docs',
+                shared_by=self.member,
+            ).exists()
+        )

@@ -90,7 +90,7 @@ class LearningCircleSerializer(serializers.ModelSerializer):
         model = LearningCircle
         fields = [
             'id', 'name', 'description', 'course', 'max_members',
-            'is_private', 'join_code', 'learning_goal', 'weekly_target_hours',
+            'is_private', 'learning_goal', 'weekly_target_hours',
             'status', 'cover_image', 'created_by', 'created_by_name',
             'created_at', 'member_count', 'is_full', 'is_member'
         ]

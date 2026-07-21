@@ -34,6 +34,7 @@ class LiveSession(models.Model):
     ]
     
     PLATFORM_CHOICES = [
+        ('livekit', 'LiveKit'),
         ('agora', 'Agora'),
         ('zoom', 'Zoom'),
         ('meet', 'Google Meet'),
@@ -65,7 +66,7 @@ class LiveSession(models.Model):
     timezone_info = models.CharField(max_length=50, default='UTC')
     
     # Platform & Access
-    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES, default='agora')
+    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES, default='livekit')
     meeting_link = models.URLField(blank=True)
     meeting_id = models.CharField(max_length=255, blank=True)
     meeting_password = models.CharField(max_length=100, blank=True)

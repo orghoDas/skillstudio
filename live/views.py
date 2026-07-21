@@ -5,6 +5,7 @@ REST API endpoints for live sessions, chat, polls, recordings, and attendance.
 
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
@@ -25,18 +26,36 @@ from live.serializers import (
     TrackRecordingViewSerializer, SessionAttendanceSerializer,
     SessionAnalyticsSerializer, JoinSessionSerializer
 )
-from live import services
+from live import policies, provider, services
 from accounts.permissions import IsInstructor
 
 
 # Live Session Views
 
+def get_visible_session_or_404(request, session_id):
+    return get_object_or_404(
+        LiveSession.objects.select_related('course', 'instructor').filter(
+            policies.visible_live_session_filter(request.user)
+        ).distinct(),
+        id=session_id,
+    )
+
+
+def ensure_can_manage_session(user, session):
+    if not policies.can_manage_live_session(user, session):
+        raise PermissionDenied("You do not have permission to manage this live session")
+
+
+def ensure_can_use_session_interactions(user, session):
+    if not policies.can_use_live_interactions(user, session):
+        raise PermissionDenied("You must join this live session before accessing interactions")
+
 class LiveSessionListView(generics.ListAPIView):
     """List all live sessions or sessions for a specific course."""
-    
+
     serializer_class = LiveSessionSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_queryset(self):
         from django.db.models import Count, Q
         from django.utils import timezone
@@ -57,7 +76,9 @@ class LiveSessionListView(generics.ListAPIView):
             scheduled_end__lte=now
         ).update(status='ended', actual_end=now)
         
-        queryset = LiveSession.objects.select_related(
+        queryset = LiveSession.objects.filter(
+            policies.visible_live_session_filter(self.request.user)
+        ).select_related(
             'course', 'instructor'
         ).prefetch_related(
             'participants'
@@ -80,7 +101,7 @@ class LiveSessionListView(generics.ListAPIView):
         if instructor_id:
             queryset = queryset.filter(instructor_id=instructor_id)
         
-        return queryset.order_by('-scheduled_start')
+        return queryset.distinct().order_by('-scheduled_start')
 
 
 class CreateLiveSessionView(generics.CreateAPIView):
@@ -93,7 +114,7 @@ class CreateLiveSessionView(generics.CreateAPIView):
         course = serializer.validated_data['course']
         
         # Use service to create session
-        session = services.create_live_session(
+        serializer.instance = services.create_live_session(
             course=course,
             instructor=self.request.user,
             title=serializer.validated_data['title'],
@@ -102,7 +123,7 @@ class CreateLiveSessionView(generics.CreateAPIView):
             description=serializer.validated_data.get('description', ''),
             session_type=serializer.validated_data.get('session_type', 'class'),
             timezone_info=serializer.validated_data.get('timezone_info', 'UTC'),
-            platform=serializer.validated_data.get('platform', 'agora'),
+            platform=serializer.validated_data.get('platform', 'livekit'),
             meeting_link=serializer.validated_data.get('meeting_link', ''),
             meeting_id=serializer.validated_data.get('meeting_id', ''),
             meeting_password=serializer.validated_data.get('meeting_password', ''),
@@ -116,21 +137,31 @@ class CreateLiveSessionView(generics.CreateAPIView):
             is_public=serializer.validated_data.get('is_public', False),
             password_protected=serializer.validated_data.get('password_protected', False),
         )
-        
-        return session
 
 
 class LiveSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Get, update, or delete a live session."""
-    
+
     serializer_class = LiveSessionSerializer
     permission_classes = [IsAuthenticated]
-    queryset = LiveSession.objects.select_related('course', 'instructor')
+
+    def get_queryset(self):
+        return LiveSession.objects.select_related('course', 'instructor').filter(
+            policies.visible_live_session_filter(self.request.user)
+        ).distinct()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return CreateLiveSessionSerializer
         return LiveSessionSerializer
+
+    def perform_update(self, serializer):
+        ensure_can_manage_session(self.request.user, self.get_object())
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        ensure_can_manage_session(self.request.user, instance)
+        instance.delete()
 
 
 @api_view(['POST'])
@@ -138,6 +169,7 @@ class LiveSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
 def start_session(request, session_id):
     """Start a live session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
+    ensure_can_manage_session(request.user, session)
     
     try:
         updated_session = services.start_live_session(session, request.user)
@@ -157,6 +189,7 @@ def start_session(request, session_id):
 def end_session(request, session_id):
     """End a live session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
+    ensure_can_manage_session(request.user, session)
     
     try:
         updated_session = services.end_live_session(session, request.user)
@@ -178,13 +211,23 @@ def end_session(request, session_id):
 def join_session(request, session_id):
     """Join a live session."""
     session = get_object_or_404(LiveSession, id=session_id)
+    serializer = JoinSessionSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    meeting_password = serializer.validated_data.get('meeting_password')
+
+    if not policies.can_join_live_session(request.user, session, meeting_password=meeting_password):
+        raise PermissionDenied("You do not have permission to join this live session")
     
     try:
         participant = services.join_session(session, request.user)
         serializer = SessionParticipantSerializer(participant)
         return Response({
             'participant': serializer.data,
-            'session': LiveSessionSerializer(session).data,
+            'session': LiveSessionSerializer(
+                session,
+                context={'request': request, 'include_join_credentials': True}
+            ).data,
+            'provider': get_join_provider_payload(request.user, session),
             'message': 'Joined session successfully'
         })
     except Exception as e:
@@ -193,11 +236,28 @@ def join_session(request, session_id):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
+def get_join_provider_payload(user, session):
+    if session.platform != 'livekit':
+        return {
+            'provider': session.platform,
+            'configured': bool(session.meeting_link),
+        }
+
+    try:
+        return provider.generate_livekit_join_payload(user, session)
+    except provider.LiveKitConfigurationError:
+        return {
+            'provider': 'livekit',
+            'configured': False,
+            'message': 'LiveKit is not configured on this server',
+        }
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def leave_session(request, session_id):
     """Leave a live session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
     
     try:
         participant = services.leave_session(session, request.user)
@@ -216,7 +276,8 @@ def leave_session(request, session_id):
 @permission_classes([IsAuthenticated])
 def session_participants(request, session_id):
     """Get all participants of a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     participants = SessionParticipant.objects.filter(
         session=session
@@ -236,13 +297,7 @@ def session_participants(request, session_id):
 def start_streaming(request, session_id):
     """Start streaming for a session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
-    
-    # Check if user is the instructor
-    if session.instructor != request.user:
-        return Response(
-            {'error': 'Only the instructor can start streaming'},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    ensure_can_manage_session(request.user, session)
     
     stream_type = request.data.get('stream_type', 'camera')  # 'camera', 'screen', or 'both'
     
@@ -262,13 +317,7 @@ def start_streaming(request, session_id):
 def stop_streaming(request, session_id):
     """Stop streaming for a session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
-    
-    # Check if user is the instructor
-    if session.instructor != request.user:
-        return Response(
-            {'error': 'Only the instructor can stop streaming'},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    ensure_can_manage_session(request.user, session)
     
     session.is_streaming = False
     session.stream_type = ''
@@ -284,7 +333,7 @@ def stop_streaming(request, session_id):
 @permission_classes([IsAuthenticated])
 def streaming_status(request, session_id):
     """Get streaming status for a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
     
     # Get instructor name from profile if available
     instructor_name = session.instructor.email
@@ -309,7 +358,8 @@ def streaming_status(request, session_id):
 @permission_classes([IsAuthenticated])
 def session_chat_messages(request, session_id):
     """Get chat messages for a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     messages = LiveChatMessage.objects.filter(
         session=session,
@@ -331,7 +381,8 @@ def session_chat_messages(request, session_id):
 @permission_classes([IsAuthenticated])
 def send_chat_message(request, session_id):
     """Send a chat message in a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     serializer = SendChatMessageSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -368,7 +419,8 @@ def send_chat_message(request, session_id):
 @permission_classes([IsAuthenticated])
 def session_questions(request, session_id):
     """Get Q&A questions for a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     questions = LiveQuestion.objects.filter(
         session=session
@@ -390,7 +442,8 @@ def session_questions(request, session_id):
 @permission_classes([IsAuthenticated])
 def ask_question(request, session_id):
     """Ask a question in a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     serializer = AskQuestionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -417,7 +470,11 @@ def ask_question(request, session_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def answer_question(request, question_id):
     """Answer a question (instructor only)."""
-    question = get_object_or_404(LiveQuestion, id=question_id)
+    question = get_object_or_404(
+        LiveQuestion.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=question_id
+    )
+    ensure_can_manage_session(request.user, question.session)
     
     serializer = AnswerQuestionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -444,7 +501,11 @@ def answer_question(request, question_id):
 @permission_classes([IsAuthenticated])
 def upvote_question(request, question_id):
     """Upvote a question."""
-    question = get_object_or_404(LiveQuestion, id=question_id)
+    question = get_object_or_404(
+        LiveQuestion.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=question_id
+    )
+    ensure_can_use_session_interactions(request.user, question.session)
     
     try:
         updated_question = services.upvote_question(question, request.user)
@@ -465,7 +526,8 @@ def upvote_question(request, question_id):
 @permission_classes([IsAuthenticated])
 def session_polls(request, session_id):
     """Get polls for a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
+    ensure_can_use_session_interactions(request.user, session)
     
     polls = LivePoll.objects.filter(
         session=session
@@ -483,6 +545,7 @@ def session_polls(request, session_id):
 def create_poll(request, session_id):
     """Create a poll in a session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
+    ensure_can_manage_session(request.user, session)
     
     serializer = CreatePollSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -514,7 +577,11 @@ def create_poll(request, session_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def start_poll(request, poll_id):
     """Start a poll (instructor only)."""
-    poll = get_object_or_404(LivePoll, id=poll_id)
+    poll = get_object_or_404(
+        LivePoll.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=poll_id
+    )
+    ensure_can_manage_session(request.user, poll.session)
     
     duration = request.data.get('duration_seconds')
     
@@ -535,7 +602,11 @@ def start_poll(request, poll_id):
 @permission_classes([IsAuthenticated, IsInstructor])
 def close_poll(request, poll_id):
     """Close a poll (instructor only)."""
-    poll = get_object_or_404(LivePoll, id=poll_id)
+    poll = get_object_or_404(
+        LivePoll.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=poll_id
+    )
+    ensure_can_manage_session(request.user, poll.session)
     
     try:
         updated_poll = services.close_poll(poll, request.user)
@@ -554,7 +625,11 @@ def close_poll(request, poll_id):
 @permission_classes([IsAuthenticated])
 def vote_poll(request, poll_id):
     """Vote on a poll."""
-    poll = get_object_or_404(LivePoll, id=poll_id)
+    poll = get_object_or_404(
+        LivePoll.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=poll_id
+    )
+    ensure_can_use_session_interactions(request.user, poll.session)
     
     serializer = VotePollSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -582,7 +657,11 @@ def vote_poll(request, poll_id):
 @permission_classes([IsAuthenticated])
 def poll_results(request, poll_id):
     """Get poll results."""
-    poll = get_object_or_404(LivePoll, id=poll_id)
+    poll = get_object_or_404(
+        LivePoll.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=poll_id
+    )
+    ensure_can_use_session_interactions(request.user, poll.session)
     
     results = services.get_poll_results(poll)
     return Response(results)
@@ -594,17 +673,20 @@ def poll_results(request, poll_id):
 @permission_classes([IsAuthenticated])
 def session_recordings(request, session_id):
     """Get recordings for a session."""
-    session = get_object_or_404(LiveSession, id=session_id)
+    session = get_visible_session_or_404(request, session_id)
     
-    recordings = SessionRecording.objects.filter(
+    recordings = [
+        recording for recording in SessionRecording.objects.filter(
         session=session,
         processing_status='ready'
-    ).order_by('-recorded_at')
+        ).order_by('-recorded_at')
+        if policies.can_view_recording(request.user, recording)
+    ]
     
     serializer = SessionRecordingSerializer(recordings, many=True)
     return Response({
         'recordings': serializer.data,
-        'total': recordings.count()
+        'total': len(recordings)
     })
 
 
@@ -613,6 +695,7 @@ def session_recordings(request, session_id):
 def create_recording(request, session_id):
     """Create a recording for a session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
+    ensure_can_manage_session(request.user, session)
     
     serializer = CreateRecordingSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -644,7 +727,12 @@ def create_recording(request, session_id):
 @permission_classes([IsAuthenticated])
 def recording_detail(request, recording_id):
     """Get recording details."""
-    recording = get_object_or_404(SessionRecording, id=recording_id)
+    recording = get_object_or_404(
+        SessionRecording.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=recording_id
+    )
+    if not policies.can_view_recording(request.user, recording):
+        raise PermissionDenied("You do not have permission to view this recording")
     
     serializer = SessionRecordingSerializer(recording)
     return Response({
@@ -656,7 +744,12 @@ def recording_detail(request, recording_id):
 @permission_classes([IsAuthenticated])
 def track_recording_view(request, recording_id):
     """Track user viewing a recording."""
-    recording = get_object_or_404(SessionRecording, id=recording_id)
+    recording = get_object_or_404(
+        SessionRecording.objects.select_related('session', 'session__course', 'session__instructor'),
+        id=recording_id
+    )
+    if not policies.can_view_recording(request.user, recording):
+        raise PermissionDenied("You do not have permission to view this recording")
     
     serializer = TrackRecordingViewSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -686,12 +779,7 @@ def track_recording_view(request, recording_id):
 def session_attendance(request, session_id):
     """Get attendance records for a session."""
     session = get_object_or_404(LiveSession, id=session_id)
-    
-    # Only instructor can view full attendance
-    if session.instructor != request.user:
-        return Response({
-            'error': 'Only instructor can view attendance'
-        }, status=status.HTTP_403_FORBIDDEN)
+    ensure_can_manage_session(request.user, session)
     
     attendance = SessionAttendance.objects.filter(
         session=session
@@ -714,11 +802,7 @@ def session_attendance(request, session_id):
 def session_analytics(request, session_id):
     """Get comprehensive analytics for a session (instructor only)."""
     session = get_object_or_404(LiveSession, id=session_id)
-    
-    if session.instructor != request.user:
-        return Response({
-            'error': 'Only instructor can view analytics'
-        }, status=status.HTTP_403_FORBIDDEN)
+    ensure_can_manage_session(request.user, session)
     
     analytics = services.get_session_analytics(session)
     serializer = SessionAnalyticsSerializer(analytics)

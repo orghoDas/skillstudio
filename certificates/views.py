@@ -53,9 +53,9 @@ class VerifyCertificateView(APIView):
     permission_classes = [AllowAny]
     
     def get(self, request, code):
-        certificate = verify_certificate(code)
-        
-        if not certificate:
+        try:
+            certificate = verify_certificate(code)
+        except ValidationError:
             serializer = CertificateVerificationSerializer({
                 'valid': False
             })
@@ -140,16 +140,23 @@ def regenerate_certificate(request, course_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    certificate = get_object_or_404(
-        Certificate,
-        course_id=course_id
-    )
+    certificate = Certificate.objects.filter(course_id=course_id).order_by('-issued_at').first()
+    if not certificate:
+        return Response(
+            {'error': 'Certificate not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
     
     try:
-        certificate = regenerate_certificate_pdf(certificate)
+        certificate = regenerate_certificate_pdf(certificate.id, request.user)
         serializer = CertificateSerializer(certificate, context={'request': request})
         return Response(serializer.data)
     
+    except (ValidationError, PermissionDenied) as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     except Exception as e:
         return Response(
             {'error': str(e)},

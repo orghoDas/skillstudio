@@ -4,10 +4,16 @@ Comprehensive tests for live streaming functionality.
 """
 
 from django.test import TestCase
+from django.test import TransactionTestCase
+from django.test import override_settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
+from asgiref.sync import async_to_sync
+from channels.testing import WebsocketCommunicator
+import jwt
 from rest_framework.test import APITestCase
 from rest_framework import status
+from rest_framework_simplejwt.tokens import AccessToken
 from datetime import timedelta
 
 from accounts.models import User
@@ -19,6 +25,7 @@ from live.models import (
     SessionAttendance
 )
 from live import services
+from live.consumers import LiveStreamConsumer
 
 
 class LiveStreamingModelsTestCase(TestCase):
@@ -538,3 +545,285 @@ class LiveStreamingAPITestCase(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('history', response.data)
+
+
+class LiveAccessControlAPITestCase(APITestCase):
+    """Regression tests for live-session object access containment."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            email='live-owner@test.com',
+            password='testpass123',
+            role=User.Role.INSTRUCTOR
+        )
+        self.other_instructor = User.objects.create_user(
+            email='live-other-instructor@test.com',
+            password='testpass123',
+            role=User.Role.INSTRUCTOR
+        )
+        self.student = User.objects.create_user(
+            email='live-student@test.com',
+            password='testpass123',
+            role=User.Role.STUDENT
+        )
+        self.outsider = User.objects.create_user(
+            email='live-outsider@test.com',
+            password='testpass123',
+            role=User.Role.STUDENT
+        )
+        self.category = Category.objects.create(name='Live Programming', slug='live-programming')
+        self.course = Course.objects.create(
+            instructor=self.instructor,
+            category=self.category,
+            title='Live Course',
+            slug='live-course',
+            status='published'
+        )
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active'
+        )
+        self.session = LiveSession.objects.create(
+            course=self.course,
+            instructor=self.instructor,
+            title='Private Live Session',
+            scheduled_start=timezone.now() - timedelta(minutes=5),
+            scheduled_end=timezone.now() + timedelta(hours=1),
+            status='live',
+            platform='zoom',
+            meeting_link='https://example.com/secret-meeting',
+            meeting_id='secret-id',
+            meeting_password='secret-password',
+            requires_enrollment=True,
+            is_public=False,
+        )
+
+    def test_unenrolled_user_cannot_read_private_session(self):
+        self.client.force_authenticate(user=self.outsider)
+
+        response = self.client.get(f'/api/live/sessions/{self.session.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_enrolled_student_can_read_session_without_meeting_credentials(self):
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(f'/api/live/sessions/{self.session.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('meeting_link', response.data)
+        self.assertNotIn('meeting_id', response.data)
+        self.assertNotIn('meeting_password', response.data)
+
+    def test_join_response_returns_meeting_credentials_to_authorized_student(self):
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.post(f'/api/live/sessions/{self.session.id}/join/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['session']['meeting_link'], self.session.meeting_link)
+        self.assertEqual(response.data['session']['meeting_password'], self.session.meeting_password)
+
+    def test_unrelated_instructor_cannot_manage_session(self):
+        self.client.force_authenticate(user=self.other_instructor)
+
+        response = self.client.post(f'/api/live/sessions/{self.session.id}/streaming/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_enrolled_student_must_join_before_reading_interactions(self):
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(f'/api/live/sessions/{self.session.id}/chat/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.post(f'/api/live/sessions/{self.session.id}/join/')
+        response = self.client.get(f'/api/live/sessions/{self.session.id}/chat/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @override_settings(
+        LIVEKIT_ENABLED=True,
+        LIVEKIT_URL='wss://skillstudio-test.livekit.cloud',
+        LIVEKIT_API_KEY='test-livekit-key',
+        LIVEKIT_API_SECRET='test-livekit-secret',
+        LIVEKIT_TOKEN_TTL_SECONDS=900,
+    )
+    def test_livekit_join_returns_subscribe_only_student_token(self):
+        self.session.platform = 'livekit'
+        self.session.save(update_fields=['platform'])
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.post(f'/api/live/sessions/{self.session.id}/join/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        provider_payload = response.data['provider']
+        self.assertEqual(provider_payload['provider'], 'livekit')
+        self.assertTrue(provider_payload['configured'])
+        self.assertEqual(provider_payload['url'], 'wss://skillstudio-test.livekit.cloud')
+        decoded = jwt.decode(
+            provider_payload['token'],
+            'test-livekit-secret',
+            algorithms=['HS256'],
+            issuer='test-livekit-key',
+        )
+        self.assertEqual(decoded['sub'], f'user-{self.student.id}')
+        self.assertEqual(decoded['video']['room'], f'skillstudio-live-session-{self.session.id}')
+        self.assertTrue(decoded['video']['roomJoin'])
+        self.assertFalse(decoded['video']['canPublish'])
+        self.assertTrue(decoded['video']['canSubscribe'])
+
+    @override_settings(
+        LIVEKIT_ENABLED=True,
+        LIVEKIT_URL='wss://skillstudio-test.livekit.cloud',
+        LIVEKIT_API_KEY='test-livekit-key',
+        LIVEKIT_API_SECRET='test-livekit-secret',
+    )
+    def test_livekit_join_returns_publish_grant_for_instructor(self):
+        self.session.platform = 'livekit'
+        self.session.save(update_fields=['platform'])
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(f'/api/live/sessions/{self.session.id}/join/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        decoded = jwt.decode(
+            response.data['provider']['token'],
+            'test-livekit-secret',
+            algorithms=['HS256'],
+            issuer='test-livekit-key',
+        )
+        self.assertEqual(decoded['sub'], f'user-{self.instructor.id}')
+        self.assertTrue(decoded['video']['canPublish'])
+        self.assertTrue(decoded['video']['roomAdmin'])
+
+    @override_settings(
+        LIVEKIT_ENABLED=False,
+        LIVEKIT_URL='',
+        LIVEKIT_API_KEY='',
+        LIVEKIT_API_SECRET='',
+    )
+    def test_livekit_join_reports_unconfigured_provider(self):
+        self.session.platform = 'livekit'
+        self.session.save(update_fields=['platform'])
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.post(f'/api/live/sessions/{self.session.id}/join/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['provider']['provider'], 'livekit')
+        self.assertFalse(response.data['provider']['configured'])
+
+
+class LiveWebSocketAccessControlTestCase(TransactionTestCase):
+    """Regression tests for live WebSocket authentication and spoofing rules."""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            email='socket-owner@test.com',
+            password='testpass123',
+            role=User.Role.INSTRUCTOR
+        )
+        self.student = User.objects.create_user(
+            email='socket-student@test.com',
+            password='testpass123',
+            role=User.Role.STUDENT
+        )
+        self.category = Category.objects.create(name='Socket Programming', slug='socket-programming')
+        self.course = Course.objects.create(
+            instructor=self.instructor,
+            category=self.category,
+            title='Socket Course',
+            slug='socket-course',
+            status='published'
+        )
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active'
+        )
+        self.session = LiveSession.objects.create(
+            course=self.course,
+            instructor=self.instructor,
+            title='Socket Session',
+            scheduled_start=timezone.now() - timedelta(minutes=5),
+            scheduled_end=timezone.now() + timedelta(hours=1),
+            status='live',
+            requires_enrollment=True,
+            is_public=False,
+        )
+
+    def make_communicator(self, user=None):
+        token_query = ''
+        if user is not None:
+            token_query = f'?token={AccessToken.for_user(user)}'
+        communicator = WebsocketCommunicator(
+            LiveStreamConsumer.as_asgi(),
+            f'/ws/live/sessions/{self.session.id}/{token_query}'
+        )
+        communicator.scope['url_route'] = {'kwargs': {'session_id': str(self.session.id)}}
+        return communicator
+
+    def test_anonymous_socket_is_rejected(self):
+        async_to_sync(self._anonymous_socket_is_rejected)()
+
+    async def _anonymous_socket_is_rejected(self):
+        communicator = self.make_communicator()
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+
+    def test_student_socket_requires_joined_participant(self):
+        async_to_sync(self._student_socket_requires_joined_participant)()
+
+    async def _student_socket_requires_joined_participant(self):
+        communicator = self.make_communicator(self.student)
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+
+    def test_joined_student_cannot_send_instructor_offer(self):
+        SessionParticipant.objects.create(
+            session=self.session,
+            user=self.student,
+            status='joined',
+            joined_at=timezone.now()
+        )
+        async_to_sync(self._joined_student_cannot_send_instructor_offer)()
+
+    async def _joined_student_cannot_send_instructor_offer(self):
+        communicator = self.make_communicator(self.student)
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.receive_json_from(timeout=5)  # user_joined
+
+        await communicator.send_json_to({
+            'type': 'offer',
+            'offer': {'type': 'offer', 'sdp': 'fake'},
+            'sender_id': self.instructor.id,
+        })
+        response = await communicator.receive_json_from(timeout=5)
+
+        self.assertEqual(response['type'], 'error')
+        self.assertIn('Only the instructor', response['message'])
+        await communicator.disconnect()
+
+    def test_instructor_offer_uses_authenticated_sender_id(self):
+        async_to_sync(self._instructor_offer_uses_authenticated_sender_id)()
+
+    async def _instructor_offer_uses_authenticated_sender_id(self):
+        communicator = self.make_communicator(self.instructor)
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.receive_json_from(timeout=5)  # user_joined
+
+        await communicator.send_json_to({
+            'type': 'offer',
+            'offer': {'type': 'offer', 'sdp': 'fake'},
+            'sender_id': self.student.id,
+        })
+        response = await communicator.receive_json_from(timeout=5)
+
+        self.assertEqual(response['type'], 'offer')
+        self.assertEqual(response['sender_id'], self.instructor.id)
+        await communicator.disconnect()

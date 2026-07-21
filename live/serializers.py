@@ -12,6 +12,7 @@ from live.models import (
 )
 from accounts.models import User
 from courses.models import Course
+from live import policies
 
 
 class LiveSessionSerializer(serializers.ModelSerializer):
@@ -47,6 +48,20 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             'id', 'instructor', 'actual_start', 'actual_end', 'status',
             'created_at', 'updated_at'
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        include_join_credentials = self.context.get('include_join_credentials', False)
+        user = getattr(request, 'user', None) if request else None
+
+        can_see_credentials = include_join_credentials or policies.can_manage_live_session(user, instance)
+        if not can_see_credentials:
+            data.pop('meeting_link', None)
+            data.pop('meeting_id', None)
+            data.pop('meeting_password', None)
+
+        return data
     
     def get_duration_minutes(self, obj):
         return obj.duration_minutes()

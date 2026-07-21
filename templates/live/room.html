@@ -4,6 +4,10 @@
 
 {% block body_classes %}bg-black{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js" defer></script>
+{% endblock %}
+
 {% block content %}
 <div class="h-screen flex flex-col">
     <!-- Top Bar -->
@@ -168,6 +172,7 @@ let websocket = null;
 let peerConnection = null;
 let remoteStream = null;
 let pendingIceCandidates = []; // Buffer for ICE candidates received before remote description
+let livekitRoom = null;
 
 // WebRTC configuration
 const rtcConfiguration = {
@@ -270,7 +275,10 @@ async function loadSession() {
             document.getElementById('live-indicator').classList.add('flex');
             
             // Join the session
-            await joinSession();
+            const joined = await joinSession();
+            if (!joined) {
+                return;
+            }
         } else if (sessionData.status === 'scheduled') {
             showAlert('This session has not started yet', 'info');
         } else if (sessionData.status === 'ended') {
@@ -279,12 +287,18 @@ async function loadSession() {
 
         // Load video player
         initializeVideoPlayer(sessionData);
-        
-        // Connect to WebSocket for WebRTC signaling
-        connectWebSocket();
-        
-        // Load chat messages
-        loadChatMessages();
+
+        if (isLive) {
+            if (isLiveKitSession()) {
+                await connectLiveKit();
+            } else {
+                // Connect to legacy WebSocket signaling only after session access is granted.
+                connectWebSocket();
+            }
+
+            // Load chat messages
+            loadChatMessages();
+        }
         
     } catch (error) {
         console.error('Error loading session:', error);
@@ -298,10 +312,18 @@ async function joinSession() {
             method: 'POST'
         });
         console.log('Joined session:', response);
+        if (response.session) {
+            sessionData = { ...sessionData, ...response.session };
+        }
+        if (response.provider) {
+            sessionData.provider = response.provider;
+        }
         showAlert('You have joined the live session', 'success');
+        return true;
     } catch (error) {
         console.error('Error joining session:', error);
         showAlert(error.message || 'Failed to join session', 'error');
+        return false;
     }
 }
 
@@ -312,7 +334,28 @@ function initializeVideoPlayer(session) {
     const userProfile = JSON.parse(localStorage.getItem('user_profile') || '{}');
     isInstructor = userProfile.role === 'instructor' || session.instructor === userProfile.id;
     
-    if (session.platform === 'agora') {
+    if (session.platform === 'livekit') {
+        const provider = session.provider || {};
+        container.innerHTML = `
+            <div id="livekit-video-stage" class="w-full h-full grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-black"></div>
+            <div id="video-placeholder" class="absolute inset-0 flex items-center justify-center text-center pointer-events-none">
+                <div>
+                    <div class="w-32 h-32 mx-auto mb-6 bg-dark-surface rounded-full flex items-center justify-center">
+                        <svg class="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-white text-lg mb-2">LiveKit Classroom</p>
+                    <p class="text-gray-400 mb-4">${provider.configured ? (isInstructor ? 'Start your camera or screen share to begin.' : 'Waiting for instructor media...') : 'LiveKit is not configured on this server yet.'}</p>
+                </div>
+            </div>
+        `;
+
+        if (isInstructor && provider.configured) {
+            document.getElementById('instructor-controls').classList.remove('hidden');
+        }
+
+    } else if (session.platform === 'agora') {
         // Show WebRTC video interface
         container.innerHTML = `
             <div id="local-video" class="hidden w-full h-full"></div>
@@ -361,6 +404,72 @@ function initializeVideoPlayer(session) {
 
 let localStream = null;
 let isStreaming = false;
+
+function isLiveKitSession() {
+    return sessionData && sessionData.platform === 'livekit' && sessionData.provider && sessionData.provider.configured;
+}
+
+async function connectLiveKit() {
+    if (livekitRoom || !isLiveKitSession()) return;
+    if (!window.LivekitClient) {
+        showAlert('LiveKit client SDK failed to load', 'error');
+        return;
+    }
+
+    const provider = sessionData.provider;
+    const { Room, RoomEvent } = window.LivekitClient;
+
+    livekitRoom = new Room({
+        adaptiveStream: true,
+        dynacast: true
+    });
+
+    livekitRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        attachLiveKitTrack(track, participant.identity);
+    });
+
+    livekitRoom.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach(element => element.remove());
+    });
+
+    livekitRoom.on(RoomEvent.LocalTrackPublished, (publication) => {
+        if (publication.track) {
+            attachLiveKitTrack(publication.track, provider.identity);
+        }
+    });
+
+    livekitRoom.on(RoomEvent.Disconnected, () => {
+        livekitRoom = null;
+        showAlert('Disconnected from LiveKit room', 'info');
+    });
+
+    await livekitRoom.connect(provider.url, provider.token);
+    console.log('Connected to LiveKit room:', provider.room_name);
+
+    for (const participant of livekitRoom.remoteParticipants.values()) {
+        participant.trackPublications.forEach(publication => {
+            if (publication.track && publication.isSubscribed) {
+                attachLiveKitTrack(publication.track, participant.identity);
+            }
+        });
+    }
+}
+
+function attachLiveKitTrack(track, participantIdentity) {
+    const stage = document.getElementById('livekit-video-stage');
+    const placeholder = document.getElementById('video-placeholder');
+    if (!stage) return;
+    if (placeholder) placeholder.style.display = 'none';
+
+    const element = track.attach();
+    element.dataset.participantIdentity = participantIdentity;
+    element.classList.add('w-full', 'h-full', 'object-contain', 'bg-black', 'rounded-lg');
+
+    const tile = document.createElement('div');
+    tile.className = 'relative min-h-48 bg-black border border-dark-border rounded-lg overflow-hidden flex items-center justify-center';
+    tile.appendChild(element);
+    stage.appendChild(tile);
+}
 
 // WebSocket Connection
 function connectWebSocket() {
@@ -486,7 +595,6 @@ async function handleOffer(offer, senderId) {
                     websocket.send(JSON.stringify({
                         type: 'ice-candidate',
                         candidate: event.candidate,
-                        sender_id: JSON.parse(localStorage.getItem('user_profile')).id,
                         target_id: senderId
                     }));
                 }
@@ -508,7 +616,6 @@ async function handleOffer(offer, senderId) {
         websocket.send(JSON.stringify({
             type: 'answer',
             answer: answer,
-            sender_id: JSON.parse(localStorage.getItem('user_profile')).id,
             target_id: senderId
         }));
         
@@ -548,8 +655,7 @@ async function broadcastStream(stream) {
             if (event.candidate) {
                 websocket.send(JSON.stringify({
                     type: 'ice-candidate',
-                    candidate: event.candidate,
-                    sender_id: JSON.parse(localStorage.getItem('user_profile')).id
+                    candidate: event.candidate
                 }));
             }
         };
@@ -561,8 +667,7 @@ async function broadcastStream(stream) {
         // Send offer to all students via WebSocket
         websocket.send(JSON.stringify({
             type: 'offer',
-            offer: offer,
-            sender_id: JSON.parse(localStorage.getItem('user_profile')).id
+            offer: offer
         }));
         
         console.log('Broadcasting stream via WebRTC');
@@ -573,6 +678,10 @@ async function broadcastStream(stream) {
 }
 
 async function startCamera() {
+    if (isLiveKitSession()) {
+        return startLiveKitCamera();
+    }
+
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
@@ -619,6 +728,10 @@ async function startCamera() {
 }
 
 async function startScreenShare() {
+    if (isLiveKitSession()) {
+        return startLiveKitScreenShare();
+    }
+
     try {
         localStream = await navigator.mediaDevices.getDisplayMedia({ 
             video: { 
@@ -672,7 +785,69 @@ async function startScreenShare() {
     }
 }
 
-function stopStream() {
+async function startLiveKitCamera() {
+    try {
+        if (!livekitRoom) {
+            await connectLiveKit();
+        }
+
+        await livekitRoom.localParticipant.setCameraEnabled(true);
+        await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+        markStreamingControlsActive();
+
+        await apiRequest(`/live/sessions/${sessionId}/streaming/start/`, {
+            method: 'POST',
+            body: JSON.stringify({ stream_type: 'camera' })
+        });
+
+        showAlert('LiveKit camera started', 'success');
+    } catch (error) {
+        console.error('Error starting LiveKit camera:', error);
+        showAlert('Failed to start LiveKit camera. Please check permissions.', 'error');
+    }
+}
+
+async function startLiveKitScreenShare() {
+    try {
+        if (!livekitRoom) {
+            await connectLiveKit();
+        }
+
+        await livekitRoom.localParticipant.setScreenShareEnabled(true, { audio: true });
+        markStreamingControlsActive();
+
+        await apiRequest(`/live/sessions/${sessionId}/streaming/start/`, {
+            method: 'POST',
+            body: JSON.stringify({ stream_type: 'screen' })
+        });
+
+        showAlert('LiveKit screen sharing started', 'success');
+    } catch (error) {
+        console.error('Error starting LiveKit screen share:', error);
+        showAlert('Failed to share screen. Please check permissions.', 'error');
+    }
+}
+
+function markStreamingControlsActive() {
+    isStreaming = true;
+    document.getElementById('start-camera-btn').classList.add('hidden');
+    document.getElementById('start-screen-btn').classList.add('hidden');
+    document.getElementById('stop-stream-btn').classList.remove('hidden');
+    const placeholder = document.getElementById('video-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+}
+
+async function stopStream() {
+    if (isLiveKitSession() && livekitRoom) {
+        try {
+            await livekitRoom.localParticipant.setCameraEnabled(false);
+            await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+            await livekitRoom.localParticipant.setScreenShareEnabled(false);
+        } catch (error) {
+            console.error('Error stopping LiveKit tracks:', error);
+        }
+    }
+
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
@@ -712,7 +887,7 @@ function stopStream() {
 async function loadChatMessages() {
     try {
         const response = await apiRequest(`/live/sessions/${sessionId}/chat/`);
-        const messages = response.results || response;
+        const messages = response.messages || response.results || response;
         
         const container = document.getElementById('chat-messages');
         if (messages.length > 0) {
@@ -735,7 +910,7 @@ function renderChatMessage(message) {
                     <span class="font-medium text-sm">${message.user_name || 'User'}</span>
                     <span class="text-xs text-gray-500">${time}</span>
                 </div>
-                <p class="text-sm text-gray-300 break-words">${message.message}</p>
+                <p class="text-sm text-gray-300 break-words">${message.content || message.message || ''}</p>
             </div>
         </div>
     `;
@@ -750,7 +925,7 @@ async function sendMessage() {
     try {
         await apiRequest(`/live/sessions/${sessionId}/chat/send/`, {
             method: 'POST',
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ content: message })
         });
         
         input.value = '';
