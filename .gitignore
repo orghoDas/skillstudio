@@ -43,3 +43,8 @@ db.sqlite3-journal
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary backend review render artifacts
+output/pdf/
+scripts/render_backend_review_pdf.py
+scripts/render_backend_review_typst_pdf.py

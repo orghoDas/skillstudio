@@ -20,6 +20,7 @@ from accounts.permissions import IsInstructor, IsAdmin
 from .models import Course, Lesson
 from social.models import Review
 from enrollments.models import Enrollment, LessonProgress
+from payments.models import Payment
 
 # Import from proper locations
 from instructors.views import InstructorDashboardView  # Main instructor dashboard
@@ -47,9 +48,10 @@ class AdminCourseStatsView(APIView):
         )
 
         # Revenue stats
-        total_revenue = Enrollment.objects.filter(
-            status__in=['active', 'completed']
-        ).aggregate(revenue=Sum('amount_paid'))['revenue'] or 0
+        total_revenue = Payment.objects.filter(
+            status='completed',
+            course__isnull=False,
+        ).aggregate(revenue=Sum('amount'))['revenue'] or 0
 
         # Top courses by enrollment
         top_courses = Course.objects.filter(

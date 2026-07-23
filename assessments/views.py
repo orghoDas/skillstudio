@@ -100,14 +100,12 @@ class SubmitAssignmentByLessonView(APIView):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         require_active_enrollment(request.user, lesson.module.course)
         
-        # Get or create assignment for this lesson
-        assignment, created = Assignment.objects.get_or_create(
-            lesson=lesson,
-            defaults={
-                'title': f"Assignment - {lesson.title}",
-                'instructions': lesson.content_text or ''
-            }
-        )
+        assignment = Assignment.objects.filter(lesson=lesson).first()
+        if not assignment:
+            return Response(
+                {'error': 'Assignment not found for this lesson.'},
+                status=404
+            )
         
         # Handle file upload if present
         file_url = None

@@ -7,7 +7,8 @@ from decimal import Decimal
 from datetime import timedelta
 from django.utils import timezone
 from .models import Course, Module, Lesson, Category, Tag, LessonResource, CourseVersion
-from enrollments.models import Enrollment
+from enrollments.models import Enrollment, LessonProgress
+from payments.models import Payment
 from social.models import Review
 
 User = get_user_model()
@@ -206,6 +207,35 @@ class CourseDetailContentExposureTest(APITestCase):
             resource_type="pdf"
         )
         self.url = reverse('course-detail', kwargs={'id': self.course.id})
+        self.sensitive_markers = [
+            'private paid lesson text',
+            'https://cdn.example.com/private-paid-video.mp4',
+            'private metadata',
+            'https://cdn.example.com/private-resource.pdf',
+        ]
+        self.forbidden_lesson_keys = {
+            'content_text',
+            'video_url',
+            'metadata',
+            'resources',
+            'file_url',
+        }
+
+    def assert_no_sensitive_lesson_payload(self, payload):
+        payload_text = repr(payload)
+        for marker in self.sensitive_markers:
+            self.assertNotIn(marker, payload_text)
+
+        def walk(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    self.assertNotIn(key, self.forbidden_lesson_keys)
+                    walk(child)
+            elif isinstance(value, list):
+                for item in value:
+                    walk(item)
+
+        walk(payload)
 
     def test_anonymous_course_detail_does_not_expose_paid_lesson_payload(self):
         response = self.client.get(self.url)
@@ -219,6 +249,7 @@ class CourseDetailContentExposureTest(APITestCase):
         self.assertNotIn('video_url', lesson_data)
         self.assertNotIn('metadata', lesson_data)
         self.assertNotIn('resources', lesson_data)
+        self.assert_no_sensitive_lesson_payload(response.data)
 
     def test_enrolled_course_detail_still_uses_catalog_lesson_shape(self):
         Enrollment.objects.create(
@@ -239,6 +270,78 @@ class CourseDetailContentExposureTest(APITestCase):
         self.assertNotIn('video_url', lesson_data)
         self.assertNotIn('metadata', lesson_data)
         self.assertNotIn('resources', lesson_data)
+        self.assert_no_sensitive_lesson_payload(response.data)
+
+    def test_anonymous_curriculum_aliases_do_not_expose_paid_lesson_payload(self):
+        urls = [
+            reverse('module-list', kwargs={'course_id': self.course.id}),
+            reverse('course-sections', kwargs={'course_id': self.course.id}),
+            reverse('course-sections-slug', kwargs={'slug': self.course.slug}),
+            reverse('section-lessons', kwargs={'id': self.module.id}),
+            reverse('lesson-list', kwargs={'module_id': self.module.id}),
+        ]
+
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assert_no_sensitive_lesson_payload(response.data)
+
+    def test_unenrolled_student_curriculum_aliases_do_not_expose_paid_lesson_payload(self):
+        self.client.force_authenticate(user=self.student)
+        urls = [
+            reverse('module-list', kwargs={'course_id': self.course.id}),
+            reverse('course-sections', kwargs={'course_id': self.course.id}),
+            reverse('section-lessons', kwargs={'id': self.module.id}),
+            reverse('lesson-list', kwargs={'module_id': self.module.id}),
+        ]
+
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assert_no_sensitive_lesson_payload(response.data)
+
+    def test_enrolled_student_curriculum_aliases_still_use_catalog_lesson_shape(self):
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active'
+        )
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(reverse('section-lessons', kwargs={'id': self.module.id}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        lesson_data = response.data['results'][0]
+        self.assertEqual(lesson_data['title'], self.lesson.title)
+        self.assertFalse(lesson_data['is_locked'])
+        self.assert_no_sensitive_lesson_payload(response.data)
+
+    def test_unpublished_course_curriculum_aliases_are_restricted_to_owner(self):
+        self.course.status = 'draft'
+        self.course.published_at = None
+        self.course.save(update_fields=['status', 'published_at'])
+
+        public_urls = [
+            reverse('module-list', kwargs={'course_id': self.course.id}),
+            reverse('course-sections', kwargs={'course_id': self.course.id}),
+            reverse('course-sections-slug', kwargs={'slug': self.course.slug}),
+            reverse('section-lessons', kwargs={'id': self.module.id}),
+        ]
+
+        for url in public_urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(user=self.instructor)
+        response = self.client.get(reverse('module-list', kwargs={'course_id': self.course.id}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assert_no_sensitive_lesson_payload(response.data)
 
 
 class CourseModerationWorkflowAPITest(APITestCase):
@@ -438,6 +541,105 @@ class EnrollmentIntegrationTest(TestCase):
         self.assertEqual(enrollment.user, self.student)
         self.assertEqual(enrollment.course, self.course)
         self.assertEqual(enrollment.status, 'active')
+
+
+class CourseRoutedAPIDriftTest(APITestCase):
+    """Regression tests for routed course endpoints that drifted from models/services."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email='student@test.com',
+            password='testpass123',
+            role='student'
+        )
+        self.instructor = User.objects.create_user(
+            email='instructor@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.admin = User.objects.create_user(
+            email='admin@test.com',
+            password='testpass123',
+            role='admin'
+        )
+        self.category = Category.objects.create(name="Programming", slug="programming")
+        self.course = Course.objects.create(
+            title="Python Course",
+            slug="python-course-routed",
+            instructor=self.instructor,
+            category=self.category,
+            status='published',
+            published_at=timezone.now(),
+            price=Decimal('49.00'),
+            is_free=False,
+        )
+        self.module = Module.objects.create(course=self.course, title="Module", position=1)
+        self.lesson = Lesson.objects.create(
+            module=self.module,
+            title="Next Lesson",
+            content_type='text',
+            content_text='Private content',
+            position=1,
+            is_free=False,
+        )
+
+    def test_resume_learning_returns_next_lesson_for_active_enrollment(self):
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active',
+        )
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(reverse('resume-learning', kwargs={'course_id': self.course.id}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['lesson_id'], self.lesson.id)
+        self.assertEqual(response.data['lesson_title'], self.lesson.title)
+        self.assertEqual(response.data['module_title'], self.module.title)
+
+    def test_resume_learning_reports_completed_when_required_lessons_done(self):
+        enrollment = Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active',
+        )
+        LessonProgress.objects.create(
+            enrollment=enrollment,
+            user=self.student,
+            lesson=self.lesson,
+            is_completed=True,
+        )
+        self.client.force_authenticate(user=self.student)
+
+        response = self.client.get(reverse('resume-learning', kwargs={'course_id': self.course.id}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['completed'])
+
+    def test_admin_course_stats_uses_completed_course_payments_for_revenue(self):
+        Enrollment.objects.create(
+            user=self.student,
+            course=self.course,
+            status='active',
+        )
+        Payment.objects.create(
+            user=self.student,
+            instructor=self.instructor,
+            course=self.course,
+            amount=Decimal('49.00'),
+            original_amount=Decimal('49.00'),
+            status='completed',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(reverse('admin-course-stats'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total_revenue'], 49.0)
+        self.assertEqual(response.data['courses']['published'], 1)
+        self.assertEqual(response.data['enrollments']['active'], 1)
 
 
 class ReviewIntegrationTest(TestCase):

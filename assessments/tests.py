@@ -8,6 +8,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from courses.models import Course, Module, Lesson, Category
+from enrollments.models import Enrollment
 from .models import Quiz, QuizQuestion, QuestionOption, QuizAttempt, Assignment, Submission, Rubric
 from .services import start_quiz_attempt, submit_quiz_attempt, submit_assignment
 from .services_scoring import calculate_quiz_score
@@ -372,8 +373,6 @@ class QuizAPITest(APITestCase):
         self.opt_correct = QuestionOption.objects.create(question=self.question, option_text='Correct', is_correct=True)
         self.opt_wrong = QuestionOption.objects.create(question=self.question, option_text='Wrong', is_correct=False)
         
-        # Enroll student
-        from enrollments.models import Enrollment
         Enrollment.objects.create(user=self.student, course=self.course, status='active')
         
         self.client.force_authenticate(user=self.student)
@@ -385,6 +384,254 @@ class QuizAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['title'], 'Test Quiz')
+
+    def test_alternate_quiz_start_requires_active_enrollment(self):
+        unenrolled_student = User.objects.create_user(
+            email='unenrolled@test.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=unenrolled_student)
+
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(
+            QuizAttempt.objects.filter(quiz=self.quiz, user=unenrolled_student).exists()
+        )
+
+    def test_alternate_quiz_start_rejects_unpublished_quiz(self):
+        self.quiz.is_published = False
+        self.quiz.save(update_fields=['is_published'])
+
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(
+            QuizAttempt.objects.filter(quiz=self.quiz, user=self.student).exists()
+        )
+
+    def test_alternate_quiz_start_allows_enrolled_student(self):
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('attempt_id', response.data)
+        self.assertTrue(
+            QuizAttempt.objects.filter(
+                quiz=self.quiz,
+                user=self.student,
+                completed_at__isnull=True,
+            ).exists()
+        )
+
+    def test_quiz_question_analytics_uses_current_option_schema(self):
+        QuizAttempt.objects.create(
+            quiz=self.quiz,
+            user=self.student,
+            answers={str(self.question.id): str(self.opt_wrong.id)}
+        )
+        other_student = User.objects.create_user(
+            email='other-student@test.com',
+            password='testpass123'
+        )
+        QuizAttempt.objects.create(
+            quiz=self.quiz,
+            user=other_student,
+            answers={str(self.question.id): str(self.opt_correct.id)}
+        )
+        QuizAttempt.objects.create(
+            quiz=self.quiz,
+            user=self.instructor,
+            answers={}
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.get(f'/api/assessments/analytics/quiz/{self.quiz.id}/questions/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]['question_id'], self.question.id)
+        self.assertEqual(response.data[0]['attempts'], 2)
+        self.assertEqual(response.data[0]['wrong_attempts'], 1)
+        self.assertEqual(response.data[0]['wrong_ratio'], 0.5)
+
+
+class ManageQuizAPITest(APITestCase):
+    """Test instructor quiz management endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email='student-manage@test.com',
+            password='testpass123',
+            role='student'
+        )
+        self.instructor = User.objects.create_user(
+            email='instructor-manage@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.other_instructor = User.objects.create_user(
+            email='other-instructor-manage@test.com',
+            password='testpass123',
+            role='instructor'
+        )
+        self.category = Category.objects.create(name='Management', slug='management')
+        self.course = Course.objects.create(
+            title='Managed Course',
+            instructor=self.instructor,
+            category=self.category,
+            status='draft'
+        )
+        self.module = Module.objects.create(course=self.course, title='Module', position=1)
+        self.lesson = Lesson.objects.create(
+            module=self.module,
+            title='Managed Lesson',
+            content_type='quiz',
+            content_text='Quiz lesson',
+            position=1
+        )
+        self.url = f'/api/assessments/quiz/lesson/{self.lesson.id}/manage/'
+
+    def test_manage_quiz_get_does_not_create_missing_quiz(self):
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data['error'], 'Quiz not found for this lesson.')
+        self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
+
+    def test_manage_quiz_get_returns_existing_quiz(self):
+        quiz = Quiz.objects.create(
+            lesson=self.lesson,
+            title='Existing Quiz',
+            passing_percentage=70
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], quiz.id)
+        self.assertEqual(response.data['title'], 'Existing Quiz')
+
+    def test_manage_quiz_post_explicitly_creates_quiz(self):
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            self.url,
+            {
+                'title': 'Created Explicitly',
+                'passing_percentage': 80,
+                'questions': [
+                    {
+                        'text': 'Question 1',
+                        'type': 'mcq',
+                        'marks': 2,
+                        'options': [
+                            {'text': 'Correct', 'is_correct': True},
+                            {'text': 'Wrong', 'is_correct': False},
+                        ],
+                    }
+                ],
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        quiz = Quiz.objects.get(lesson=self.lesson)
+        self.assertEqual(quiz.title, 'Created Explicitly')
+        self.assertEqual(quiz.total_marks, 2)
+        self.assertEqual(quiz.questions.count(), 1)
+
+    def test_manage_quiz_get_rejects_non_owner_without_creating_quiz(self):
+        self.client.force_authenticate(user=self.other_instructor)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
+
+    def test_manage_quiz_post_rejects_question_replacement_after_attempts_exist(self):
+        quiz = Quiz.objects.create(lesson=self.lesson, title='Attempted Quiz')
+        question = QuizQuestion.objects.create(
+            quiz=quiz,
+            question_text='Original question',
+            question_type='mcq',
+            marks=3
+        )
+        correct_option = QuestionOption.objects.create(
+            question=question,
+            option_text='Original correct',
+            is_correct=True
+        )
+        QuizAttempt.objects.create(
+            quiz=quiz,
+            user=self.student,
+            answers={str(question.id): str(correct_option.id)}
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            self.url,
+            {
+                'title': 'Replacement Attempt',
+                'questions': [
+                    {
+                        'text': 'Replacement question',
+                        'type': 'mcq',
+                        'marks': 1,
+                        'options': [{'text': 'New correct', 'is_correct': True}],
+                    }
+                ],
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('cannot be replaced after attempts exist', response.data['error'])
+        quiz.refresh_from_db()
+        self.assertEqual(quiz.title, 'Attempted Quiz')
+        self.assertEqual(quiz.questions.count(), 1)
+        question.refresh_from_db()
+        self.assertEqual(question.question_text, 'Original question')
+        self.assertTrue(QuestionOption.objects.filter(id=correct_option.id).exists())
+        self.assertEqual(
+            QuizAttempt.objects.get(quiz=quiz, user=self.student).answers,
+            {str(question.id): str(correct_option.id)}
+        )
+
+    def test_manage_quiz_post_allows_settings_update_after_attempts_exist(self):
+        quiz = Quiz.objects.create(
+            lesson=self.lesson,
+            title='Attempted Quiz',
+            passing_percentage=50,
+            time_limit_minutes=15
+        )
+        question = QuizQuestion.objects.create(
+            quiz=quiz,
+            question_text='Original question',
+            question_type='mcq',
+            marks=3
+        )
+        QuizAttempt.objects.create(quiz=quiz, user=self.student)
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            self.url,
+            {
+                'title': 'Settings Only',
+                'passing_percentage': 65,
+                'time_limit_minutes': 20,
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        quiz.refresh_from_db()
+        self.assertEqual(quiz.title, 'Settings Only')
+        self.assertEqual(quiz.passing_percentage, 65)
+        self.assertEqual(quiz.time_limit_minutes, 20)
+        self.assertTrue(QuizQuestion.objects.filter(id=question.id).exists())
 
 
 class AssignmentAPITest(APITestCase):
@@ -403,8 +650,6 @@ class AssignmentAPITest(APITestCase):
         
         self.assignment = Assignment.objects.create(lesson=self.lesson, title='Essay', max_score=100)
         
-        # Enroll student
-        from enrollments.models import Enrollment
         Enrollment.objects.create(user=self.student, course=self.course, status='active')
         
         self.client.force_authenticate(user=self.student)
@@ -416,3 +661,45 @@ class AssignmentAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['title'], 'Essay')
+
+    def test_submit_assignment_by_lesson_uses_existing_assignment(self):
+        url = f'/api/assessments/assignment/lesson/{self.lesson.id}/submit/'
+
+        response = self.client.post(
+            url,
+            {'text': 'My assignment answer'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'Assignment submitted successfully')
+        self.assertEqual(
+            Submission.objects.get(assignment=self.assignment, user=self.student).text,
+            'My assignment answer'
+        )
+
+    def test_submit_assignment_by_lesson_does_not_create_missing_assignment(self):
+        lesson_without_assignment = Lesson.objects.create(
+            module=self.module,
+            title='Lesson Without Assignment',
+            content_type='assignment',
+            content_text='Do not turn this into curriculum data',
+            position=2
+        )
+        url = f'/api/assessments/assignment/lesson/{lesson_without_assignment.id}/submit/'
+
+        response = self.client.post(
+            url,
+            {'text': 'Trying to create assignment implicitly'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data['error'], 'Assignment not found for this lesson.')
+        self.assertFalse(Assignment.objects.filter(lesson=lesson_without_assignment).exists())
+        self.assertFalse(
+            Submission.objects.filter(
+                user=self.student,
+                text='Trying to create assignment implicitly'
+            ).exists()
+        )

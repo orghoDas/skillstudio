@@ -183,6 +183,15 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
         return not course.enrollments.filter(user=user, status='active').exists()
 
 
+class CatalogLessonSummarySerializer(CourseDetailLessonSerializer):
+    class Meta:
+        model = Lesson
+        fields = [
+            'id', 'module', 'title', 'position', 'is_free', 'content_type',
+            'duration_seconds', 'is_locked'
+        ]
+
+
 class CourseDetailModuleSerializer(serializers.ModelSerializer):
     lessons = CourseDetailLessonSerializer(many=True, read_only=True)
     lesson_count = serializers.SerializerMethodField()
@@ -190,6 +199,19 @@ class CourseDetailModuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Module
         fields = ['id', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
+        read_only_fields = ['created_at']
+
+    def get_lesson_count(self, obj):
+        return obj.lessons.count()
+
+
+class CatalogModuleSerializer(serializers.ModelSerializer):
+    lessons = CatalogLessonSummarySerializer(many=True, read_only=True)
+    lesson_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Module
+        fields = ['id', 'course', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
         read_only_fields = ['created_at']
 
     def get_lesson_count(self, obj):

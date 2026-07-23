@@ -4,8 +4,10 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 # from certificates.services import issue_certificate_if_eligible
+from enrollments.services import require_active_enrollment
 
 from .models import Quiz, QuizAttempt
+from .services import start_quiz_attempt
 from .services_timer import auto_submit_attempt
 from .services_scoring import calculate_quiz_score
 
@@ -15,13 +17,9 @@ class StartQuizAttemptView(APIView):
 
     def post(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, id=quiz_id)
+        require_active_enrollment(request.user, quiz.lesson.module.course)
 
-        attempt, created = QuizAttempt.objects.get_or_create(
-            quiz=quiz,
-            user=request.user,
-            completed_at__isnull=True,
-            defaults={}
-        )
+        attempt = start_quiz_attempt(request.user, quiz)
 
         return Response({
             "attempt_id": attempt.id,
@@ -91,4 +89,3 @@ class SubmitQuizAttemptView(APIView):
             #     if certificate else None
             # )
         })
-

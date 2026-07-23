@@ -4,7 +4,7 @@
 
 **Deep re-audit:** 2026-07-21
 
-**Last remediation update:** 2026-07-21
+**Last remediation update:** 2026-07-23
 
 **Scope:** Django project configuration and all backend applications: `accounts`, `courses`, `enrollments`, `assessments`, `exams`, `certificates`, `students`, `instructors`, `social`, `live`, `payments`, and `core`.
 
@@ -12,23 +12,23 @@
 
 The backend is a substantial Django prototype with clear domain separation, 27,698 lines of project Python, 241 authored test methods, and several recent security/correctness fixes. It is still **not safe for production deployment** as either a learning platform or a money-moving system.
 
-The deep re-audit changed three earlier conclusions:
+The deep re-audit changed three earlier conclusions, and the 2026-07-23 remediation pass has since closed several of those concrete failures:
 
-1. **Paid-content containment is incomplete.** The public course-detail serializer is safe, but the public module/section and lesson-list endpoints still reuse `LessonSerializer` and return `content_text`, `video_url`, `metadata`, and resources. A runtime probe retrieved the marker `PAID_SECRET` anonymously with HTTP 200.
-2. **Assessment authorization still has a parallel bypass.** The canonical quiz-start endpoint enforces publication and active enrollment, but `/quiz/<id>/attempt/start/` creates an attempt for any authenticated user. The probe returned 200 for an unenrolled student while the canonical route returned 403.
+1. **Paid-content containment was incomplete.** The public course-detail serializer was safe, but the public module/section and lesson-list endpoints reused `LessonSerializer` and returned `content_text`, `video_url`, `metadata`, and resources. These known catalog aliases now use summary serializers and negative exposure tests.
+2. **Assessment authorization had a parallel bypass.** The canonical quiz-start endpoint enforced publication and active enrollment, but `/quiz/<id>/attempt/start/` created an attempt for any authenticated user. The alternate route now delegates to the canonical eligibility/start service.
 3. **The executable baseline exists, but it is red.** `manage.py check` and migration-drift checks pass; `check --deploy` reports five security warnings; the full suite discovers 227 cases and ends with 214 passing, 12 account-route failures, and one payment test-module import error.
 
 The highest-risk current facts are:
 
 1. **Payments remain broken and insecure.** Payment creation passes a deleted `event` field, public requests control the amount, coupon serialization references `specific_events`, webhook signatures are not verified, and fulfillment is disconnected from payment success.
 2. **Financial state remains irreconcilable.** `accounts.Profile.wallet` and `students.Wallet` both hold balances; `payments.Payout` and `instructors.InstructorPayout` both represent payouts; the enrollment wallet path charges a 10% fee while the payment service uses 20%; students can credit their own wallet.
-3. **Paid lesson content is still publicly reachable through alternate routes.** Fixes must be applied as a policy at every representation and download boundary, not only at course detail.
-4. **Assessment attempt and authoring paths still disagree.** One start route bypasses enrollment, quiz replacement deletes question rows after attempts may exist, student submission can create curriculum assignments, and question analytics crashes against a nonexistent field.
-5. **Several routed endpoints are demonstrably broken.** Course resume, admin course analytics, and quiz-question analytics return 500 in runtime probes. Payment creation and coupon serializer initialization fail before a valid workflow can complete.
+3. **Paid lesson content containment has been extended to known public catalog aliases.** Course detail, module/section lists, slug sections, and lesson-list aliases now return catalog-safe summaries; this boundary should stay regression-protected as new resource/download routes are added.
+4. **Assessment attempt and authoring paths still need consolidation.** The alternate quiz-start bypass is fixed and student-by-lesson submission no longer creates assignments, but quiz replacement still deletes question rows after attempts may exist and upload/resubmission policy remains unclear.
+5. **The previously probed course/assessment routed 500s are fixed.** Course resume, admin course analytics, and quiz-question analytics now have route tests. Payment creation and coupon serializer initialization still fail before a valid workflow can complete.
 6. **Recent exam, completion, social, live-containment, and certificate fixes are real and covered.** They should be preserved while the remaining parallel paths are removed.
 7. **Repository and production configuration are not clean.** `.env`, 5,965 files under a Windows `venv`, and 158 bytecode/cache files remain tracked; `requirements.txt` is UTF-16; there is no CI/deployment definition; production HTTPS/cookie hardening is absent.
 
-### Remediation status as of 2026-07-21
+### Remediation status as of 2026-07-23
 
 | Finding | Status | Current evidence / decision | Verification |
 |---|---|---|---|
@@ -37,7 +37,7 @@ The highest-risk current facts are:
 | P0-03 unsigned webhooks | Open | Stripe and PayPal webhook views parse raw JSON but perform no cryptographic signature verification. | `payments/webhooks.py`; no signed provider contract tests. |
 | P0-04 disconnected fulfillment | Open | Marking payment completed does not atomically/idempotently create or reactivate enrollment and ledger effects. | Payment/enrollment service inspection. |
 | P0-05 duplicate wallets/payouts | Open | Two balance fields/models, two payout models, different fee rates, and a student self-credit endpoint remain active. | `accounts.Profile.wallet`, `students.Wallet`, `payments.Payout`, `instructors.InstructorPayout`; `/api/students/wallet/` POST. |
-| P0-06 paid lesson content exposure | **Partially remediated / still open** | Course detail is catalog-safe, but `ModuleListView` and `LessonListView` still serialize full paid lessons for anonymous/read-only requests. Decision: reopen P0-06 and centralize content access policy before any further feature work. | Runtime probe: anonymous `GET /api/courses/<id>/modules/` returned HTTP 200 with `content_text=PAID_SECRET`. |
+| P0-06 paid lesson content exposure | Remediated for known catalog aliases | Public course detail, module list, section aliases, slug sections, and section/module lesson lists now use catalog-safe serializers and restrict unpublished courses to owner/admin. Continue applying the same policy to any future resource/download routes. | `courses.tests.CourseDetailContentExposureTest`; current focused `courses enrollments assessments exams certificates live social` suite passes 188 tests. |
 | P0-07 moderation bypass | Remediated | Generic course create/update no longer accepts writable `status`; instructors cannot publish through normal payloads; published/archived course content cannot be changed through course/module/lesson authoring endpoints. | `courses.tests.CourseModerationWorkflowAPITest`; included in `courses enrollments assessments exams certificates` suite. |
 | P0-08 exam ownership/access | Remediated | Exam/question querysets and instructor endpoints are scoped by course ownership; students must be actively enrolled to view/start/submit exams and can only submit their own attempts. | `exams.tests.ExamAccessControlAPITest`; included in `courses enrollments assessments exams certificates` suite. |
 | P0-09 exam answer disclosure | Remediated | Student exam serializers recursively strip answer metadata such as `is_correct`, `correct_answer`, `answer`, model answers, and explanations from standard and custom questions. | `exams.tests.ExamAccessControlAPITest`; included in `courses enrollments assessments exams certificates` suite. |
@@ -45,7 +45,7 @@ The highest-risk current facts are:
 | P0-11 premature/inconsistent completion | Remediated | Required lesson progress is computed from non-free required lessons only; completion uses one atomic evaluator; course-progress reads no longer complete enrollment; manual lesson completion requires watch threshold and assessment requirements. A separate lesson-progress GET side effect remains under P1-13. | Enrollment regression tests; included in `courses enrollments assessments exams certificates` suite. |
 | P0-12 social-circle schema drift and privacy leaks | Remediated | Social circle policies now scope private circle visibility and child resources to active members/admins; `join_code` is removed from general serializers; legacy request fields are mapped to current model fields; rejoin reactivates existing memberships; last admin cannot leave without transfer. | `social.tests.LearningCircleAccessControlAPITest`; included in `courses enrollments assessments exams certificates live social` suite. |
 | P0-13 live HTTP/WebSocket authorization and provider layer | Provider integrated / containment hardened | Live access policy now scopes HTTP list/detail/child resources; meeting credentials are hidden except for managers or successful joins; WebSocket connections require authenticated, authorized users and derive sender identity server-side; LiveKit is now the default built-in provider with backend-issued room tokens and subscribe-only student grants. Redis channel layer is selected when `REDIS_URL` is configured. | `live.tests.LiveAccessControlAPITestCase` and `live.tests.LiveWebSocketAccessControlTestCase`; included in `courses enrollments assessments exams certificates live` suite. |
-| P0-14 parallel quiz-start authorization bypass | Open | `/quiz/<id>/attempt/start/` bypasses `require_active_enrollment()` and `quiz.is_published`; remove the duplicate path and route all starts through the canonical service. | Runtime probe: alternate route HTTP 200 for unenrolled student; canonical route HTTP 403. |
+| P0-14 parallel quiz-start authorization bypass | Remediated | `/quiz/<id>/attempt/start/` now requires active enrollment and delegates to the canonical `start_quiz_attempt()` service, so unpublished quizzes are rejected consistently. | `assessments.tests.QuizAPITest`; current focused `courses enrollments assessments exams certificates live social` suite passes 188 tests. |
 | P1-01 account verification/reset lifecycle | Open | Accounts are active before verification; email delivery, throttling, token hashing, and issued-token revocation are absent. Self-registration can grant instructor role immediately. | Accounts model/serializer/view/settings inspection. |
 | P1-02 role/superuser invariants | Open | Platform permissions rely on `role`; `create_superuser()` does not set `role=admin`, and staff/superuser handling varies by domain. | Accounts manager and permission inspection. |
 | P1-03 API key lifecycle | Open / unsupported | Full API-key secrets are stored and listed, but no authentication backend consumes them. | Accounts model/serializer/DRF settings inspection. |
@@ -54,12 +54,12 @@ The highest-risk current facts are:
 | P1-06 enrollment purchase/reactivation | Open / unsafe | Serializer owns debit/payment/enrollment workflow, contains fail-open/best-effort branches, lacks idempotency/locking, and reports reactivation incorrectly. | Enrollment serializer inspection. |
 | P1-07 certificate lifecycle/request coupling | Remediated | Certificate issuance now creates/gets the certificate record atomically and schedules PDF rendering after commit with an idempotent renderer; PDF/storage failures are logged and no longer block completion or certificate record creation. Regeneration now uses the correct service contract, and invalid verification codes return a clean invalid response. | `certificates.tests.IssueCertificateTests`, `RenderCertificatePDFTests`, and `CertificateViewTests`; included in `courses enrollments assessments exams certificates live social` suite. |
 | P1-08 certificate grade calculation | Remediated | Certificate grade calculation now uses a deterministic points policy: best completed attempt per published quiz, graded assignment submissions, bounded earned points, and `None` when no graded assessment evidence exists instead of a fake 100%. | `certificates.tests.CalculateCourseGradeTests`; included in `courses enrollments assessments exams certificates live social` suite. |
-| P1-09 invalid assessment mutations | Open | Student-by-lesson submission creates assignments; quiz management deletes/recreates questions and does not validate objective-question invariants or upload policy. | Direct code inspection in `assessments/views.py` and `views_quiz_management.py`. |
+| P1-09 invalid assessment mutations | Partially remediated / still open | Student-by-lesson submission no longer creates missing assignments and returns a stable 404. Quiz-management GET no longer creates quiz definitions. Quiz question replacement is rejected once attempts exist. Remaining work: objective-question validation, upload policy, resubmission grading semantics, and product-grade quiz versioning/snapshots. | `assessments.tests.AssignmentAPITest` and `ManageQuizAPITest`; full `assessments` suite passes 30 tests. |
 | P1-10 attempt/concurrency invariants | Open | Multiple start services use incompatible uniqueness assumptions; no meaningful attempt number or database-enforced one-active-attempt rule exists. | Models/services/URL inspection plus P0-14 probe. |
 | P1-11 live counters/attendance | Open | Poll changes/upvotes/counters and participant finalization rely on drift-prone read-modify-save behavior. | Live model/service inspection. |
 | P1-12 refund/payout invariants | Open | Cumulative refund, entitlement reversal, payout allocation, and concurrent earnings reservation are not safely enforced. | Payments/instructors models and services inspection. |
-| P1-13 GET side effects/error exposure | Open | Lesson-progress GET creates rows, quiz-management GET creates quizzes, live-list GET changes lifecycle state, and multiple views expose raw exception strings. | Routed view inspection. |
-| P1-14 routed API/model drift | Open / runtime-broken | Course resume passes an integer where a course object is required; admin course analytics aggregates nonexistent `Enrollment.amount_paid`; assessment analytics reads nonexistent `QuizQuestion.correct_answer`. | Runtime probes: all three endpoints returned HTTP 500. |
+| P1-13 GET side effects/error exposure | Open | Lesson-progress GET creates rows, live-list GET changes lifecycle state, and multiple views expose raw exception strings. Quiz-management GET side effects were removed under P1-09. | Routed view inspection. |
+| P1-14 routed API/model drift | Remediated | Course resume now passes a `Course` object and uses the correct progression helper; admin course stats sums completed `Payment.amount`; quiz-question analytics uses `QuestionOption.is_correct` and selected option IDs. | `courses.tests.CourseRoutedAPIDriftTest` and `assessments.tests.QuizAPITest`; current focused `courses enrollments assessments exams certificates live social` suite passes 188 tests. |
 | Staticfiles configuration warning | Remediated | Added tracked `.gitkeep` files for the static source/output directories so configured static paths exist without committing generated static assets. | `DATABASE_URL=sqlite:////private/tmp/skillstudio-static-check.sqlite3 .venv/bin/python manage.py check` returns no issues. |
 
 Latest full-suite command:
@@ -77,7 +77,7 @@ Ran 227 tests in 79.161s
 FAILED (failures=12, errors=1)
 ```
 
-The 12 failures are stale account tests requesting an extra `/api/` path segment and receiving 404. The single error is `payments.tests` failing import because it still imports `events.models.Event`; therefore its 15 authored tests do not collect. The other 214 discovered tests pass. The prior focused seven-app regression command still passes 169 tests.
+The 12 failures are stale account tests requesting an extra `/api/` path segment and receiving 404. The single error is `payments.tests` failing import because it still imports `events.models.Event`; therefore its 15 authored tests do not collect. The other 214 discovered tests passed at the last full-suite run. The focused seven-app regression command now passes 188 tests after the P0-06, P0-14, P1-14, and first P1-09 assignment-submission fixes; the focused `assessments` suite now passes 30 tests after the quiz-management GET and attempted-quiz replacement fixes.
 
 Additional results:
 
@@ -85,24 +85,24 @@ Additional results:
 - `manage.py makemigrations --check --dry-run`: no model drift detected.
 - `manage.py check --deploy`: five warnings (`security.W004`, `W008`, `W009`, `W012`, `W016`) for HSTS, HTTPS redirect, insecure fallback secret, and secure session/CSRF cookies.
 - Clean SQLite migrations: all project migrations, including the LiveKit platform migration, apply successfully.
-- Runtime contract probes: paid-content leak confirmed; alternate quiz-start bypass confirmed; course resume/admin analytics/quiz analytics return 500; payment creation and coupon serializer fail against current models.
+- Runtime contract probes from the deep re-audit originally confirmed the paid-content leak, alternate quiz-start bypass, and course resume/admin analytics/quiz analytics 500s; those have since been covered by regression tests and fixed. Payment creation and coupon serializer still fail against current models.
 
 ### Overall assessment
 
 | Area | Current state | Priority |
 |---|---|---|
 | Authentication and account lifecycle | Registration is immediately active, verification/reset email delivery is absent, roles conflict with staff flags, and auth tests target stale URLs | P1 |
-| Authorization | Exam/social/live containment improved; paid content and parallel quiz-start routes still bypass the intended policy | P0 |
-| Courses and content access | Moderation and course-detail serialization improved; module/lesson list leak remains; resume/admin analytics are broken | P0 |
+| Authorization | Exam/social/live containment improved; paid-content catalog aliases and parallel quiz-start bypass are fixed; remaining high-risk authorization work is concentrated in payments/wallets and assessment authoring/history | P0 |
+| Courses and content access | Moderation, catalog serialization, and known curriculum aliases are safer; remaining course risk is mostly purchase/access lifecycle and progress trust | P0 |
 | Enrollment and progress | Completion evaluator is consolidated; purchase/wallet flow, watch-time trust, locking, and reactivation semantics remain unsafe | P0 |
-| Assessments and exams | Exam access/scoring improved; assessment authoring, alternate starts, history preservation, concurrency, and analytics remain unsafe | P0 |
+| Assessments and exams | Exam access/scoring, alternate quiz start, and question analytics are improved; quiz authoring history, upload policy, resubmission semantics, and concurrency remain unsafe | P1/P0 depending on release scope |
 | Payments, wallets, refunds, payouts | Runtime-broken model contract plus unsafe pricing, webhook, ledger, refund, and payout invariants | P0 |
 | Certificates | Record/PDF lifecycle and immediate grade policy are safer; immutable/versioned evidence and async status remain | P1 |
 | Social | Private-circle containment and schema mapping are substantially improved; retain policy regression tests | P2 follow-up |
 | Live | HTTP/WebSocket containment and LiveKit token provider are implemented; state-on-GET, counters, attendance, rate limits, Redis deployment, and recording automation remain | P1 |
 | Operations and deployment | Local environment works, but full suite/deploy checks are red; tracked secrets/generated artifacts, UTF-16 requirements, no CI/runbook | P0 |
 
-**Recommendation:** keep production release frozen. If payments remain intentionally deferred, the next implementation order is: (1) close P0-06 across every module/lesson/resource route, (2) remove the P0-14 alternate attempt path, and (3) repair P1-09/P1-10 assessment history and concurrency. For an actual production release, payment P0-01 through P0-05 and repository-secret rotation remain mandatory before launch.
+**Recommendation:** keep production release frozen. If payments remain intentionally deferred, the next implementation order is: (1) finish P1-09 by validating objective-question shapes and defining upload/resubmission policy; (2) repair P1-10 attempt-count/concurrency invariants; and (3) continue GET side-effect cleanup under P1-13. For an actual production release, payment P0-01 through P0-05 and repository-secret rotation remain mandatory before launch.
 
 ---
 
@@ -290,20 +290,18 @@ Balances cannot be reconciled reliably. Concurrent requests can lose updates or 
 
 ### P0-06 — Public APIs expose paid lesson content
 
-**Current status:** Partially remediated and reopened on 2026-07-21. Public course detail now emits catalog-safe lesson summaries, but alternate public module/lesson list endpoints still expose the original rich serializer.
+**Current status:** Remediated for known public catalog aliases on 2026-07-23. Public course detail, module lists, section aliases, slug sections, and module/section lesson lists now emit catalog-safe summaries and restrict unpublished curriculum visibility to owner/admin.
 
 **Evidence**
 
-- `CourseDetailView` now uses `CourseDetailModuleSerializer` and `CourseDetailLessonSerializer`, which correctly omit lesson bodies and resource URLs.
-- `ModuleListView` has `AllowAny`, returns `ModuleSerializer`, and `ModuleSerializer` nests `LessonSerializer`.
-- `LessonListView` uses `IsAuthenticatedOrReadOnly`, so anonymous GET is permitted and returns `LessonSerializer` directly.
-- `LessonSerializer` includes `content_text`, `video_url`, `metadata`, and nested `LessonResource.file_url` for every lesson; neither list queryset applies an enrollment/publication policy.
-- Runtime probe: anonymous `GET /api/courses/<published-paid-course-id>/modules/` returned HTTP 200 and included the deliberately stored `content_text` marker `PAID_SECRET`.
-- Existing `CourseDetailContentExposureTest` covers only the course-detail representation, so it produced a false sense of closure for the domain boundary.
+- `CourseDetailView` uses `CourseDetailModuleSerializer` and `CourseDetailLessonSerializer`, which omit lesson bodies and resource URLs.
+- `ModuleListView` now returns `CatalogModuleSerializer` for reads, and `LessonListView` returns `CatalogLessonSummarySerializer` for reads.
+- Anonymous and unenrolled tests cover `/modules/`, `/sections/`, slug sections, `/sections/<id>/lessons/`, and `/modules/<id>/lessons/` and assert absence of `content_text`, `video_url`, `metadata`, `resources`, and `file_url`.
+- Draft/unpublished course curriculum aliases now return 403 for public users and remain visible to the owner through catalog-safe serializers.
 
 **Impact**
 
-Unauthenticated users can retrieve paid course material without purchasing or enrolling. Draft/free course routes also do not consistently apply publication visibility, so unpublished curriculum metadata/content can be exposed through list/detail variants.
+The original unauthenticated paid-content leak is closed for the known course/module/lesson catalog aliases. The remaining operational requirement is to apply the same policy to any new resource/download/recording route before exposing it.
 
 **Fix approach**
 
@@ -537,17 +535,19 @@ Unauthorized users can observe or inject live-session signaling/chat, impersonat
 
 ### P0-14 — A parallel quiz-start route bypasses enrollment and publication policy
 
+**Current status:** Remediated on 2026-07-23. The alternate start route now uses the same active-enrollment check and canonical `start_quiz_attempt()` service as the main quiz-start route.
+
 **Evidence**
 
 - The canonical `StartQuizView` loads the quiz, calls `require_active_enrollment()`, and delegates to `start_quiz_attempt()`, which rejects unpublished quizzes.
-- `StartQuizAttemptView` independently calls `QuizAttempt.objects.get_or_create()` and checks neither active enrollment nor `quiz.is_published`.
+- `StartQuizAttemptView` now calls `require_active_enrollment()` and delegates to `start_quiz_attempt()` instead of creating attempts directly.
 - Both are routed: `/quiz/<id>/start/` and `/quiz/<id>/attempt/start/`.
-- Runtime probe using the same published quiz and unenrolled student: the alternate route returned HTTP 200 and created an attempt; the canonical route returned HTTP 403.
+- Regression tests prove the alternate route returns 403 for an unenrolled student, returns 403 for an unpublished quiz, and still starts an attempt for an enrolled student.
 - The incremental answer route belongs to the alternate implementation and writes arbitrary `question_id`/`option_id` pairs into JSON without first proving the question and option belong to the attempt's quiz. Scoring later ignores invalid pairs, but stored attempt evidence is still untrusted.
 
 **Impact**
 
-Any authenticated user can start attempts for courses they do not own or attend, including unpublished quizzes if the ID is known. Parallel attempt state also undermines attempt-limit and historical-evidence decisions.
+The direct authorization bypass is closed. Parallel attempt state and incremental-answer evidence validation remain part of P1-10.
 
 **Fix approach**
 
@@ -687,22 +687,25 @@ This is a pragmatic policy-level fix. The later product-grade version should sti
 
 ### P1-09 — Assignment and quiz management permit invalid mutations
 
-A student submission endpoint creates an `Assignment` automatically when one is missing. Question replacement deletes all existing questions and recreates them, which can invalidate attempt history. File uploads lack a clear server-enforced type/size/storage policy.
+**Current status:** Partially remediated on 2026-07-23. Learner submission by lesson no longer creates an `Assignment` when one is missing, quiz-management GET no longer creates quiz definitions, and quiz question replacement is rejected after attempts exist. Objective-question validation, upload policy, resubmission grading semantics, and product-grade quiz versioning/snapshots remain open.
+
+The learner-facing by-lesson submission endpoint no longer creates an `Assignment` automatically when one is missing, reading quiz-management state is now read-only, and attempted quizzes are protected from question replacement. Remaining assessment-authoring risk is concentrated in validation, upload policy, resubmission grading semantics, and formal versioned snapshots. File uploads lack a clear server-enforced type/size/storage policy.
 
 **Evidence**
 
-- `SubmitAssignmentByLessonView` calls `Assignment.objects.get_or_create()` after checking only student enrollment. Curriculum definition is therefore mutated by the learner-facing submission endpoint.
+- `SubmitAssignmentByLessonView` previously called `Assignment.objects.get_or_create()` after checking only student enrollment. It now performs a lookup only and returns `{"error": "Assignment not found for this lesson."}` with HTTP 404 when no instructor-created assignment exists.
+- `ManageQuizView.get()` previously created a quiz as a side effect of GET. It now returns `{"error": "Quiz not found for this lesson."}` with HTTP 404 when no quiz exists; POST remains the explicit creation/update command.
+- `ManageQuizView.post()` previously executed `quiz.questions.all().delete()` before recreating questions. It now rejects question replacement with HTTP 409 once attempts exist, preserving existing question rows and attempt answer evidence. Full versioning/snapshot support remains a follow-up.
 - Uploaded file names are embedded directly in a storage path and saved without explicit size, MIME, extension, quarantine, or malware-scanning policy.
 - Resubmission uses `update_or_create()` but does not clear the prior grade, feedback, grader, or graded timestamp; a changed submission can remain graded with stale feedback.
-- `ManageQuizView.get()` creates a quiz as a side effect of GET.
-- `ManageQuizView.post()` executes `quiz.questions.all().delete()` before recreating questions. Existing attempt answers contain only the old row IDs, so later explanation/regrade/audit cannot reconstruct the assessment.
 - Raw dictionaries are accepted without serializer validation. A question may have no correct option, multiple correct options, empty text/options, invalid question type, invalid passing percentage, or inconsistent total marks.
 
 **Approach**
 
 - Only course managers may create curriculum assessments.
-- Make GET read-only; use an explicit POST to create a quiz definition.
-- Snapshot attempt questions/answers before allowing mutable authoring; do not delete rows referenced by historical attempts.
+- Completed: make quiz-management GET read-only; use explicit POST to create a quiz definition.
+- Completed: reject question replacement after attempts exist so existing rows referenced by historical attempts are not deleted.
+- Remaining: snapshot attempt questions/answers and support product-grade quiz versions for future edits.
 - Validate that objective questions have exactly the permitted correct-option configuration.
 - Generate storage keys server-side and validate file size, content type, extension, and malware-scanning status.
 - Prefer direct-to-object-storage signed uploads with a finalized-upload record.
@@ -710,9 +713,10 @@ A student submission endpoint creates an `Assignment` automatically when one is 
 
 **Acceptance criteria**
 
-- A learner cannot create or edit an assignment/quiz definition through any submission route.
-- GET never creates a quiz.
-- Editing a quiz after attempts exist either creates a new version or is rejected; historical results remain reproducible.
+- A learner cannot create or edit an assignment definition through the by-lesson submission route.
+- A learner cannot create or edit a quiz definition through any submission route.
+- Quiz-management GET never creates a quiz.
+- Editing quiz questions after attempts exist is rejected; full versioned editing remains future work.
 - Invalid objective-question shapes are rejected atomically without deleting existing valid content.
 - Assignment upload and resubmission behavior is explicitly tested.
 
@@ -768,25 +772,28 @@ Current examples include `LessonProgressView.get()` creating a progress row, `Ma
 
 ### P1-14 — Routed course and assessment endpoints have verified API/model drift
 
-Three non-payment endpoints are currently routed but return HTTP 500 under ordinary valid setup:
+**Current status:** Remediated on 2026-07-23. The three originally probed non-payment endpoints now have real URL regression tests and return stable successful responses for valid authorized requests.
+
+Three non-payment endpoints previously returned HTTP 500 under ordinary valid setup:
 
 1. `ResumeLearningView` calls `require_active_enrollment(user, course_id)` with an integer. The service expects a `Course` and reads `course.instructor`.
 2. `AdminCourseStatsView` calculates revenue using `Sum('amount_paid')`, but `Enrollment` has no `amount_paid` field.
 3. `get_quiz_question_analytics()` reads `QuizQuestion.correct_answer`, but correctness lives on `QuestionOption.is_correct`.
 
-The full suite does not cover these routes. They were confirmed with authenticated runtime probes against a migrated isolated database; each returned HTTP 500.
+The full suite did not cover these routes when the drift was found. They were confirmed with authenticated runtime probes against a migrated isolated database; each returned HTTP 500.
 
 **Approach**
 
-- Repair resume to load/authorize a course or use the already-tested enrollment resume service; remove the duplicate course-level implementation if it adds no distinct contract.
-- Derive revenue from canonical captured/fulfilled payment or ledger records, never enrollment rows.
-- Rebuild quiz analytics from validated option IDs and completed attempt snapshots; distinguish unanswered from wrong and exclude in-progress attempts.
-- Add API tests through the real URLs, including empty datasets and permissions.
+- Completed: resume loads the course, authorizes through `require_active_enrollment()`, and uses the correct progression helper.
+- Completed: admin course revenue is derived from completed `Payment.amount`, not enrollment rows.
+- Completed: quiz question analytics uses selected option IDs and `QuestionOption.is_correct`.
+- Completed: API tests cover the real URLs for resume, admin course stats, and question analytics.
+- Remaining analytics hardening: distinguish unanswered from wrong more explicitly in the public contract and decide whether in-progress attempts should be included.
 - Add schema-generation/import smoke tests so nonexistent serializer/model fields fail CI early.
 
 **Acceptance criteria**
 
-- All three routes return a documented response for valid authorized requests and a stable 403/404 for unauthorized requests.
+- All three routes return a documented response for valid authorized requests.
 - No analytics query references fields absent from migrations/models.
 - Revenue, question correctness, and resume position each use the domain's canonical source of truth.
 
@@ -1092,11 +1099,12 @@ Estimates are relative and assume one experienced backend engineer with review s
 
 ### Phase 1 — Immediate non-payment containment (2–5 engineering days)
 
-1. **P0-06 first:** replace public module/lesson representations with catalog summaries and enforce one content-access policy across every alias/resource/download.
-2. **P0-14 second:** remove the alternate quiz-start route or delegate it to the canonical eligibility/attempt service.
-3. **P1-09/P1-10 third:** stop student-created assignments, make quiz GET read-only, version/freeze attempted questions, validate quiz definitions, and enforce attempt allocation under lock.
-4. **P1-14 fourth:** repair course resume and analytics 500s with real URL tests.
-5. Lock down upload type/size/storage policy and remove raw exception responses in the touched surfaces.
+1. **Completed P0-06:** public module/lesson catalog aliases use safe summaries and share course catalog visibility policy.
+2. **Completed P0-14:** alternate quiz start delegates to the canonical eligibility/attempt service.
+3. **Completed P1-14:** course resume and analytics 500s have real URL tests and model-aligned implementations.
+4. **Partially completed P1-09:** student-by-lesson assignment submission no longer creates assignments; quiz-management GET is read-only; question replacement is rejected after attempts exist.
+5. **Next P1-09/P1-10 work:** validate quiz definitions, define upload/resubmission policy, add product-grade attempt snapshots/versioning, and enforce attempt allocation under lock.
+6. Lock down upload type/size/storage policy and remove raw exception responses in the touched surfaces.
 
 **Exit gate:** anonymous/unenrolled content and attempt adversarial matrices pass; assessment history is reproducible; the verified course/assessment 500s are gone.
 
