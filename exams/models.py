@@ -16,8 +16,6 @@ class QuestionBank(models.Model):
     QUESTION_TYPES = [
         ('mcq', 'Multiple Choice'),
         ('tf', 'True/False'),
-        ('short', 'Short Answer'),
-        ('essay', 'Essay'),
     ]
     
     DIFFICULTIES = [
@@ -33,7 +31,6 @@ class QuestionBank(models.Model):
     
     # For MCQ and True/False
     options = models.JSONField(default=list, blank=True)  # [{"text": "Option A", "is_correct": true}]
-    correct_answer = models.TextField(blank=True)  # For short answer/essay model answers
     
     # Metadata
     marks = models.DecimalField(max_digits=5, decimal_places=2, default=1)
@@ -58,7 +55,6 @@ class QuestionBank(models.Model):
 #     question_type varchar(10) NOT NULL DEFAULT 'mcq',
 #     difficulty varchar(10) NOT NULL DEFAULT 'medium',
 #     options jsonb NOT NULL DEFAULT '[]',
-#     correct_answer text NOT NULL DEFAULT '',
 #     marks numeric(5,2) NOT NULL DEFAULT 1,
 #     explanation text NOT NULL DEFAULT '',
 #     tags jsonb NOT NULL DEFAULT '[]',
@@ -171,6 +167,7 @@ class ExamAttempt(models.Model):
 
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='attempts')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_attempts')
+    attempt_number = models.PositiveIntegerField(default=1)
     
     # Timing
     started_at = models.DateTimeField(auto_now_add=True)
@@ -186,17 +183,24 @@ class ExamAttempt(models.Model):
     # Status
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
     
-    # Grading (for manual grading of essay questions)
     auto_graded_at = models.DateTimeField(null=True, blank=True)
-    manually_graded_at = models.DateTimeField(null=True, blank=True)
-    graded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='graded_exam_attempts')
     
     class Meta:
         ordering = ['-started_at']
-        unique_together = [['exam', 'user', 'started_at']]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['exam', 'user', 'attempt_number'],
+                name='uniq_exam_attempt_number_per_user',
+            ),
+            models.UniqueConstraint(
+                fields=['exam', 'user'],
+                condition=models.Q(status='in_progress'),
+                name='uniq_active_exam_attempt_per_user',
+            ),
+        ]
     
     def __str__(self):
-        return f"{self.user.email} - {self.exam.title} - {self.started_at}"
+        return f"{self.user.email} - {self.exam.title} - attempt {self.attempt_number}"
     
     def is_expired(self):
         """Check if attempt time has expired."""
@@ -244,8 +248,6 @@ class ExamAttempt(models.Model):
     #     passed boolean NULL,
     #     status varchar(20) NOT NULL DEFAULT 'in_progress',
     #     auto_graded_at timestamptz NULL,
-    #     manually_graded_at timestamptz NULL,
-    #     graded_by_id integer NULL REFERENCES accounts_user(id) ON DELETE SET NULL,
     #     UNIQUE (exam_id, user_id, started_at)
     # );
     # CREATE INDEX IF NOT EXISTS idx_exams_examattempt_started ON exams_examattempt (started_at DESC);

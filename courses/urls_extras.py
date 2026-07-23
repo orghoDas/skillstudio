@@ -5,7 +5,6 @@ from .views import (
     CategoryListView, CategoryCreateView, TagListCreateView,
     InstructorCoursesView,
 )
-from .views_reviews import ReviewUpdateView, ReviewDeleteView
 from instructors.views import InstructorDashboardView
 from .views_analytics import AdminCourseStatsView
 
@@ -26,10 +25,6 @@ urlpatterns = [
     path('categories/', CategoryListView.as_view(), name='category-list'),
     path('categories/create/', CategoryCreateView.as_view(), name='category-create'),
     path('tags/', TagListCreateView.as_view(), name='tag-list-create'),
-    
-    # Reviews (not course-specific)
-    path('reviews/<int:id>/update/', ReviewUpdateView.as_view(), name='update-review'),
-    path('reviews/<int:id>/delete/', ReviewDeleteView.as_view(), name='delete-review'),
     
     # Instructor routes
     path('instructor/courses/', InstructorCoursesView.as_view(), name='instructor-courses'),

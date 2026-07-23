@@ -32,9 +32,7 @@ urlpatterns = [
     path("api/certificates/", include("certificates.urls")),
     path('api/instructors/', include('instructors.urls')),
     # path('api/events/', include('events.urls')),  # Removed
-    path('api/social/', include('social.urls')),
     path('api/payments/', include('payments.urls')),
-    path('api/live/', include('live.urls')),
 ]
 
 if settings.DEBUG:

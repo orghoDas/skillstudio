@@ -91,25 +91,25 @@ accounts/
 
 | Method | Endpoint | Description | Auth Required | Role |
 |--------|----------|-------------|---------------|------|
-| POST | `/accounts/api/register/` | Register new user | No | - |
-| POST | `/accounts/api/token/` | Login (get JWT) | No | - |
-| POST | `/accounts/api/token/refresh/` | Refresh JWT | No | - |
-| POST | `/accounts/api/verify-email/` | Verify email | No | - |
-| POST | `/accounts/api/resend-verification/` | Resend verification | Yes | - |
-| POST | `/accounts/api/password-reset/` | Request reset | No | - |
-| POST | `/accounts/api/password-reset/confirm/` | Confirm reset | No | - |
-| POST | `/accounts/api/change-password/` | Change password | Yes | - |
-| GET/PATCH | `/accounts/api/me/` | Current user info | Yes | - |
-| GET/PATCH | `/accounts/api/profile/` | User profile | Yes | - |
-| GET | `/accounts/api/users/` | List users | Yes | Admin |
-| GET | `/accounts/api/users/{id}/` | User details | Yes | Admin |
-| PATCH | `/accounts/api/users/{id}/role/` | Update role | Yes | Admin |
-| POST | `/accounts/api/users/{id}/promote/` | Promote to instructor | Yes | Admin |
-| POST | `/accounts/api/users/{id}/activate/` | Activate user | Yes | Admin |
-| POST | `/accounts/api/users/{id}/deactivate/` | Deactivate user | Yes | Admin |
-| GET/POST | `/accounts/api/api-keys/` | List/create API keys | Yes | - |
-| GET/DELETE | `/accounts/api/api-keys/{id}/` | Get/delete API key | Yes | - |
-| PATCH | `/accounts/api/api-keys/{id}/toggle/` | Toggle API key | Yes | - |
+| POST | `/api/accounts/register/` | Register new user | No | - |
+| POST | `/api/accounts/token/` | Login (get JWT) | No | - |
+| POST | `/api/accounts/token/refresh/` | Refresh JWT | No | - |
+| POST | `/api/accounts/verify-email/` | Verify email | No | - |
+| POST | `/api/accounts/resend-verification/` | Resend verification | Yes | - |
+| POST | `/api/accounts/password-reset/` | Request reset | No | - |
+| POST | `/api/accounts/password-reset/confirm/` | Confirm reset | No | - |
+| POST | `/api/accounts/change-password/` | Change password | Yes | - |
+| GET/PATCH | `/api/accounts/me/` | Current user info | Yes | - |
+| GET/PATCH | `/api/accounts/profile/` | User profile | Yes | - |
+| GET | `/api/accounts/users/` | List users | Yes | Admin |
+| GET | `/api/accounts/users/{id}/` | User details | Yes | Admin |
+| PATCH | `/api/accounts/users/{id}/role/` | Update role | Yes | Admin |
+| POST | `/api/accounts/users/{id}/promote/` | Promote to instructor | Yes | Admin |
+| POST | `/api/accounts/users/{id}/activate/` | Activate user | Yes | Admin |
+| POST | `/api/accounts/users/{id}/deactivate/` | Deactivate user | Yes | Admin |
+| GET/POST | `/api/accounts/api-keys/` | List/create API keys | Yes | - |
+| GET/DELETE | `/api/accounts/api-keys/{id}/` | Get/delete API key | Yes | - |
+| PATCH | `/api/accounts/api-keys/{id}/toggle/` | Toggle API key | Yes | - |
 
 ## 🚀 Quick Start
 
@@ -122,6 +122,7 @@ accounts/
    ```bash
    python manage.py createsuperuser
    ```
+   Superusers are created with `role=admin` and `is_staff=True`.
 4. **Run tests:**
    ```bash
    python manage.py test accounts
@@ -131,21 +132,21 @@ accounts/
 
 ### Register a new user
 ```bash
-curl -X POST http://localhost:8000/accounts/api/register/ \
+curl -X POST http://localhost:8000/api/accounts/register/ \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"Pass123!","password2":"Pass123!"}'
 ```
 
 ### Login
 ```bash
-curl -X POST http://localhost:8000/accounts/api/token/ \
+curl -X POST http://localhost:8000/api/accounts/token/ \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"Pass123!"}'
 ```
 
 ### Access protected endpoint
 ```bash
-curl http://localhost:8000/accounts/api/me/ \
+curl http://localhost:8000/api/accounts/me/ \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 

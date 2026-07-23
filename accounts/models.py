@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
+import hashlib
+import secrets
 import uuid
 
 
@@ -21,6 +23,15 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_active', True)
+        extra_fields.setdefault('role', User.Role.ADMIN)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+        if extra_fields.get('role') != User.Role.ADMIN:
+            raise ValueError("Superuser must have role=admin.")
+
         return self.create_user(email, password, **extra_fields)
 
 
@@ -41,8 +52,51 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(role='admin', is_staff=True)
+                    | ~models.Q(role='admin')
+                ),
+                name='admin_role_requires_staff',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_superuser=False)
+                    | models.Q(role='admin', is_staff=True)
+                ),
+                name='superuser_requires_admin_role_staff',
+            ),
+        ]
+
     def __str__(self):
         return f'{self.email} ({self.role})'
+
+    @property
+    def is_platform_admin(self):
+        return self.role == self.Role.ADMIN or self.is_superuser
+
+    def normalize_role_flags(self):
+        if self.is_superuser:
+            self.role = self.Role.ADMIN
+            self.is_staff = True
+        elif self.role == self.Role.ADMIN:
+            self.is_staff = True
+
+    def save(self, *args, **kwargs):
+        original_role = self.role
+        original_is_staff = self.is_staff
+        self.normalize_role_flags()
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            if self.role != original_role:
+                update_fields.add('role')
+            if self.is_staff != original_is_staff:
+                update_fields.add('is_staff')
+            kwargs['update_fields'] = update_fields
+        super().save(*args, **kwargs)
 
 
 class Profile(models.Model):
@@ -87,10 +141,44 @@ class PasswordResetToken(models.Model):
 
 class APIKey(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    key_hash = models.CharField(max_length=64, unique=True)
+    prefix = models.CharField(max_length=16, db_index=True)
     label = models.CharField(max_length=255)
+    scopes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+
+    @staticmethod
+    def generate_secret():
+        return f"ss_{secrets.token_urlsafe(32)}"
+
+    @staticmethod
+    def hash_secret(secret):
+        return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def create_for_user(cls, user, label, scopes=None):
+        secret = cls.generate_secret()
+        api_key = cls.objects.create(
+            user=user,
+            label=label,
+            scopes=scopes or [],
+            prefix=secret[:16],
+            key_hash=cls.hash_secret(secret),
+        )
+        return api_key, secret
+
+    def revoke(self):
+        self.is_active = False
+        self.revoked_at = timezone.now()
+        self.save(update_fields=["is_active", "revoked_at"])
+
+    def restore(self):
+        self.is_active = True
+        self.revoked_at = None
+        self.save(update_fields=["is_active", "revoked_at"])
 
     def __str__(self):
         return f'APIKey {self.label} for {self.user.email}'
@@ -154,8 +242,12 @@ class APIKey(models.Model):
 # CREATE TABLE accounts_apikey (
 #     id SERIAL PRIMARY KEY,
 #     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     key UUID NOT NULL UNIQUE,
+#     key_hash VARCHAR(64) NOT NULL UNIQUE,
+#     prefix VARCHAR(16) NOT NULL,
 #     label VARCHAR(255) NOT NULL,
+#     scopes JSONB NOT NULL DEFAULT '[]',
 #     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+#     last_used_at TIMESTAMP WITH TIME ZONE NULL,
+#     revoked_at TIMESTAMP WITH TIME ZONE NULL,
 #     is_active BOOLEAN NOT NULL DEFAULT TRUE
 # );

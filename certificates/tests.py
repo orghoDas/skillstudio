@@ -10,7 +10,7 @@ from rest_framework import status
 
 from courses.models import Course, Module, Lesson
 from enrollments.models import Enrollment
-from assessments.models import Quiz, QuizAttempt, Assignment, Submission
+from assessments.models import Quiz, QuizAttempt
 from .models import Certificate
 from .services import (
     issue_certificate,
@@ -158,20 +158,26 @@ class CalculateCourseGradeTests(TestCase):
         grade = calculate_course_grade(self.user, self.course)
         self.assertEqual(grade, Decimal('80.0'))
 
-    def test_grade_calculation_uses_best_completed_quiz_attempt_once(self):
-        """Multiple attempts for one quiz should contribute only the best score."""
+    def test_grade_calculation_ignores_incomplete_quiz_attempts(self):
+        """Incomplete quiz attempts should not contribute certificate grade evidence."""
         quiz = Quiz.objects.create(
             lesson=self.lesson,
             title='Quiz 1',
             total_marks=100
         )
-
-        QuizAttempt.objects.create(
-            user=self.user,
-            quiz=quiz,
-            score=Decimal('50.0'),
-            completed_at=timezone.now()
+        second_lesson = Lesson.objects.create(
+            module=self.module,
+            title='Lesson 2',
+            position=2,
+            content_type='text',
+            content_text='Sample lesson content'
         )
+        incomplete_quiz = Quiz.objects.create(
+            lesson=second_lesson,
+            title='Quiz 2',
+            total_marks=100
+        )
+
         QuizAttempt.objects.create(
             user=self.user,
             quiz=quiz,
@@ -180,7 +186,7 @@ class CalculateCourseGradeTests(TestCase):
         )
         QuizAttempt.objects.create(
             user=self.user,
-            quiz=quiz,
+            quiz=incomplete_quiz,
             score=Decimal('100.0'),
             completed_at=None
         )
@@ -207,26 +213,8 @@ class CalculateCourseGradeTests(TestCase):
         grade = calculate_course_grade(self.user, self.course)
         self.assertIsNone(grade)
     
-    def test_grade_calculation_with_assignments_only(self):
-        """Test grade calculation with only assignments."""
-        assignment = Assignment.objects.create(
-            lesson=self.lesson,
-            title='Assignment 1',
-            instructions='Test assignment'
-        )
-        
-        Submission.objects.create(
-            user=self.user,
-            assignment=assignment,
-            text='Test submission',
-            grade=Decimal('90.0')
-        )
-        
-        grade = calculate_course_grade(self.user, self.course)
-        self.assertEqual(grade, Decimal('90.0'))
-    
-    def test_grade_calculation_mixed(self):
-        """Test grade calculation with quizzes and assignments."""
+    def test_grade_calculation_uses_completed_quiz_attempts(self):
+        """Test grade calculation with quiz evidence only."""
         quiz = Quiz.objects.create(
             lesson=self.lesson,
             title='Quiz 1',
@@ -239,24 +227,28 @@ class CalculateCourseGradeTests(TestCase):
             score=Decimal('80.0'),
             completed_at=timezone.now()
         )
-        
-        assignment = Assignment.objects.create(
-            lesson=self.lesson,
-            title='Assignment 1',
-            instructions='Test',
-            max_score=100
-        )
-        
-        Submission.objects.create(
-            user=self.user,
-            assignment=assignment,
-            text='Test',
-            grade=Decimal('90.0')
-        )
-        
-        # Should average: (80 + 90) / 2 = 85
+
         grade = calculate_course_grade(self.user, self.course)
-        self.assertEqual(grade, Decimal('85.0'))
+        self.assertEqual(grade, Decimal('80.0'))
+
+    def test_grade_calculation_uses_attempt_total_snapshot(self):
+        """Certificate grades use the quiz total captured for the attempt."""
+        quiz = Quiz.objects.create(
+            lesson=self.lesson,
+            title='Quiz 1',
+            total_marks=100
+        )
+
+        QuizAttempt.objects.create(
+            user=self.user,
+            quiz=quiz,
+            score=Decimal('40.0'),
+            total_marks_snapshot=50,
+            completed_at=timezone.now()
+        )
+
+        grade = calculate_course_grade(self.user, self.course)
+        self.assertEqual(grade, Decimal('80.0'))
     
     def test_grade_calculation_no_assessments(self):
         """Test grade calculation with no assessments."""

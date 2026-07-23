@@ -145,8 +145,10 @@ async function loadProfile() {
         const userResponse = await apiRequest('/accounts/me/');
         if (!userResponse) return;
         
+        const accountProfile = userResponse.account_profile || {};
+
         // Basic info
-        const fullName = `${userResponse.first_name || ''} ${userResponse.last_name || ''}`.trim() || 'Student';
+        const fullName = `${accountProfile.first_name || ''} ${accountProfile.last_name || ''}`.trim() || accountProfile.full_name || 'Student';
         document.getElementById('profile-name').textContent = fullName;
         document.getElementById('profile-email').textContent = userResponse.email;
         document.getElementById('profile-avatar').textContent = userResponse.email?.charAt(0).toUpperCase() || 'S';
@@ -155,11 +157,12 @@ async function loadProfile() {
         const profileResponse = await apiRequest('/accounts/profile/');
         
         if (profileResponse) {
-            document.getElementById('first_name').value = profileResponse.first_name || '';
-            document.getElementById('last_name').value = profileResponse.last_name || '';
-            document.getElementById('phone').value = profileResponse.phone || '';
-            document.getElementById('location').value = profileResponse.location || '';
-            document.getElementById('bio').value = profileResponse.bio || '';
+            const profile = profileResponse.account_profile || {};
+            document.getElementById('first_name').value = profile.first_name || '';
+            document.getElementById('last_name').value = profile.last_name || '';
+            document.getElementById('phone').value = profile.phone || '';
+            document.getElementById('location').value = profile.location || '';
+            document.getElementById('bio').value = profile.bio || '';
         }
         
         // Get dynamic stats from student dashboard

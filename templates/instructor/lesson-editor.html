@@ -101,7 +101,6 @@
                     <option value="video">Video</option>
                     <option value="text">Article</option>
                     <option value="quiz">Quiz</option>
-                    <option value="assignment">Assignment</option>
                 </select>
             </div>
             <div>
@@ -175,10 +174,6 @@ function switchContentType() {
         case 'quiz':
             container.innerHTML = renderQuizEditor();
             loadQuizContent();
-            break;
-        case 'assignment':
-            container.innerHTML = renderAssignmentEditor();
-            loadAssignmentContent();
             break;
     }
 }
@@ -268,60 +263,6 @@ function renderQuizEditor() {
                         <input type="number" id="quiz-attempts" min="1" value="3" 
                             class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
                     </div>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function renderAssignmentEditor() {
-    return `
-        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-            <h2 class="text-xl font-semibold mb-4">Assignment Details</h2>
-            
-            <div class="mb-6">
-                <label for="assignment-title" class="block text-sm font-medium mb-2">Assignment Title</label>
-                <input type="text" id="assignment-title" 
-                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-            </div>
-            
-            <div class="mb-6">
-                <label for="assignment-instructions" class="block text-sm font-medium mb-2">Instructions</label>
-                <textarea id="assignment-instructions" rows="8" placeholder="Provide detailed instructions for the assignment..."
-                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                    <label for="assignment-max-score" class="block text-sm font-medium mb-2">Maximum Score</label>
-                    <input type="number" id="assignment-max-score" min="0" value="100" 
-                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label for="assignment-due-days" class="block text-sm font-medium mb-2">Due After (days)</label>
-                    <input type="number" id="assignment-due-days" min="0" value="7" 
-                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                </div>
-            </div>
-            
-            <div class="mb-6">
-                <label class="block text-sm font-medium mb-2">Submission Type</label>
-                <div class="space-y-2">
-                    <label class="flex items-center space-x-3">
-                        <input type="checkbox" name="submission-type" value="text" checked
-                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                        <span class="text-sm">Text Submission</span>
-                    </label>
-                    <label class="flex items-center space-x-3">
-                        <input type="checkbox" name="submission-type" value="file"
-                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                        <span class="text-sm">File Upload</span>
-                    </label>
-                    <label class="flex items-center space-x-3">
-                        <input type="checkbox" name="submission-type" value="url"
-                            class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                        <span class="text-sm">URL/Link</span>
-                    </label>
                 </div>
             </div>
         </div>
@@ -420,29 +361,6 @@ async function loadQuizContent() {
     } catch (error) {
         // No existing quiz, start fresh
         addQuestion();
-    }
-}
-
-function loadAssignmentContent() {
-    const metadata = lessonData.metadata || {};
-    
-    if (metadata.title) {
-        document.getElementById('assignment-title').value = metadata.title;
-    }
-    if (lessonData.content_text) {
-        document.getElementById('assignment-instructions').value = lessonData.content_text;
-    }
-    if (metadata.max_score) {
-        document.getElementById('assignment-max-score').value = metadata.max_score;
-    }
-    if (metadata.due_days) {
-        document.getElementById('assignment-due-days').value = metadata.due_days;
-    }
-    if (metadata.submission_types) {
-        metadata.submission_types.forEach(type => {
-            const checkbox = document.querySelector(`input[name="submission-type"][value="${type}"]`);
-            if (checkbox) checkbox.checked = true;
-        });
     }
 }
 
@@ -609,11 +527,6 @@ async function saveContent(isDraft = false) {
                 // Save quiz via separate API endpoint
                 await saveQuizData();
                 break;
-                
-            case 'assignment':
-                lessonUpdateData.content_text = document.getElementById('assignment-instructions').value;
-                lessonUpdateData.metadata = collectAssignmentData();
-                break;
         }
         
         // Save to server
@@ -677,18 +590,5 @@ function collectQuizData() {
     };
 }
 
-function collectAssignmentData() {
-    const submissionTypes = [];
-    document.querySelectorAll('input[name="submission-type"]:checked').forEach(cb => {
-        submissionTypes.push(cb.value);
-    });
-    
-    return {
-        title: document.getElementById('assignment-title').value,
-        max_score: parseInt(document.getElementById('assignment-max-score').value),
-        due_days: parseInt(document.getElementById('assignment-due-days').value),
-        submission_types: submissionTypes
-    };
-}
 </script>
 {% endblock %}

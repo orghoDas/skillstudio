@@ -173,24 +173,25 @@ async function loadProfile() {
         const profileResponse = await apiRequest('/accounts/profile/');
         
         if (profileResponse) {
-            document.getElementById('headline').value = profileResponse.headline || '';
-            document.getElementById('profile-headline').textContent = profileResponse.headline || 'Instructor';
-            document.getElementById('bio').value = profileResponse.bio || '';
+            const profile = profileResponse.instructor_profile || {};
+            document.getElementById('headline').value = profile.headline || '';
+            document.getElementById('profile-headline').textContent = profile.headline || 'Instructor';
+            document.getElementById('bio').value = profile.bio || '';
             
             // Convert array to comma-separated string
-            const expertiseStr = Array.isArray(profileResponse.expertise_areas) 
-                ? profileResponse.expertise_areas.join(', ') 
+            const expertiseStr = Array.isArray(profile.expertise_areas)
+                ? profile.expertise_areas.join(', ')
                 : '';
             document.getElementById('expertise').value = expertiseStr;
             
-            document.getElementById('teaching_experience').value = profileResponse.years_of_experience || '';
-            document.getElementById('website').value = profileResponse.website || '';
-            document.getElementById('linkedin').value = profileResponse.linkedin || '';
-            document.getElementById('twitter').value = profileResponse.twitter || '';
+            document.getElementById('teaching_experience').value = profile.years_of_experience || '';
+            document.getElementById('website').value = profile.website || '';
+            document.getElementById('linkedin').value = profile.linkedin || '';
+            document.getElementById('twitter').value = profile.twitter || '';
             
             // Stats
-            document.getElementById('stats-courses').textContent = profileResponse.total_courses || 0;
-            document.getElementById('stats-students').textContent = profileResponse.total_students || 0;
+            document.getElementById('stats-courses').textContent = profile.total_courses || 0;
+            document.getElementById('stats-students').textContent = profile.total_students || 0;
         }
         
         // Member since
@@ -239,7 +240,7 @@ async function handleProfileUpdate(e) {
     };
     
     try {
-        const response = await apiRequest('/accounts/profile/', {
+        const response = await apiRequest('/instructors/profile/', {
             method: 'PUT',
             body: JSON.stringify(formData)
         });

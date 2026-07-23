@@ -6,11 +6,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .serializers import (
-    RegisterSerializer, ProfileSerializer, MeSerializer,
+    RegisterSerializer, AccountProfileSerializer, MeSerializer,
     ChangePasswordSerializer, PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer, EmailVerificationSerializer,
     APIKeySerializer, CreateAPIKeySerializer, UserSerializer,
-    UpdateUserRoleSerializer
+    UpdateUserRoleSerializer, UnifiedProfileSerializer,
 )
 from .models import Profile, User, EmailVerificationToken, PasswordResetToken, APIKey
 from .permissions import IsInstructor, IsAdmin
@@ -196,46 +196,19 @@ class ChangePasswordView(APIView):
 
 
 class ProfileView(APIView):
-    """Get and update user profile - returns appropriate profile based on role"""
+    """Get and update the stable current-user profile envelope."""
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
-        user = request.user
-        
-        # Check if user is instructor
-        if user.role in ['instructor', 'admin']:
-            from instructors.models import InstructorProfile
-            from instructors.serializers import InstructorProfileSerializer
-            
-            # Get or create instructor profile
-            instructor_profile, created = InstructorProfile.objects.get_or_create(user=user)
-            serializer = InstructorProfileSerializer(instructor_profile)
-            return Response(serializer.data)
-        else:
-            # Return student profile
-            profile, created = Profile.objects.get_or_create(user=user)
-            serializer = ProfileSerializer(profile)
-            return Response(serializer.data)
+        serializer = UnifiedProfileSerializer(request.user)
+        return Response(serializer.data)
     
     def put(self, request):
-        user = request.user
-        
-        # Check if user is instructor
-        if user.role in ['instructor', 'admin']:
-            from instructors.models import InstructorProfile
-            from instructors.serializers import InstructorProfileSerializer
-            
-            instructor_profile, created = InstructorProfile.objects.get_or_create(user=user)
-            serializer = InstructorProfileSerializer(instructor_profile, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            profile, created = Profile.objects.get_or_create(user=user)
-            serializer = ProfileSerializer(profile, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        serializer = AccountProfileSerializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(UnifiedProfileSerializer(request.user).data)
     
     def patch(self, request):
         return self.put(request)
@@ -260,30 +233,7 @@ class MeView(APIView):
             pass
 
         serializer = MeSerializer(user)
-        data = serializer.data
-        
-        # Add profile data based on role
-        if user.role in ['instructor', 'admin']:
-            from instructors.models import InstructorProfile
-            instructor_profile, _ = InstructorProfile.objects.get_or_create(user=user)
-            data['bio'] = instructor_profile.bio
-            data['headline'] = instructor_profile.headline
-            data['website'] = instructor_profile.website
-            data['linkedin'] = instructor_profile.linkedin
-            data['twitter'] = instructor_profile.twitter
-            data['expertise'] = ', '.join(instructor_profile.expertise_areas) if instructor_profile.expertise_areas else ''
-            data['teaching_experience'] = instructor_profile.years_of_experience
-        else:
-            # Add student profile data if exists
-            try:
-                profile = user.profile
-                data['bio'] = profile.bio
-                data['full_name'] = profile.full_name
-            except:
-                data['bio'] = ''
-                data['full_name'] = ''
-        
-        return Response(data)
+        return Response(serializer.data)
 
     def patch(self, request):
         serializer = MeSerializer(
@@ -386,10 +336,19 @@ class APIKeyListCreateView(generics.ListCreateAPIView):
         return APIKeySerializer
     
     def get_queryset(self):
-        return APIKey.objects.filter(user=self.request.user)
-    
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        return APIKey.objects.filter(user=self.request.user).order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        serializer = CreateAPIKeySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        api_key, secret = APIKey.create_for_user(
+            user=request.user,
+            label=serializer.validated_data["label"],
+            scopes=serializer.validated_data.get("scopes", []),
+        )
+        data = APIKeySerializer(api_key).data
+        data["key"] = secret
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 class APIKeyDetailView(generics.RetrieveDestroyAPIView):
@@ -399,7 +358,7 @@ class APIKeyDetailView(generics.RetrieveDestroyAPIView):
     lookup_field = 'id'
     
     def get_queryset(self):
-        return APIKey.objects.filter(user=self.request.user)
+        return APIKey.objects.filter(user=self.request.user).order_by('-created_at')
 
 
 class APIKeyToggleView(APIView):
@@ -408,8 +367,10 @@ class APIKeyToggleView(APIView):
 
     def patch(self, request, key_id):
         api_key = get_object_or_404(APIKey, id=key_id, user=request.user)
-        api_key.is_active = not api_key.is_active
-        api_key.save()
+        if api_key.is_active:
+            api_key.revoke()
+        else:
+            api_key.restore()
         
         return Response({
             "message": f"API key {'activated' if api_key.is_active else 'deactivated'}.",
@@ -426,4 +387,3 @@ class InstructorOnlyView(APIView):
             "message": "Hello, Instructor!",
             'user': request.user.email
         })
-

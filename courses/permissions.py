@@ -1,5 +1,6 @@
 from rest_framework.permissions import BasePermission
 from enrollments.models import Enrollment
+from accounts.utils import is_platform_admin
 
 class CanAccessLesson(BasePermission):
     def has_object_permission(self, request, view, lesson):
@@ -10,7 +11,7 @@ class CanAccessLesson(BasePermission):
         
         course = lesson.module.course
 
-        if user.role == 'admin':
+        if is_platform_admin(user):
             return True
         
         if user.role == 'instructor' and course.instructor == user:

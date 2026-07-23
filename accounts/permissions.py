@@ -1,4 +1,5 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+from .utils import is_platform_admin
 
 
 class BaseRolePermission(BasePermission):
@@ -11,8 +12,8 @@ class BaseRolePermission(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # Admin ALWAYS allowed
-        if request.user.role == "admin":
+        # Platform admins are allowed across role-specific permission checks.
+        if is_platform_admin(request.user):
             return True
 
         return request.user.role in self.allowed_roles

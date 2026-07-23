@@ -14,15 +14,16 @@ from .serializers import (
 )
 from .services import (
     start_exam_attempt, submit_exam_attempt,
-    get_exam_analytics, grade_manual_questions
+    get_exam_analytics
 )
 from courses.models import Course
 from accounts.permissions import IsInstructor
+from accounts.utils import is_platform_admin
 from enrollments.models import Enrollment
 
 
 def is_admin_user(user):
-    return getattr(user, 'role', None) == 'admin' or user.is_staff
+    return is_platform_admin(user)
 
 
 def owns_course(user, course):
@@ -57,16 +58,6 @@ def get_manageable_exam_or_404(user, exam_id):
     if not owns_exam_course(user, exam):
         raise PermissionDenied("You do not have permission to manage this exam.")
     return exam
-
-
-def get_manageable_attempt_or_404(user, attempt_id):
-    attempt = get_object_or_404(
-        ExamAttempt.objects.select_related('exam__course', 'user'),
-        id=attempt_id
-    )
-    if not owns_exam_course(user, attempt.exam):
-        raise PermissionDenied("You do not have permission to manage this attempt.")
-    return attempt
 
 
 # ===========================
@@ -222,9 +213,9 @@ def start_exam(request, exam_id):
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
         
-    except ValueError as e:
+    except ValueError:
         return Response({
-            'error': str(e)
+            'error': 'Exam attempt could not be started.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -266,9 +257,9 @@ def submit_exam(request, exam_id):
         
         return Response(response_data, status=status.HTTP_200_OK)
         
-    except ValueError as e:
+    except ValueError:
         return Response({
-            'error': str(e)
+            'error': 'Exam submission could not be processed.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -343,28 +334,6 @@ def exam_attempts_list(request, exam_id):
     return Response({
         'attempts': serializer.data,
         'total_attempts': attempts.count()
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated, IsInstructor])
-def grade_manual_exam(request, attempt_id):
-    """Manually grade essay/short answer questions."""
-    attempt = get_manageable_attempt_or_404(request.user, attempt_id)
-    
-    manual_grades = request.data.get('manual_grades', {})
-    
-    if not manual_grades:
-        return Response({
-            'error': 'No manual grades provided'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    graded_attempt = grade_manual_questions(attempt, manual_grades, request.user)
-    serializer = ExamAttemptSerializer(graded_attempt)
-    
-    return Response({
-        'attempt': serializer.data,
-        'message': 'Exam graded successfully'
     })
 
 

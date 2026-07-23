@@ -13,7 +13,6 @@ class InstructorProfileAdmin(admin.ModelAdmin):
         'total_courses',
         'total_students',
         'revenue_display',
-        'rating_display',
         'created_at',
     ]
     list_filter = [
@@ -32,8 +31,6 @@ class InstructorProfileAdmin(admin.ModelAdmin):
         'total_courses',
         'total_students',
         'total_revenue',
-        'average_rating',
-        'total_reviews',
         'verified_at',
         'created_at',
         'updated_at',
@@ -64,8 +61,6 @@ class InstructorProfileAdmin(admin.ModelAdmin):
                 'total_courses',
                 'total_students',
                 'total_revenue',
-                'average_rating',
-                'total_reviews',
             )
         }),
         ('Verification', {
@@ -91,16 +86,6 @@ class InstructorProfileAdmin(admin.ModelAdmin):
     def revenue_display(self, obj):
         return format_html('${:,.2f}', obj.total_revenue)
     revenue_display.short_description = 'Revenue'
-    
-    def rating_display(self, obj):
-        color = 'green' if obj.average_rating >= 4.0 else 'orange' if obj.average_rating >= 3.0 else 'red'
-        return format_html(
-            '<span style="color: {};">{:.2f} ({} reviews)</span>',
-            color,
-            obj.average_rating,
-            obj.total_reviews
-        )
-    rating_display.short_description = 'Rating'
     
     def verify_instructors(self, request, queryset):
         for profile in queryset:

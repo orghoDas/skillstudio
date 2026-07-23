@@ -3,8 +3,6 @@ from .models import (
     Quiz,
     QuizAttempt,
     QuizQuestion,
-    Assignment,
-    Submission
 )
 
 
@@ -22,24 +20,8 @@ def get_course_assessment_overview(course):
         )
     )
 
-    assignments = Assignment.objects.filter(
-        lesson__module__course=course
-    )
-
-    assignment_stats = (
-        Submission.objects
-        .filter(assignment__in=assignments)
-        .values("assignment_id", "assignment__title")
-        .annotate(
-            submissions=Count("id"),
-            graded=Count("id", filter=Q(grade__isnull=False)),
-            avg_grade=Avg("grade"),
-        )
-    )
-
     return {
         "quiz_overview": quiz_stats,
-        "assignment_overview": assignment_stats
     }
 
 

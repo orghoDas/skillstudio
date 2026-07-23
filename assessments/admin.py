@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Quiz, QuizQuestion, QuestionOption, QuizAttempt, Assignment, Submission
+from .models import Quiz, QuizQuestion, QuestionOption, QuizAttempt
 
 
 @admin.register(Quiz)
@@ -15,8 +15,8 @@ class QuestionOptionInline(admin.TabularInline):
 
 @admin.register(QuizQuestion)
 class QuizQuestionAdmin(admin.ModelAdmin):
-    list_display = ("id", "quiz", "question_type", "difficulty")
-    list_filter = ("question_type", "difficulty")
+    list_display = ("id", "quiz", "difficulty")
+    list_filter = ("difficulty",)
     inlines = [QuestionOptionInline]
 
 
@@ -24,17 +24,4 @@ class QuizQuestionAdmin(admin.ModelAdmin):
 class QuizAttemptAdmin(admin.ModelAdmin):
     list_display = ("id", "quiz", "user", "started_at", "completed_at", "score")
     list_filter = ("completed_at",)
-    search_fields = ("user__email",)
-
-
-@admin.register(Assignment)
-class AssignmentAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "lesson", "due_date", "created_at")
-    search_fields = ("title",)
-
-
-@admin.register(Submission)
-class SubmissionAdmin(admin.ModelAdmin):
-    list_display = ("id", "assignment", "user", "submitted_at", "grade", "graded_at")
-    list_filter = ("graded_at",)
     search_fields = ("user__email",)

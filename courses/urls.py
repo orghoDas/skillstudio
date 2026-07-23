@@ -15,10 +15,6 @@ from .views import (
     # Categories & Tags
     CategoryListView, CategoryCreateView, TagListCreateView,
 )
-from .views_reviews import (
-    CourseReviewListView, CourseReviewCreateView, ReviewUpdateView,
-    ReviewDeleteView, CourseRatingStatsView
-)
 from .views_analytics import AdminCourseStatsView
 from instructors.views import InstructorDashboardView
 # Analytics removed - CourseAnalyticsView endpoint disabled
@@ -53,11 +49,6 @@ urlpatterns = [
     
     # ===== LESSON ENDPOINTS =====
     path('lessons/<int:id>/', LessonRetrieveUpdateView.as_view(), name='lesson-retrieve-update'),
-    
-    # ===== REVIEW & RATING ENDPOINTS =====
-    path('<int:course_id>/reviews/', CourseReviewListView.as_view(), name='course-reviews'),
-    path('<int:course_id>/reviews/create/', CourseReviewCreateView.as_view(), name='create-review'),
-    path('<int:course_id>/rating-stats/', CourseRatingStatsView.as_view(), name='course-rating-stats'),
     
     # ===== ANALYTICS ENDPOINTS ===== (removed)
     # path('<int:course_id>/analytics/', CourseAnalyticsView.as_view(), name='course-analytics'),

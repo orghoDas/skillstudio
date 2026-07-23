@@ -1,6 +1,6 @@
-# 📚 Skillstudio — A Modern Learning & Event Marketplace  
+# 📚 Skillstudio — A Modern Learning Marketplace
 Skillstudio is a full-stack online learning platform inspired by Skillshare.  
-It brings together **courses, live events, exams, AI-powered skill recommendations, instructor tools, peer learning circles, and student dashboards**—all inside one unified ecosystem.
+It brings together **courses, exams, AI-powered skill recommendations, instructor tools, and student dashboards**—all inside one unified ecosystem.
 
 This project is designed to demonstrate practical skills in **database design, backend engineering, full-stack development, system architecture, and scalable digital learning systems**.
 
@@ -18,31 +18,26 @@ This project is designed to demonstrate practical skills in **database design, b
 Skillstudio is a comprehensive digital learning marketplace that allows users to:
 
 - Enroll in courses  
-- Attend live workshops and webinars  
 - Take exams and assessments  
 - Track learning progress  
 - Receive AI-based skill recommendations  
-- Collaborate in peer learning circles  
 - Teach and earn as instructors  
 - Manage everything through an admin dashboard  
 
-Skillstudio highlights the design of **complex relational databases**, multi-role authentication, analytics, event systems, exam engines, and scalable platform modules.
+Skillstudio highlights the design of **complex relational databases**, multi-role authentication, analytics, exam engines, and scalable platform modules.
 
 ---
 
 # 🎯 Purpose & Problem Statement  
 Modern e-learning platforms face challenges such as:  
 ❌ Lack of personalized learning direction  
-❌ Limited collaboration/community features  
 ❌ Weak progress and engagement tracking  
 ❌ Poor course verification  
-❌ Fragmented tools for courses, exams, and events  
+❌ Fragmented tools for courses, exams, and collaboration
 
 **Skillstudio solves these problems** by integrating:  
 ✔ AI-skill trend analysis  
-✔ Peer learning circles  
 ✔ Unified progress dashboards  
-✔ Event-based learning  
 ✔ Strong content management and moderation  
 
 This creates a **smart, engaging, and data-driven learning ecosystem**.
@@ -59,11 +54,9 @@ Below is the complete feature list (your original text, unchanged — only forma
 ### Sub-features:
 - Course creation & editing  
 - Module & lesson creator  
-- Live classes and chat  
 - Video, PDF, and resource upload  
 - Course publishing workflow  
 - Pricing & monetization options  
-- Ratings & reviews  
 - Course analytics (views, enrollments, drop-off points)  
 - Content update versioning  
 
@@ -83,19 +76,6 @@ Below is the complete feature list (your original text, unchanged — only forma
 
 ---
 
-## **Event Marketplace (Live Workshops & Webinars)**
-### Sub-features:
-- Event creation & scheduling  
-- Seat-based registration  
-- Paid/free events  
-- Event reminders & notifications  
-- Live chat during events  
-- Attendance logging  
-- Event feedback & rating  
-- Event analytics dashboard  
-
----
-
 ## **AI Skill Recommender System**
 ### Sub-features:
 - Personalized course recommendations  
@@ -107,18 +87,6 @@ Below is the complete feature list (your original text, unchanged — only forma
 
 ---
 
-## **Peer Learning Circles (Social & Collaborative Learning)**
-### Sub-features:
-- Create or join study circles  
-- Group chat & discussion forums  
-- Shared learning goals  
-- Group progress dashboard  
-- Weekly challenges  
-- Resource sharing  
-- Meeting scheduler  
-
----
-
 ## **Instructor & Admin Management System**  
 Controls platform operations, moderation, and monetization.
 
@@ -126,14 +94,11 @@ Controls platform operations, moderation, and monetization.
 - Course creation tools  
 - Student enrollment tracking  
 - Earnings & payouts dashboard  
-- Review management  
 - Course engagement analytics  
-- Event hosting tools  
 
 ### **B. Admin Panel**
 - Approve instructors  
 - Course moderation  
-- Review and report moderation  
 - User management  
 - Platform-wide analytics  
 - Revenue statistics  
@@ -176,4 +141,3 @@ A personalized hub for each learner.
 - JWT authentication  
 - Password reset  
 - Activity logs  
-

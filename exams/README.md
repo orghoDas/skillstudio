@@ -6,7 +6,7 @@ Comprehensive final examination system with question banks and detailed analytic
 
 ### Question Bank
 - **Reusable question library** organized by course
-- **Multiple question types**: MCQ, True/False, Short Answer, Essay
+- **Question types**: MCQ and True/False
 - **Difficulty levels**: Easy, Medium, Hard
 - **Tagging system** for categorization
 - **Question versioning** and history
@@ -19,7 +19,7 @@ Comprehensive final examination system with question banks and detailed analytic
 - **Question randomization** for fairness
 - **Multiple attempts** (configurable)
 - **Instant or delayed results**
-- **Mix of auto and manual grading**
+- **Fully automatic grading**
 
 ### Results & Analytics
 - **Detailed result breakdown** by question
@@ -35,13 +35,16 @@ Comprehensive final examination system with question banks and detailed analytic
 ```python
 question = QuestionBank.objects.create(
     course=course,
-    question_text="Explain the concept of polymorphism in OOP",
-    question_type='essay',  # mcq, tf, short, essay
-    difficulty='hard',
-    marks=20,
-    correct_answer="Model answer for instructors...",
+    question_text="What is Python?",
+    question_type='mcq',
+    difficulty='easy',
+    marks=5,
+    options=[
+        {"text": "Programming Language", "is_correct": True},
+        {"text": "Snake", "is_correct": False},
+    ],
     explanation="Key points to cover...",
-    tags=["oop", "advanced", "theory"],
+    tags=["python", "basics"],
     created_by=instructor
 )
 ```
@@ -75,9 +78,8 @@ attempt = ExamAttempt.objects.create(
     exam=exam,
     user=student,
     answers={
-        "1": "Answer to question 1",
-        "2": "B",  # MCQ option
-        "3": "True"  # True/False
+        "1": 0,
+        "2": 1
     }
 )
 ```
@@ -389,36 +391,6 @@ GET /api/exams/{exam_id}/all-attempts/
 }
 ```
 
-#### Grade Manual Questions
-```http
-POST /api/exams/attempt/{attempt_id}/grade/
-```
-
-**Request:**
-```json
-{
-    "manual_grades": {
-        "3": 18,  // Essay question - awarded 18/20
-        "5": 9    // Short answer - awarded 9/10
-    }
-}
-```
-
-**Response:**
-```json
-{
-    "attempt": {
-        "id": 123,
-        "score": 92,
-        "percentage": 92,
-        "passed": true,
-        "manually_graded_at": "2024-01-15T15:00:00Z",
-        "graded_by": 5
-    },
-    "message": "Exam graded successfully"
-}
-```
-
 ## 🔧 Services
 
 ### Exam Services
@@ -426,7 +398,7 @@ POST /api/exams/attempt/{attempt_id}/grade/
 ```python
 from exams.services import (
     start_exam_attempt, submit_exam_attempt,
-    get_exam_analytics, grade_manual_questions
+    get_exam_analytics
 )
 
 # Start exam
@@ -441,12 +413,6 @@ result = submit_exam_attempt(attempt, {
 # Get analytics
 analytics = get_exam_analytics(exam)
 
-# Grade manual questions
-graded = grade_manual_questions(
-    attempt,
-    manual_grades={"3": 18, "5": 9},
-    graded_by=instructor
-)
 ```
 
 ## 🧪 Testing
@@ -484,10 +450,14 @@ q1 = QuestionBank.objects.create(
 
 q2 = QuestionBank.objects.create(
     course=course,
-    question_text="Explain OOP principles",
-    question_type='essay',
-    marks=20,
-    difficulty='hard',
+    question_text="Python is dynamically typed.",
+    question_type='tf',
+    options=[
+        {"text": "True", "is_correct": True},
+        {"text": "False", "is_correct": False},
+    ],
+    marks=5,
+    difficulty='easy',
     created_by=instructor
 )
 
@@ -516,29 +486,14 @@ attempt = start_exam_attempt(exam, student)
 
 # Submit answers
 answers = {
-    str(q1.id): "Programming Language",
-    str(q2.id): "OOP principles include..."
+    str(q1.id): 0,
+    str(q2.id): 0
 }
 
 result = submit_exam_attempt(attempt, answers)
 
 print(f"Score: {result.score}/{result.exam.total_marks}")
 print(f"Passed: {result.passed}")
-```
-
-### Grading Essays
-
-```python
-from exams.services import grade_manual_questions
-
-# Grade essay questions manually
-graded = grade_manual_questions(
-    attempt,
-    manual_grades={
-        str(q2.id): 18  # Award 18/20 for essay
-    },
-    graded_by=instructor
-)
 ```
 
 ## 🔐 Permissions
@@ -551,11 +506,10 @@ graded = grade_manual_questions(
 
 1. **Question pools** for random selection
 2. **Proctoring features** (webcam, screen recording)
-3. **Plagiarism detection** for essay questions
-4. **Question difficulty calibration** based on performance
-5. **Adaptive testing** (CAT - Computerized Adaptive Testing)
-6. **Exam templates** for quick creation
-7. **Question import** from external formats (QTI, Moodle)
+3. **Question difficulty calibration** based on performance
+4. **Adaptive testing** (CAT - Computerized Adaptive Testing)
+5. **Exam templates** for quick creation
+6. **Question import** from external formats (QTI, Moodle)
 
 ## 📚 Related Apps
 

@@ -14,6 +14,11 @@ The accounts app handles user authentication, authorization, profile management,
   - `is_staff` (BooleanField)
   - `created_at` (DateTimeField)
 
+**Role and flag policy:**
+- `role=admin` is the platform-admin role and always implies `is_staff=True`.
+- `is_superuser=True` always implies `role=admin` and `is_staff=True`.
+- Bare `is_staff=True` may be used for operational staff actions, but it does not grant platform-admin role permissions by itself.
+
 ### Profile
 - **Fields:**
   - `user` (OneToOneField to User)
@@ -34,47 +39,50 @@ The accounts app handles user authentication, authorization, profile management,
 
 ### APIKey
 - For API key authentication
-- **Fields:** `user`, `key` (UUID), `label`, `created_at`, `is_active`
+- Secrets are shown only once at creation time.
+- **Fields:** `user`, `key_hash`, `prefix`, `label`, `scopes`, `created_at`, `last_used_at`, `revoked_at`, `is_active`
 
 ## API Endpoints
 
 ### Authentication
-- `POST /accounts/api/register/` - Register new user
-- `POST /accounts/api/token/` - Obtain JWT token (login)
-- `POST /accounts/api/token/refresh/` - Refresh JWT token
+- `POST /api/accounts/register/` - Register new user
+- `POST /api/accounts/token/` - Obtain JWT token (login)
+- `POST /api/accounts/token/refresh/` - Refresh JWT token
 
 ### Email Verification
-- `POST /accounts/api/verify-email/` - Verify email with token
-- `POST /accounts/api/resend-verification/` - Resend verification email
+- `POST /api/accounts/verify-email/` - Verify email with token
+- `POST /api/accounts/resend-verification/` - Resend verification email
 
 ### Password Management
-- `POST /accounts/api/password-reset/` - Request password reset
-- `POST /accounts/api/password-reset/confirm/` - Confirm password reset with token
-- `POST /accounts/api/change-password/` - Change password (authenticated)
+- `POST /api/accounts/password-reset/` - Request password reset
+- `POST /api/accounts/password-reset/confirm/` - Confirm password reset with token
+- `POST /api/accounts/change-password/` - Change password (authenticated)
 
 ### User Profile
-- `GET /accounts/api/me/` - Get current user info
-- `PATCH /accounts/api/me/` - Update current user info
-- `GET /accounts/api/profile/` - Get user profile
-- `PATCH /accounts/api/profile/` - Update user profile
+- `GET /api/accounts/me/` - Get current user info with a stable profile envelope
+- `PATCH /api/accounts/me/` - Update current user info
+- `GET /api/accounts/profile/` - Get account, student, and instructor profile sections in one stable envelope
+- `PATCH /api/accounts/profile/` - Update shared account-owned profile fields only
+
+`/api/accounts/profile/` returns `account_profile`, `student_profile`, and `instructor_profile` keys for every role. Student learning preferences remain owned by `/api/students/profile/`; instructor professional fields remain owned by `/api/instructors/profile/`.
 
 ### User Management (Admin Only)
-- `GET /accounts/api/users/` - List all users (supports ?role= filter)
-- `GET /accounts/api/users/{id}/` - Get user details
-- `PATCH /accounts/api/users/{id}/role/` - Update user role
-- `POST /accounts/api/users/{id}/promote/` - Promote user to instructor
-- `POST /accounts/api/users/{id}/activate/` - Activate user
-- `POST /accounts/api/users/{id}/deactivate/` - Deactivate user
+- `GET /api/accounts/users/` - List all users (supports ?role= filter)
+- `GET /api/accounts/users/{id}/` - Get user details
+- `PATCH /api/accounts/users/{id}/role/` - Update user role
+- `POST /api/accounts/users/{id}/promote/` - Promote user to instructor
+- `POST /api/accounts/users/{id}/activate/` - Activate user
+- `POST /api/accounts/users/{id}/deactivate/` - Deactivate user
 
 ### API Keys
-- `GET /accounts/api/api-keys/` - List user's API keys
-- `POST /accounts/api/api-keys/` - Create new API key
-- `GET /accounts/api/api-keys/{id}/` - Get API key details
-- `DELETE /accounts/api/api-keys/{id}/` - Delete API key
-- `PATCH /accounts/api/api-keys/{id}/toggle/` - Toggle API key active status
+- `GET /api/accounts/api-keys/` - List user's API keys
+- `POST /api/accounts/api-keys/` - Create new API key
+- `GET /api/accounts/api-keys/{id}/` - Get API key details
+- `DELETE /api/accounts/api-keys/{id}/` - Delete API key
+- `PATCH /api/accounts/api-keys/{id}/toggle/` - Toggle API key active status
 
 ### Test Endpoints
-- `GET /accounts/api/instructor-only/` - Test endpoint for instructor access
+- `GET /api/accounts/instructor-only/` - Test endpoint for instructor access
 
 ## Permissions
 
@@ -91,7 +99,7 @@ All custom permissions automatically grant access to admin users.
 
 **Register as Student (default):**
 ```json
-POST /accounts/api/register/
+POST /api/accounts/register/
 {
   "email": "student@example.com",
   "username": "student123",
@@ -102,7 +110,7 @@ POST /accounts/api/register/
 
 **Register as Instructor:**
 ```json
-POST /accounts/api/register/
+POST /api/accounts/register/
 {
   "email": "instructor@example.com",
   "username": "instructor123",
@@ -129,7 +137,7 @@ POST /accounts/api/register/
 
 ### Login
 ```json
-POST /accounts/api/token/
+POST /api/accounts/token/
 {
   "email": "user@example.com",
   "password": "SecurePass123!"
@@ -144,7 +152,7 @@ Response:
 
 ### Update Profile
 ```json
-PATCH /accounts/api/profile/
+PATCH /api/accounts/profile/
 Headers: Authorization: Bearer {access_token}
 {
   "full_name": "John Doe",
@@ -153,9 +161,22 @@ Headers: Authorization: Bearer {access_token}
 }
 ```
 
+Response includes the stable profile envelope:
+
+```json
+{
+  "id": 1,
+  "email": "john@example.com",
+  "role": "student",
+  "account_profile": {},
+  "student_profile": {},
+  "instructor_profile": null
+}
+```
+
 ### Create API Key
 ```json
-POST /accounts/api/api-keys/
+POST /api/accounts/api-keys/
 Headers: Authorization: Bearer {access_token}
 {
   "label": "My Application Key"
@@ -164,23 +185,29 @@ Headers: Authorization: Bearer {access_token}
 Response:
 {
   "id": 1,
-  "key": "a8f5f167-0e5a-4f2b-8e0a-5c7f8d9e0f1a",
+  "key": "ss_example-one-time-secret",
+  "prefix": "ss_example-one-t",
   "label": "My Application Key",
+  "scopes": [],
   "created_at": "2026-01-02T10:30:00Z",
+  "last_used_at": null,
+  "revoked_at": null,
   "is_active": true
 }
 ```
 
+Use API keys with `Authorization: Api-Key {key}` or `X-API-Key: {key}`. List, detail, and toggle responses never return the full secret.
+
 ### Password Reset Flow
 ```json
 # 1. Request reset
-POST /accounts/api/password-reset/
+POST /api/accounts/password-reset/
 {
   "email": "user@example.com"
 }
 
 # 2. Confirm reset (using token from email)
-POST /accounts/api/password-reset/confirm/
+POST /api/accounts/password-reset/confirm/
 {
   "token": "a8f5f167-0e5a-4f2b-8e0a-5c7f8d9e0f1a",
   "new_password": "NewSecurePass123!",
@@ -201,7 +228,7 @@ All models are registered in the Django admin with custom configurations:
 - Profile: List display with user, name, and dates
 - EmailVerificationToken: Shows verification status
 - PasswordResetToken: Shows expiration status
-- APIKey: Shows active status and creation date
+- APIKey: Shows prefix, active status, last-used, revocation, and creation dates
 
 ## Testing
 

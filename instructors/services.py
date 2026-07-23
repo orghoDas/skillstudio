@@ -1,5 +1,5 @@
 from django.db import models, transaction
-from django.db.models import Count, Avg, Max, Sum, Q
+from django.db.models import Count, Max, Sum, Q
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
 from decimal import Decimal
@@ -18,7 +18,6 @@ def get_course_overview(instructor):
         .filter(instructor=instructor)
         .annotate(
             total_enrollments=Count("enrollments"),
-            avg_rating=Avg("reviews__rating"),
         )
     )
 
@@ -220,4 +219,3 @@ def complete_payout(payout_id, transaction_id, admin_user):
     payout.complete(transaction_id)
     
     return payout
-

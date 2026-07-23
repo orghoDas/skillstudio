@@ -15,6 +15,8 @@ PRIVATE_STUDENT_QUESTION_KEYS = {
     'explanation',
 }
 
+ALLOWED_QUESTION_TYPES = {'mcq', 'tf'}
+
 
 def hide_student_answer_data(value):
     if isinstance(value, list):
@@ -38,10 +40,35 @@ class QuestionBankSerializer(serializers.ModelSerializer):
         model = QuestionBank
         fields = [
             'id', 'course', 'question_text', 'question_type', 'difficulty',
-            'options', 'correct_answer', 'marks', 'explanation', 'tags',
+            'options', 'marks', 'explanation', 'tags',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
+
+    def validate(self, attrs):
+        question_type = attrs.get('question_type', getattr(self.instance, 'question_type', 'mcq'))
+        options = attrs.get('options', getattr(self.instance, 'options', []))
+
+        if question_type not in ALLOWED_QUESTION_TYPES:
+            raise serializers.ValidationError({
+                'question_type': 'Only multiple-choice and true/false questions are supported.'
+            })
+
+        if not isinstance(options, list):
+            raise serializers.ValidationError({'options': 'Options must be a list.'})
+
+        required_count = 2 if question_type == 'tf' else 2
+        if len(options) < required_count:
+            raise serializers.ValidationError({'options': 'At least two options are required.'})
+
+        if question_type == 'tf' and len(options) != 2:
+            raise serializers.ValidationError({'options': 'True/false questions must have exactly two options.'})
+
+        correct_count = sum(1 for option in options if isinstance(option, dict) and option.get('is_correct'))
+        if correct_count != 1:
+            raise serializers.ValidationError({'options': 'Exactly one option must be marked correct.'})
+
+        return attrs
 
 
 class QuestionBankListSerializer(serializers.ModelSerializer):
@@ -94,6 +121,36 @@ class ExamSerializer(serializers.ModelSerializer):
             return timezone.make_aware(value, timezone.utc)
         return value
 
+    def validate_custom_questions(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Custom questions must be a list.")
+
+        for index, question in enumerate(value):
+            if not isinstance(question, dict):
+                raise serializers.ValidationError(f"Custom question {index + 1} must be an object.")
+
+            question_type = question.get('question_type', question.get('type', 'mcq'))
+            if question_type not in ALLOWED_QUESTION_TYPES:
+                raise serializers.ValidationError(
+                    f"Custom question {index + 1} must be multiple-choice or true/false."
+                )
+
+            options = question.get('options', [])
+            if not isinstance(options, list) or len(options) < 2:
+                raise serializers.ValidationError(f"Custom question {index + 1} must have at least two options.")
+            if question_type == 'tf' and len(options) != 2:
+                raise serializers.ValidationError(
+                    f"Custom true/false question {index + 1} must have exactly two options."
+                )
+
+            correct_count = sum(1 for option in options if isinstance(option, dict) and option.get('is_correct'))
+            if correct_count != 1:
+                raise serializers.ValidationError(
+                    f"Custom question {index + 1} must have exactly one correct option."
+                )
+
+        return value
+
 
 class ExamListSerializer(serializers.ModelSerializer):
     """Simplified serializer for listing exams."""
@@ -135,14 +192,14 @@ class ExamAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamAttempt
         fields = [
-            'id', 'exam', 'exam_title', 'user', 'user_name', 'started_at',
-            'completed_at', 'time_spent_seconds', 'answers', 'score',
+            'id', 'exam', 'exam_title', 'user', 'user_name', 'attempt_number',
+            'started_at', 'completed_at', 'time_spent_seconds', 'answers', 'score',
             'percentage', 'passed', 'status', 'time_remaining',
-            'auto_graded_at', 'manually_graded_at', 'graded_by'
+            'auto_graded_at'
         ]
         read_only_fields = [
-            'started_at', 'score', 'percentage', 'passed',
-            'auto_graded_at', 'manually_graded_at'
+            'attempt_number', 'started_at', 'score', 'percentage', 'passed',
+            'auto_graded_at'
         ]
 
 
@@ -154,8 +211,8 @@ class ExamAttemptListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamAttempt
         fields = [
-            'id', 'exam', 'exam_title', 'started_at', 'completed_at',
-            'score', 'percentage', 'passed', 'status', 'result'
+            'id', 'exam', 'exam_title', 'attempt_number', 'started_at',
+            'completed_at', 'score', 'percentage', 'passed', 'status', 'result'
         ]
     
     def get_result(self, obj):

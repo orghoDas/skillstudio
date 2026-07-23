@@ -4,7 +4,6 @@ from .models import (
     Course, Category, Tag, Module, Lesson,
     CourseVersion, CourseTag, LessonResource
 )
-from social.models import Review
 
 
 class LessonResourceInline(admin.TabularInline):

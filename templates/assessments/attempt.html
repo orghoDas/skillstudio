@@ -194,35 +194,16 @@ function renderQuestion() {
 
 function renderAnswerOptions(question) {
     const savedAnswer = answers[question.id];
-    
-    if (question.question_type === 'multiple_choice' || question.question_type === 'single_choice') {
-        return question.options.map((option, index) => `
-            <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.id ? 'border-blue-500 bg-blue-900/20' : ''}">
-                <input type="radio" name="answer" value="${option.id}" 
-                    ${savedAnswer === option.id ? 'checked' : ''}
-                    onchange="saveAnswer(${question.id}, this.value)"
-                    class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
-                <span class="flex-1">${option.option_text}</span>
-            </label>
-        `).join('');
-    } else if (question.question_type === 'true_false') {
-        return ['True', 'False'].map(option => `
-            <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.toLowerCase() ? 'border-blue-500 bg-blue-900/20' : ''}">
-                <input type="radio" name="answer" value="${option.toLowerCase()}" 
-                    ${savedAnswer === option.toLowerCase() ? 'checked' : ''}
-                    onchange="saveAnswer(${question.id}, this.value)"
-                    class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
-                <span class="flex-1">${option}</span>
-            </label>
-        `).join('');
-    } else if (question.question_type === 'text') {
-        return `
-            <textarea name="answer" rows="6" 
+
+    return question.options.map((option) => `
+        <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.id ? 'border-blue-500 bg-blue-900/20' : ''}">
+            <input type="radio" name="answer" value="${option.id}"
+                ${savedAnswer === option.id ? 'checked' : ''}
                 onchange="saveAnswer(${question.id}, this.value)"
-                class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="Type your answer here...">${savedAnswer || ''}</textarea>
-        `;
-    }
+                class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
+            <span class="flex-1">${option.option_text}</span>
+        </label>
+    `).join('');
 }
 
 function saveAnswer(questionId, answer) {

@@ -1,6 +1,6 @@
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from django.db.models import F, Q, Avg, Count, Prefetch
+from django.db.models import F, Q, Count, Prefetch
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
+from accounts.utils import is_platform_admin
 from courses.policies import can_view_course_catalog
 from courses.permissions import CanEditCourse
 from courses.services import validate_course_for_submission
@@ -116,7 +117,7 @@ class CourseListView(generics.ListAPIView):
                 enrollment_count=Count('enrollments', filter=Q(enrollments__status='active'))
             ).order_by('-enrollment_count')
         elif sort_by == 'rating':
-            queryset = queryset.annotate(avg_rating=Avg('reviews__rating')).order_by('-avg_rating')
+            queryset = queryset.order_by('-created_at')
         else:
             queryset = queryset.order_by(sort_by)
         
@@ -153,7 +154,7 @@ class CourseDetailView(generics.RetrieveAPIView):
             if not request.user.is_authenticated:
                 return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
             # Check if user is the instructor or admin
-            if hasattr(request.user, 'role') and request.user.role == 'admin':
+            if is_platform_admin(request.user):
                 pass  # Admins can see all courses
             elif instance.instructor.id != request.user.id:
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
@@ -171,7 +172,7 @@ class CourseCreateView(generics.CreateAPIView):
         user = self.request.user
         
         # Only instructors and admins can create courses
-        if user.role not in ['instructor', 'admin']:
+        if user.role != 'instructor' and not is_platform_admin(user):
             raise ValidationError("Only instructors can create courses.")
         
         serializer.save(instructor=user, status='draft')
@@ -550,7 +551,7 @@ class CourseCurriculumView(APIView):
                 status='active'
             ).first()
 
-            if not enrollment and course.instructor != user and not user.is_staff:
+            if not enrollment and course.instructor != user and not is_platform_admin(user):
                 return Response({'error': 'Active enrollment required'}, status=status.HTTP_403_FORBIDDEN)
 
         # Get all lessons

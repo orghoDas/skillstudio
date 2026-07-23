@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.db import IntegrityError, transaction
 from decimal import Decimal, InvalidOperation
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 
@@ -92,42 +93,53 @@ def start_exam_attempt(exam, user):
     Raises:
         ValueError: If exam is not active or user has exceeded max attempts
     """
-    # Check if exam is active
-    if not exam.is_active():
-        raise ValueError("Exam is not currently available")
-    
-    # Check max attempts
-    existing_attempts = ExamAttempt.objects.filter(
-        exam=exam,
-        user=user,
-        status='completed'
-    ).count()
-    
-    if existing_attempts >= exam.max_attempts:
-        raise ValueError(f"Maximum attempts ({exam.max_attempts}) exceeded")
-    
-    # Check for in-progress attempts
-    in_progress = ExamAttempt.objects.filter(
-        exam=exam,
-        user=user,
-        status='in_progress'
-    ).first()
-    
-    if in_progress:
-        # Check if expired
-        if in_progress.is_expired():
+    with transaction.atomic():
+        locked_exam = Exam.objects.select_for_update().get(pk=exam.pk)
+
+        if not locked_exam.is_active():
+            raise ValueError("Exam is not currently available")
+
+        attempts = (
+            ExamAttempt.objects
+            .select_for_update()
+            .filter(exam=locked_exam, user=user)
+            .order_by('attempt_number', 'started_at', 'id')
+        )
+
+        in_progress = attempts.filter(status='in_progress').first()
+        if in_progress:
+            if not in_progress.is_expired():
+                return in_progress
+
             in_progress.status = 'abandoned'
-            in_progress.save()
-        else:
-            return in_progress
-    
-    # Create new attempt
-    attempt = ExamAttempt.objects.create(
-        exam=exam,
-        user=user
-    )
-    
-    return attempt
+            in_progress.save(update_fields=['status'])
+
+        used_attempts = attempts.filter(status__in=['completed', 'abandoned']).count()
+        if used_attempts >= locked_exam.max_attempts:
+            raise ValueError(f"Maximum attempts ({locked_exam.max_attempts}) exceeded")
+
+        next_attempt_number = (
+            attempts.order_by('-attempt_number')
+            .values_list('attempt_number', flat=True)
+            .first()
+            or 0
+        ) + 1
+
+        try:
+            return ExamAttempt.objects.create(
+                exam=locked_exam,
+                user=user,
+                attempt_number=next_attempt_number
+            )
+        except IntegrityError:
+            in_progress = ExamAttempt.objects.select_for_update().filter(
+                exam=locked_exam,
+                user=user,
+                status='in_progress'
+            ).first()
+            if in_progress:
+                return in_progress
+            raise
 
 
 def submit_exam_attempt(attempt, answers):
@@ -360,62 +372,3 @@ def get_exam_analytics(exam):
         'pass_rate': round(pass_rate, 2),
         'question_analytics': question_analytics
     }
-
-
-def grade_manual_questions(attempt, manual_grades, graded_by):
-    """
-    Manually grade essay/short answer questions.
-    
-    Args:
-        attempt: ExamAttempt instance
-        manual_grades: Dictionary of {question_id: marks_awarded}
-        graded_by: User who is grading
-    
-    Returns:
-        Updated ExamAttempt instance
-    """
-    result = getattr(attempt, 'result', None) or create_exam_result(attempt)
-    question_results = result.question_results
-
-    max_marks_by_key = {
-        str(question.id): question.marks
-        for question in attempt.exam.questions.all()
-    }
-    for index, question in enumerate(attempt.exam.custom_questions or []):
-        max_marks_by_key[_custom_question_key(question, index)] = _custom_question_marks(question)
-
-    for q_id, marks in manual_grades.items():
-        q_id = str(q_id)
-        awarded = _decimal_marks(marks)
-        max_marks = max_marks_by_key.get(q_id)
-        if max_marks is not None:
-            awarded = min(max(awarded, Decimal('0')), max_marks)
-
-        question_results.setdefault(q_id, {})
-        question_results[q_id]['marks_earned'] = float(awarded)
-        question_results[q_id]['correct'] = awarded > 0
-        question_results[q_id]['manually_graded'] = True
-
-    result.question_results = question_results
-    result.save(update_fields=['question_results'])
-
-    total_score = sum(
-        (_decimal_marks(data.get('marks_earned')) for data in question_results.values()),
-        Decimal('0')
-    )
-    total_possible = get_exam_total_possible_marks(attempt.exam)
-
-    attempt.score = total_score
-    attempt.percentage = (attempt.score / total_possible * 100) if total_possible > 0 else Decimal('0')
-    attempt.passed = attempt.score >= attempt.exam.passing_marks
-    attempt.manually_graded_at = timezone.now()
-    attempt.graded_by = graded_by
-    attempt.save(update_fields=[
-        'score',
-        'percentage',
-        'passed',
-        'manually_graded_at',
-        'graded_by',
-    ])
-    
-    return attempt

@@ -1,22 +1,20 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 from django.shortcuts import get_object_or_404
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
 
 from enrollments.services import require_active_enrollment
 
-from .models import Quiz, Assignment, QuizAttempt, Submission
+from .models import Quiz, QuizAttempt
 from .serializers import (
     QuizDetailSerializer,
     QuizAttemptSerializer,
-    AssignmentSerializer,
-    SubmissionSerializer
 )
 from .services import (
     start_quiz_attempt,
     submit_quiz_attempt,
-    submit_assignment
 )
 
 
@@ -40,7 +38,11 @@ class StartQuizView(APIView):
         quiz = get_object_or_404(Quiz, id=quiz_id)
         require_active_enrollment(request.user, quiz.lesson.module.course)
 
-        attempt = start_quiz_attempt(request.user, quiz)
+        try:
+            attempt = start_quiz_attempt(request.user, quiz)
+        except ValidationError as exc:
+            return Response({"error": exc.messages[0]}, status=status.HTTP_409_CONFLICT)
+
         return Response(QuizAttemptSerializer(attempt).data)
 
 
@@ -55,79 +57,12 @@ class SubmitQuizView(APIView):
         )
 
         answers = request.data.get("answers", {})
-        attempt = submit_quiz_attempt(attempt, answers)
+        try:
+            attempt = submit_quiz_attempt(attempt, answers)
+        except ValidationError as exc:
+            return Response(
+                {"error": exc.messages[0]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(QuizAttemptSerializer(attempt).data)
-
-
-# ======================================================
-# ASSIGNMENT APIs
-# ======================================================
-
-class AssignmentDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, lesson_id):
-        assignment = get_object_or_404(Assignment, lesson_id=lesson_id)
-        require_active_enrollment(request.user, assignment.lesson.module.course)
-
-        return Response(AssignmentSerializer(assignment).data)
-
-
-class SubmitAssignmentView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, assignment_id):
-        assignment = get_object_or_404(Assignment, id=assignment_id)
-        require_active_enrollment(request.user, assignment.lesson.module.course)
-
-        submission = submit_assignment(
-            request.user,
-            assignment,
-            file_url=request.data.get("file_url"),
-            text=request.data.get("text")
-        )
-
-        return Response(SubmissionSerializer(submission).data)
-
-
-class SubmitAssignmentByLessonView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, lesson_id):
-        from courses.models import Lesson
-        
-        lesson = get_object_or_404(Lesson, id=lesson_id)
-        require_active_enrollment(request.user, lesson.module.course)
-        
-        assignment = Assignment.objects.filter(lesson=lesson).first()
-        if not assignment:
-            return Response(
-                {'error': 'Assignment not found for this lesson.'},
-                status=404
-            )
-        
-        # Handle file upload if present
-        file_url = None
-        uploaded_file = request.FILES.get('file')
-        if uploaded_file:
-            # Save file and get URL
-            from django.core.files.storage import default_storage
-            file_path = f'assignments/{request.user.id}/{lesson_id}/{uploaded_file.name}'
-            saved_path = default_storage.save(file_path, uploaded_file)
-            file_url = default_storage.url(saved_path)
-        
-        # Get text submission
-        text = request.data.get('text', '') or request.data.get('comments', '')
-        
-        submission = submit_assignment(
-            request.user,
-            assignment,
-            file_url=file_url,
-            text=text
-        )
-
-        return Response({
-            'message': 'Assignment submitted successfully',
-            'submission': SubmissionSerializer(submission).data
-        })

@@ -10,7 +10,7 @@ They have been consolidated as follows:
 For backward compatibility, we import and re-export the proper views below.
 """
 
-from django.db.models import Count, Avg, Sum, Q, F
+from django.db.models import Count, Sum, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,7 +18,6 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsInstructor, IsAdmin
 from .models import Course, Lesson
-from social.models import Review
 from enrollments.models import Enrollment, LessonProgress
 from payments.models import Payment
 

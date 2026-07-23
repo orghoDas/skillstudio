@@ -127,7 +127,6 @@ def calculate_course_grade(user, course):
 
     Current certificate policy:
     - quiz score: best completed attempt per quiz
-    - assignment score: graded submission for each assignment
     - no graded assessment evidence: no grade (`None`)
     
     Args:
@@ -139,24 +138,16 @@ def calculate_course_grade(user, course):
         graded assessment evidence for the course.
     """
     from decimal import Decimal, ROUND_HALF_UP
-    from assessments.models import QuizAttempt, Submission
+    from assessments.models import QuizAttempt
     
     quiz_attempts = QuizAttempt.objects.filter(
         user=user,
         quiz__lesson__module__course=course,
         quiz__is_published=True,
         completed_at__isnull=False,
-        score__isnull=False,
-        quiz__total_marks__gt=0
+        score__isnull=False
     ).select_related('quiz')
     
-    submissions = Submission.objects.filter(
-        user=user,
-        assignment__lesson__module__course=course,
-        grade__isnull=False,
-        assignment__max_score__gt=0
-    ).select_related('assignment')
-
     total_score = Decimal('0.0')
     total_possible = Decimal('0.0')
     best_quiz_attempts = {}
@@ -167,17 +158,14 @@ def calculate_course_grade(user, course):
             best_quiz_attempts[attempt.quiz_id] = attempt
 
     for attempt in best_quiz_attempts.values():
-        quiz_total = Decimal(attempt.quiz.total_marks)
+        quiz_total_value = attempt.total_marks_snapshot or attempt.quiz.total_marks
+        quiz_total = Decimal(quiz_total_value)
+        if quiz_total <= 0:
+            continue
         score = max(Decimal('0.0'), min(attempt.score, quiz_total))
         total_score += score
         total_possible += quiz_total
 
-    for submission in submissions:
-        assignment_total = Decimal(submission.assignment.max_score)
-        score = max(Decimal('0.0'), min(submission.grade, assignment_total))
-        total_score += score
-        total_possible += assignment_total
-    
     if total_possible > 0:
         return ((total_score / total_possible) * 100).quantize(
             Decimal('0.01'),

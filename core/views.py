@@ -54,16 +54,6 @@ def settings_page(request):
     """Settings page"""
     return render(request, 'profile/settings.html')
 
-def circles_list(request):
-    """Learning circles listing page"""
-    return render(request, 'social/circles.html')
-
-def circle_detail(request, circle_id):
-    """Learning circle detail page"""
-    return render(request, 'social/circle-detail.html')
-
-
-
 def assessments_list(request):
     """Assessments listing page"""
     return render(request, 'assessments/list.html')
@@ -130,14 +120,6 @@ def wallet_page(request):
     """Student wallet page"""
     return render(request, 'student/wallet.html')
 
-def live_schedule(request):
-    """Live sessions schedule page"""
-    return render(request, 'live/schedule.html')
-
-def live_room(request, session_id):
-    """Live session room page"""
-    return render(request, 'live/room.html')
-
 def exams_list(request):
     """Exams list page"""
     return render(request, 'exams/list.html')
@@ -174,12 +156,3 @@ def course_resources(request, course_id):
 def instructor_resources(request):
     """Instructor resource management"""
     return render(request, 'instructor/resources.html')
-
-def discussions_list(request, course_id):
-    """Course discussions listing"""
-    return render(request, 'discussions/list.html')
-
-def discussion_thread(request, course_id, thread_id):
-    """Individual discussion thread"""
-    return render(request, 'discussions/thread.html')
-

@@ -153,9 +153,9 @@ Returns progress details for a specific lesson.
 #### Update Watch Time
 ```
 PATCH /api/enrollments/lessons/<lesson_id>/watch-time/
-Body: {"watch_time": 450}
+Body: {"watch_time_delta": 30}
 ```
-Updates the watch time for a lesson. Auto-completes if threshold reached.
+Adds a bounded incremental watch-time delta for a lesson. Absolute `watch_time` updates are rejected. Auto-completes if threshold reached.
 
 #### Resume Lesson
 ```

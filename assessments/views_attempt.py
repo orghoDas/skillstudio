@@ -1,13 +1,14 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 # from certificates.services import issue_certificate_if_eligible
 from enrollments.services import require_active_enrollment
 
 from .models import Quiz, QuizAttempt
-from .services import start_quiz_attempt
+from .services import save_quiz_answer, start_quiz_attempt
 from .services_timer import auto_submit_attempt
 from .services_scoring import calculate_quiz_score
 
@@ -19,7 +20,10 @@ class StartQuizAttemptView(APIView):
         quiz = get_object_or_404(Quiz, id=quiz_id)
         require_active_enrollment(request.user, quiz.lesson.module.course)
 
-        attempt = start_quiz_attempt(request.user, quiz)
+        try:
+            attempt = start_quiz_attempt(request.user, quiz)
+        except ValidationError as exc:
+            return Response({"error": exc.messages[0]}, status=status.HTTP_409_CONFLICT)
 
         return Response({
             "attempt_id": attempt.id,
@@ -39,17 +43,34 @@ class SubmitQuizAnswerView(APIView):
         )
 
         if attempt.completed_at:
-            raise ValidationError("Attempt already completed.")
+            return Response(
+                {"error": "Attempt already completed."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         if attempt.quiz.has_time_limit() and attempt.is_expired():
             auto_submit_attempt(attempt)
-            raise ValidationError("Time expired. Auto-submitted.")
+            return Response(
+                {"error": "Time expired. Auto-submitted."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
-        question_id = str(request.data["question_id"])
-        option_id = request.data["option_id"]
+        try:
+            question_id = request.data["question_id"]
+            option_id = request.data["option_id"]
+        except KeyError as exc:
+            return Response(
+                {"error": f"Missing required field: {exc.args[0]}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        attempt.answers[question_id] = option_id
-        attempt.save(update_fields=["answers"])
+        try:
+            attempt = save_quiz_answer(attempt, question_id, option_id)
+        except ValidationError as exc:
+            return Response(
+                {"error": exc.messages[0]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response({
             "status": "answer_saved",

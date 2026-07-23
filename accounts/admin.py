@@ -28,10 +28,10 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 
 @admin.register(APIKey)
 class APIKeyAdmin(admin.ModelAdmin):
-    list_display = ('user', 'label', 'key', 'created_at', 'is_active')
-    search_fields = ('user__email', 'label', 'key')
-    list_filter = ('is_active', 'created_at')
-    readonly_fields = ('key', 'created_at')
+    list_display = ('user', 'label', 'prefix', 'created_at', 'last_used_at', 'revoked_at', 'is_active')
+    search_fields = ('user__email', 'label', 'prefix')
+    list_filter = ('is_active', 'created_at', 'last_used_at', 'revoked_at')
+    readonly_fields = ('prefix', 'key_hash', 'created_at', 'last_used_at', 'revoked_at')
 
 
 @admin.register(User)
