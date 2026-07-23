@@ -1,4 +1,5 @@
 from rest_framework.permissions import IsAuthenticated
+from .utils import is_platform_admin
 
 
 class StudentOnlyMixin:
@@ -7,7 +8,7 @@ class StudentOnlyMixin:
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if request.user.role not in self.role_required and request.user.role != "admin":
+        if request.user.role not in self.role_required and not is_platform_admin(request.user):
             self.permission_denied(
                 request,
                 message="Student access only"
@@ -20,7 +21,7 @@ class InstructorOnlyMixin:
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if request.user.role not in self.role_required and request.user.role != "admin":
+        if request.user.role not in self.role_required and not is_platform_admin(request.user):
             self.permission_denied(
                 request,
                 message="Instructor access only"
@@ -33,7 +34,7 @@ class AdminOnlyMixin:
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if request.user.role != "admin":
+        if not is_platform_admin(request.user):
             self.permission_denied(
                 request,
                 message="Admin access only"

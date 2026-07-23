@@ -32,8 +32,6 @@ class InstructorProfile(models.Model):
     total_courses = models.IntegerField(default=0)
     total_students = models.IntegerField(default=0)
     total_revenue = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal('0.00'))
-    total_reviews = models.IntegerField(default=0)
     
     # Verification
     is_verified = models.BooleanField(default=False)
@@ -49,7 +47,6 @@ class InstructorProfile(models.Model):
         indexes = [
             models.Index(fields=['user']),
             models.Index(fields=['is_verified']),
-            models.Index(fields=['-average_rating']),
             models.Index(fields=['-total_students']),
         ]
     
@@ -65,7 +62,6 @@ class InstructorProfile(models.Model):
     def update_statistics(self):
         """Update denormalized statistics from related models."""
         from courses.models import Course
-        from social.models import Review
         from enrollments.models import Enrollment
         from payments.models import Payment
         
@@ -83,22 +79,10 @@ class InstructorProfile(models.Model):
             total=models.Sum('instructor_earnings')
         )['total'] or Decimal('0.00')
         
-        reviews = Review.objects.filter(course__instructor=self.user)
-        self.total_reviews = reviews.count()
-        
-        if self.total_reviews > 0:
-            self.average_rating = reviews.aggregate(
-                avg=models.Avg('rating')
-            )['avg'] or Decimal('0.00')
-        else:
-            self.average_rating = Decimal('0.00')
-        
         self.save(update_fields=[
             'total_courses',
             'total_students',
             'total_revenue',
-            'average_rating',
-            'total_reviews',
         ])
 
 # PostgreSQL equivalent for `instructor_profiles` (db_table):
@@ -117,8 +101,6 @@ class InstructorProfile(models.Model):
 #     total_courses integer NOT NULL DEFAULT 0,
 #     total_students integer NOT NULL DEFAULT 0,
 #     total_revenue numeric(10,2) NOT NULL DEFAULT 0,
-#     average_rating numeric(3,2) NOT NULL DEFAULT 0,
-#     total_reviews integer NOT NULL DEFAULT 0,
 #     is_verified boolean NOT NULL DEFAULT false,
 #     verified_at timestamptz NULL,
 #     created_at timestamptz NOT NULL DEFAULT now(),
@@ -126,7 +108,6 @@ class InstructorProfile(models.Model):
 # );
 # CREATE INDEX IF NOT EXISTS idx_instructor_profiles_user ON instructor_profiles (user_id);
 # CREATE INDEX IF NOT EXISTS idx_instructor_profiles_is_verified ON instructor_profiles (is_verified);
-# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_avg_rating ON instructor_profiles (average_rating DESC);
 # CREATE INDEX IF NOT EXISTS idx_instructor_profiles_total_students ON instructor_profiles (total_students DESC);
 
 

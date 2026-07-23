@@ -368,12 +368,6 @@ function displayQuestionReview() {
                         <span class="text-gray-400">Your answer:</span>
                         <span class="${isCorrect ? 'text-green-400' : 'text-red-400'} ml-2">${answer.user_answer || 'Not answered'}</span>
                     </div>
-                    ${!isCorrect ? `
-                        <div class="text-sm">
-                            <span class="text-gray-400">Correct answer:</span>
-                            <span class="text-green-400 ml-2">${answer.correct_answer}</span>
-                        </div>
-                    ` : ''}
                 </div>
             </div>
         `;

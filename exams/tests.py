@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from courses.models import Course, Category
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
-from .services import start_exam_attempt, submit_exam_attempt, grade_manual_questions
+from .services import start_exam_attempt, submit_exam_attempt
 # get_exam_analytics kept local to exams app
 
 User = get_user_model()
@@ -201,18 +201,61 @@ class ExamServicesTest(TestCase):
         self.assertEqual(attempt.exam, self.exam)
         self.assertEqual(attempt.user, self.student)
         self.assertEqual(attempt.status, 'in_progress')
+        self.assertEqual(attempt.attempt_number, 1)
+
+    def test_start_exam_attempt_reuses_active_attempt(self):
+        first = start_exam_attempt(self.exam, self.student)
+        second = start_exam_attempt(self.exam, self.student)
+
+        self.assertEqual(second.id, first.id)
+        self.assertEqual(second.attempt_number, 1)
+        self.assertEqual(
+            ExamAttempt.objects.filter(exam=self.exam, user=self.student).count(),
+            1
+        )
+
+    def test_start_exam_attempt_numbers_next_allowed_attempt(self):
+        first = start_exam_attempt(self.exam, self.student)
+        first.status = 'completed'
+        first.completed_at = timezone.now()
+        first.save(update_fields=['status', 'completed_at'])
+
+        second = start_exam_attempt(self.exam, self.student)
+
+        self.assertNotEqual(second.id, first.id)
+        self.assertEqual(second.attempt_number, 2)
+        self.assertEqual(second.status, 'in_progress')
     
     def test_max_attempts_limit(self):
         """Test max attempts enforcement."""
         # Create 2 completed attempts
-        for _ in range(2):
-            attempt = ExamAttempt.objects.create(
+        for attempt_number in range(1, 3):
+            ExamAttempt.objects.create(
                 exam=self.exam,
                 user=self.student,
+                attempt_number=attempt_number,
                 status='completed'
             )
         
         # Try to start 3rd attempt
+        with self.assertRaises(ValueError):
+            start_exam_attempt(self.exam, self.student)
+
+    def test_expired_active_attempt_is_abandoned_and_counts_toward_limit(self):
+        first = start_exam_attempt(self.exam, self.student)
+        first.started_at = timezone.now() - timedelta(hours=2)
+        first.save(update_fields=['started_at'])
+
+        second = start_exam_attempt(self.exam, self.student)
+
+        first.refresh_from_db()
+        self.assertEqual(first.status, 'abandoned')
+        self.assertEqual(second.attempt_number, 2)
+
+        second.status = 'completed'
+        second.completed_at = timezone.now()
+        second.save(update_fields=['status', 'completed_at'])
+
         with self.assertRaises(ValueError):
             start_exam_attempt(self.exam, self.student)
     
@@ -264,19 +307,6 @@ class ExamServicesTest(TestCase):
         self.assertEqual(submitted.score, Decimal('15'))
         self.assertEqual(submitted.percentage, Decimal('100'))
 
-    def test_manual_grading_overwrites_instead_of_adding_marks(self):
-        self.q1.question_type = 'essay'
-        self.q1.save(update_fields=['question_type'])
-        attempt = start_exam_attempt(self.exam, self.student)
-        submitted = submit_exam_attempt(attempt, {str(self.q1.id): 'essay answer'})
-
-        first = grade_manual_questions(submitted, {str(self.q1.id): 6}, self.instructor)
-        second = grade_manual_questions(first, {str(self.q1.id): 6}, self.instructor)
-
-        self.assertEqual(first.score, Decimal('6'))
-        self.assertEqual(second.score, Decimal('6'))
-
-
 # ===========================
 # 🌐 API Tests
 # ===========================
@@ -320,6 +350,22 @@ class ExamAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+    def test_start_exam_reuses_active_attempt_and_returns_attempt_number(self):
+        url = f'/api/exams/{self.exam.id}/start/'
+
+        first = self.client.post(url)
+        second = self.client.post(url)
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first.data['id'], second.data['id'])
+        self.assertEqual(first.data['attempt_number'], 1)
+        self.assertEqual(second.data['attempt_number'], 1)
+        self.assertEqual(
+            ExamAttempt.objects.filter(exam=self.exam, user=self.student).count(),
+            1
+        )
 
 
 class ExamAccessControlAPITest(APITestCase):
@@ -373,7 +419,6 @@ class ExamAccessControlAPITest(APITestCase):
                         {'text': 'A', 'is_correct': False},
                         {'text': 'B', 'is_correct': True},
                     ],
-                    'correct_answer': 'B',
                     'explanation': 'Private explanation',
                 }
             ],
@@ -388,7 +433,6 @@ class ExamAccessControlAPITest(APITestCase):
                 {'text': '3', 'is_correct': False},
                 {'text': '4', 'is_correct': True},
             ],
-            correct_answer='4',
             explanation='Private explanation',
             marks=5,
             created_by=self.instructor
@@ -499,3 +543,19 @@ class QuestionBankAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(QuestionBank.objects.count(), 1)
+
+    def test_create_question_rejects_short_answer_type(self):
+        url = '/api/exams/questions/'
+        data = {
+            'course': self.course.id,
+            'question_text': 'Explain polymorphism.',
+            'question_type': 'short',
+            'difficulty': 'medium',
+            'options': [],
+            'marks': 5,
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(QuestionBank.objects.count(), 0)

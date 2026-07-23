@@ -9,7 +9,6 @@ from django.utils import timezone
 from .models import Course, Module, Lesson, Category, Tag, LessonResource, CourseVersion
 from enrollments.models import Enrollment, LessonProgress
 from payments.models import Payment
-from social.models import Review
 
 User = get_user_model()
 
@@ -640,54 +639,3 @@ class CourseRoutedAPIDriftTest(APITestCase):
         self.assertEqual(response.data['total_revenue'], 49.0)
         self.assertEqual(response.data['courses']['published'], 1)
         self.assertEqual(response.data['enrollments']['active'], 1)
-
-
-class ReviewIntegrationTest(TestCase):
-    """Tests for Course and Review integration"""
-
-    def setUp(self):
-        self.instructor = User.objects.create_user(
-            email='instructor@test.com',
-            password='testpass123',
-            role='instructor'
-        )
-        self.student = User.objects.create_user(
-            email='student@test.com',
-            password='testpass123',
-            role='student'
-        )
-        self.category = Category.objects.create(name="Programming", slug="programming")
-        self.course = Course.objects.create(
-            title="Python Course",
-            slug="python-course",
-            instructor=self.instructor,
-            category=self.category,
-            status='published',
-            published_at=timezone.now()
-        )
-
-    def test_review_creation(self):
-        """Test creating a review for a course"""
-        review = Review.objects.create(
-            user=self.student,
-            course=self.course,
-            rating=5,
-            title="Great Course",
-            comment="Excellent content"
-        )
-        self.assertEqual(review.user, self.student)
-        self.assertEqual(review.course, self.course)
-        self.assertEqual(review.rating, 5)
-
-    def test_multiple_reviews(self):
-        """Test multiple students can review a course"""
-        student2 = User.objects.create_user(
-            email='student2@test.com',
-            password='testpass123',
-            role='student'
-        )
-        Review.objects.create(user=self.student, course=self.course, rating=5, comment="Great")
-        Review.objects.create(user=student2, course=self.course, rating=4, comment="Good")
-        
-        reviews = Review.objects.filter(course=self.course)
-        self.assertEqual(reviews.count(), 2)

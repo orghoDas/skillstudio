@@ -4,8 +4,6 @@ from .models import (
     QuizQuestion,
     QuestionOption,
     QuizAttempt,
-    Assignment,
-    Submission
 )
 
 
@@ -33,7 +31,6 @@ class QuizQuestionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "question_text",
-            "question_type",
             "difficulty",
             "marks",
             "options"
@@ -62,7 +59,6 @@ class ManageQuizQuestionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "question_text",
-            "question_type",
             "difficulty",
             "marks",
             "options",
@@ -94,34 +90,4 @@ class QuizAttemptSerializer(serializers.ModelSerializer):
             "completed_at",
             "score",
             "passed"
-        ]
-
-
-# ===============================
-# ASSIGNMENT SERIALIZERS
-# ===============================
-
-class AssignmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Assignment
-        fields = [
-            "id",
-            "title",
-            "instructions",
-            "due_date",
-            "max_score"
-        ]
-
-
-class SubmissionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Submission
-        fields = [
-            "id",
-            "file_url",
-            "text",
-            "submitted_at",
-            "grade",
-            "feedback",
-            "graded_at"
         ]

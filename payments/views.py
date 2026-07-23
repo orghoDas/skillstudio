@@ -21,6 +21,7 @@ from payments.serializers import (
 )
 from payments import services
 from accounts.permissions import IsInstructor, IsAdmin
+from accounts.utils import is_platform_admin
 from courses.models import Course
 # from events.models import Event  # Removed - events app disabled
 
@@ -151,7 +152,7 @@ class RefundListView(APIView):
     
     def get(self, request):
         # Users see their own refunds, admins see all
-        if hasattr(request.user, 'is_staff') and request.user.is_staff:
+        if is_platform_admin(request.user):
             refunds = Refund.objects.all()
         else:
             refunds = Refund.objects.filter(requested_by=request.user)
@@ -343,7 +344,7 @@ class CouponListView(APIView):
     """List coupons (admin) or active coupons (public)"""
     
     def get(self, request):
-        if hasattr(request.user, 'is_staff') and request.user.is_staff:
+        if is_platform_admin(request.user):
             # Admin sees all coupons
             coupons = Coupon.objects.all().order_by('-created_at')
         else:

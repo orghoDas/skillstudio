@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from django.db.models import Avg, Count
+from accounts.utils import is_platform_admin
 from .models import (
     Course, Lesson, Module, Category, Tag, CourseTag,
     CourseVersion, LessonResource
@@ -177,7 +177,7 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
 
         user = request.user
         course = lesson.module.course
-        if user.is_staff or course.instructor_id == user.id:
+        if is_platform_admin(user) or course.instructor_id == user.id:
             return False
 
         return not course.enrollments.filter(user=user, status='active').exists()
@@ -227,8 +227,6 @@ class CourseListSerializer(serializers.ModelSerializer):
     enrollments_count = serializers.SerializerMethodField()
     module_count = serializers.SerializerMethodField()
     lesson_count = serializers.SerializerMethodField()
-    average_rating = serializers.SerializerMethodField()
-    reviews_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
@@ -236,7 +234,7 @@ class CourseListSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
             'is_free', 'status', 'level', 'instructor_name', 'instructor_email',
             'category_name', 'published_at', 'created_at', 'enrollments_count',
-            'module_count', 'lesson_count', 'average_rating', 'reviews_count'
+            'module_count', 'lesson_count'
         ]
 
     def get_enrollments_count(self, obj):
@@ -248,16 +246,6 @@ class CourseListSerializer(serializers.ModelSerializer):
     def get_lesson_count(self, obj):
         return Lesson.objects.filter(module__course=obj).count()
     
-    def get_average_rating(self, obj):
-        # Return 0 if no reviews exist
-        from social.models import Review
-        avg = Review.objects.filter(course=obj).aggregate(Avg('rating'))['rating__avg']
-        return round(avg, 1) if avg else 0
-    
-    def get_reviews_count(self, obj):
-        from social.models import Review
-        return Review.objects.filter(course=obj).count()
-
     def get_instructor_name(self, obj):
         try:
             return obj.instructor.profile.full_name or ''
@@ -281,7 +269,6 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     enrollment_count = serializers.SerializerMethodField()
     enrollments_count = serializers.SerializerMethodField()  # Alias for template compatibility
     is_enrolled = serializers.SerializerMethodField()
-    average_rating = serializers.SerializerMethodField()
     total_duration = serializers.SerializerMethodField()
     learning_outcomes = serializers.SerializerMethodField()
 
@@ -292,7 +279,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'is_free', 'status', 'level', 'instructor', 'instructor_name',
             'instructor_email', 'category', 'category_name', 'tags', 'modules', 'published_at',
             'created_at', 'updated_at', 'enrollment_count', 'enrollments_count', 'is_enrolled',
-            'rejection_reason', 'average_rating', 'total_duration', 'learning_outcomes'
+            'rejection_reason', 'total_duration', 'learning_outcomes'
         ]
 
     def get_enrollment_count(self, obj):
@@ -307,12 +294,6 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.enrollments.filter(user=request.user, status='active').exists()
         return False
-    
-    def get_average_rating(self, obj):
-        from social.models import Review
-        from django.db.models import Avg
-        avg = Review.objects.filter(course=obj).aggregate(Avg('rating'))['rating__avg']
-        return round(avg, 1) if avg else 0
     
     def get_total_duration(self, obj):
         total = 0

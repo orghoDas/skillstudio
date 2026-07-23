@@ -41,7 +41,7 @@ enrollment = Enrollment.objects.create(
 curl -X PATCH http://localhost:8000/api/enrollments/lessons/1/watch-time/ \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"watch_time": 450}'
+  -d '{"watch_time_delta": 30}'
 ```
 
 **Mark Lesson Complete:**
@@ -108,7 +108,7 @@ curl -X GET http://localhost:8000/api/enrollments/learning-dashboard/ \
    ```python
    # Update watch time as student watches
    PATCH /api/enrollments/lessons/1/watch-time/
-   {"watch_time": 450}
+   {"watch_time_delta": 30}
    
    # Lesson auto-completes at 80% watched
    ```

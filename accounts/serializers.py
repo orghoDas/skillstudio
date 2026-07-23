@@ -60,7 +60,29 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
-class ProfileSerializer(serializers.ModelSerializer):
+class AccountProfileSerializer(serializers.ModelSerializer):
+    """Serializer for shared account-owned profile data."""
+
+    class Meta:
+        model = Profile
+        fields = (
+            "first_name",
+            "last_name",
+            "full_name",
+            "phone",
+            "location",
+            "bio",
+            "avatar",
+            "social_links",
+            "interests",
+            "wallet",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("wallet", "created_at", "updated_at")
+
+
+class ProfileSerializer(AccountProfileSerializer):
     role = serializers.CharField(source='user.role', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
     
@@ -88,29 +110,60 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class MeSerializer(serializers.ModelSerializer):
-    profile = ProfileSerializer()
+    account_profile = serializers.SerializerMethodField()
+    student_profile = serializers.SerializerMethodField()
+    instructor_profile = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ("id", "email", "username", 'role', 'is_active', 'created_at', 'profile')
+        fields = (
+            "id",
+            "email",
+            "username",
+            "role",
+            "is_active",
+            "created_at",
+            "account_profile",
+            "student_profile",
+            "instructor_profile",
+        )
         read_only_fields = ('id', 'email', 'role', 'created_at')
 
+    def get_account_profile(self, obj):
+        profile, _ = Profile.objects.get_or_create(user=obj)
+        return AccountProfileSerializer(profile).data
+
+    def get_student_profile(self, obj):
+        if obj.role != User.Role.STUDENT:
+            return None
+
+        from students.serializers import StudentProfileSerializer
+        from students.services import get_or_create_student_profile
+
+        return StudentProfileSerializer(get_or_create_student_profile(obj)).data
+
+    def get_instructor_profile(self, obj):
+        if obj.role not in (User.Role.INSTRUCTOR, User.Role.ADMIN):
+            return None
+
+        from instructors.serializers import InstructorProfileSerializer
+        from instructors.services import get_or_create_instructor_profile
+
+        return InstructorProfileSerializer(get_or_create_instructor_profile(obj)).data
+
     def update(self, instance, validated_data):
-        profile_data = validated_data.pop('profile', None)
-        
         # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # Update profile if provided
-        if profile_data:
-            profile = instance.profile
-            for attr, value in profile_data.items():
-                setattr(profile, attr, value)
-            profile.save()
-
         return instance
+
+
+class UnifiedProfileSerializer(MeSerializer):
+    """Stable profile envelope for account-owned and role-owned profile data."""
+
+    pass
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -146,14 +199,33 @@ class EmailVerificationSerializer(serializers.Serializer):
 class APIKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = APIKey
-        fields = ("id", "key", "label", "created_at", "is_active")
-        read_only_fields = ("id", "key", "created_at")
+        fields = (
+            "id",
+            "label",
+            "prefix",
+            "scopes",
+            "created_at",
+            "last_used_at",
+            "revoked_at",
+            "is_active",
+        )
+        read_only_fields = (
+            "id",
+            "prefix",
+            "created_at",
+            "last_used_at",
+            "revoked_at",
+            "is_active",
+        )
 
 
-class CreateAPIKeySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = APIKey
-        fields = ("label",)
+class CreateAPIKeySerializer(serializers.Serializer):
+    label = serializers.CharField(max_length=255)
+    scopes = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        allow_empty=True,
+    )
 
 
 class UpdateUserRoleSerializer(serializers.Serializer):

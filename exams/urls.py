@@ -22,7 +22,6 @@ urlpatterns = [
     # Instructor Views
     path('<int:exam_id>/analytics/', views.exam_analytics, name='exam-analytics'),
     path('<int:exam_id>/all-attempts/', views.exam_attempts_list, name='all-attempts'),
-    path('attempt/<int:attempt_id>/grade/', views.grade_manual_exam, name='grade-exam'),
     path('<int:exam_id>/publish/', views.publish_exam, name='publish-exam'),
     path('<int:exam_id>/archive/', views.archive_exam, name='archive-exam'),
 ]

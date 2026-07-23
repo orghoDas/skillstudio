@@ -152,13 +152,13 @@ def regenerate_certificate(request, course_id):
         serializer = CertificateSerializer(certificate, context={'request': request})
         return Response(serializer.data)
     
-    except (ValidationError, PermissionDenied) as e:
+    except (ValidationError, PermissionDenied):
         return Response(
-            {'error': str(e)},
+            {'error': 'Certificate cannot be regenerated.'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    except Exception as e:
+    except Exception:
         return Response(
-            {'error': str(e)},
+            {'error': 'Certificate regeneration failed.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

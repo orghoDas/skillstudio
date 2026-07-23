@@ -30,8 +30,6 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
             'total_courses',
             'total_students',
             'total_revenue',
-            'average_rating',
-            'total_reviews',
             'is_verified',
             'verified_at',
             'created_at',
@@ -43,8 +41,6 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
             'total_courses',
             'total_students',
             'total_revenue',
-            'average_rating',
-            'total_reviews',
             'is_verified',
             'verified_at',
             'created_at',
@@ -114,7 +110,6 @@ class CourseOverviewSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     title = serializers.CharField()
     enrollments = serializers.IntegerField()
-    avg_rating = serializers.DecimalField(max_digits=3, decimal_places=2, allow_null=True)
 
 
 class StudentEngagementSerializer(serializers.Serializer):

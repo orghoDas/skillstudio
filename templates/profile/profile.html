@@ -262,32 +262,35 @@ async function loadProfile() {
         console.log('Profile response:', profileResponse);
         
         if (profileResponse) {
+            const accountProfile = profileResponse.account_profile || {};
+            const instructorProfile = profileResponse.instructor_profile || {};
+
             // Common fields
-            document.getElementById('bio').value = profileResponse.bio || '';
-            document.getElementById('website').value = profileResponse.website || '';
-            document.getElementById('linkedin').value = profileResponse.linkedin || '';
-            document.getElementById('twitter').value = profileResponse.twitter || '';
+            document.getElementById('bio').value = isInstructor ? (instructorProfile.bio || '') : (accountProfile.bio || '');
+            document.getElementById('website').value = instructorProfile.website || '';
+            document.getElementById('linkedin').value = instructorProfile.linkedin || '';
+            document.getElementById('twitter').value = instructorProfile.twitter || '';
             
             // Instructor-specific fields
             if (isInstructor) {
-                document.getElementById('headline').value = profileResponse.headline || '';
+                document.getElementById('headline').value = instructorProfile.headline || '';
                 // expertise_areas is an array, join to string
-                const expertiseStr = Array.isArray(profileResponse.expertise_areas) 
-                    ? profileResponse.expertise_areas.join(', ') 
+                const expertiseStr = Array.isArray(instructorProfile.expertise_areas)
+                    ? instructorProfile.expertise_areas.join(', ')
                     : '';
                 document.getElementById('expertise').value = expertiseStr;
-                document.getElementById('teaching_experience').value = profileResponse.years_of_experience || '';
+                document.getElementById('teaching_experience').value = instructorProfile.years_of_experience || '';
                 
                 // Load instructor stats from profile
-                document.getElementById('stats-instructor-courses').textContent = profileResponse.total_courses || 0;
-                document.getElementById('stats-instructor-students').textContent = profileResponse.total_students || 0;
+                document.getElementById('stats-instructor-courses').textContent = instructorProfile.total_courses || 0;
+                document.getElementById('stats-instructor-students').textContent = instructorProfile.total_students || 0;
             } else {
                 // Student fields
-                document.getElementById('first_name').value = userResponse.first_name || '';
-                document.getElementById('last_name').value = userResponse.last_name || '';
-                document.getElementById('phone').value = profileResponse.phone || '';
-                document.getElementById('location').value = profileResponse.location || '';
-                document.getElementById('facebook').value = profileResponse.facebook || '';
+                document.getElementById('first_name').value = accountProfile.first_name || '';
+                document.getElementById('last_name').value = accountProfile.last_name || '';
+                document.getElementById('phone').value = accountProfile.phone || '';
+                document.getElementById('location').value = accountProfile.location || '';
+                document.getElementById('facebook').value = accountProfile.social_links?.facebook || '';
             }
         }
         
@@ -359,34 +362,45 @@ async function handleProfileUpdate(e) {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const isInstructor = user.role === 'instructor' || user.role === 'admin';
     
-    const formData = {
-        bio: document.getElementById('bio').value,
-        website: document.getElementById('website').value,
-        linkedin: document.getElementById('linkedin').value,
-        twitter: document.getElementById('twitter').value,
-    };
+    const accountData = {};
+    const instructorData = {};
     
-    // Add instructor-specific fields
     if (isInstructor) {
-        formData.headline = document.getElementById('headline').value;
-        // Convert comma-separated string to array
+        instructorData.bio = document.getElementById('bio').value;
+        instructorData.website = document.getElementById('website').value;
+        instructorData.linkedin = document.getElementById('linkedin').value;
+        instructorData.twitter = document.getElementById('twitter').value;
+        instructorData.headline = document.getElementById('headline').value;
         const expertiseStr = document.getElementById('expertise').value;
-        formData.expertise_areas = expertiseStr ? expertiseStr.split(',').map(s => s.trim()) : [];
-        formData.years_of_experience = parseInt(document.getElementById('teaching_experience').value) || 0;
+        instructorData.expertise_areas = expertiseStr ? expertiseStr.split(',').map(s => s.trim()) : [];
+        instructorData.years_of_experience = parseInt(document.getElementById('teaching_experience').value) || 0;
     } else {
-        // Student fields
-        formData.first_name = document.getElementById('first_name').value;
-        formData.last_name = document.getElementById('last_name').value;
-        formData.phone = document.getElementById('phone').value;
-        formData.location = document.getElementById('location').value;
-        formData.facebook = document.getElementById('facebook').value;
+        accountData.bio = document.getElementById('bio').value;
+        accountData.first_name = document.getElementById('first_name').value;
+        accountData.last_name = document.getElementById('last_name').value;
+        accountData.phone = document.getElementById('phone').value;
+        accountData.location = document.getElementById('location').value;
+        accountData.social_links = {
+            facebook: document.getElementById('facebook').value
+        };
     }
-    
-    try {
-        const response = await apiRequest('/accounts/profile/', {
+
+    const saveRequests = [];
+    if (Object.keys(accountData).length > 0) {
+        saveRequests.push(apiRequest('/accounts/profile/', {
             method: 'PUT',
-            body: JSON.stringify(formData)
-        });
+            body: JSON.stringify(accountData)
+        }));
+    }
+    if (Object.keys(instructorData).length > 0) {
+        saveRequests.push(apiRequest('/instructors/profile/', {
+            method: 'PUT',
+            body: JSON.stringify(instructorData)
+        }));
+    }
+
+    try {
+        const response = await Promise.all(saveRequests);
         
         if (response) {
             showAlert('Profile updated successfully!', 'success');

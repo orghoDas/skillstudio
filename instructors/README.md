@@ -32,8 +32,6 @@ Extended profile information specific to instructors.
 - `total_courses` (IntegerField) - Number of courses created (denormalized)
 - `total_students` (IntegerField) - Number of unique students (denormalized)
 - `total_revenue` (DecimalField) - Total earnings (denormalized)
-- `average_rating` (DecimalField) - Average course rating (denormalized)
-- `total_reviews` (IntegerField) - Number of reviews received (denormalized)
 - `is_verified` (BooleanField) - Verification status
 - `verified_at` (DateTimeField) - Verification timestamp
 - `created_at`, `updated_at` (DateTimeField) - Timestamps
@@ -41,13 +39,11 @@ Extended profile information specific to instructors.
 **Methods:**
 - `verify()` - Mark instructor as verified
 - `update_statistics()` - Update denormalized statistics from related models
-- `calculate_average_rating()` - Calculate average rating across all courses
 - `__str__()` - String representation
 
 **Indexes:**
 - user field
 - is_verified field
-- average_rating (descending)
 - total_students (descending)
 
 ### InstructorPayout
@@ -150,7 +146,6 @@ Gets overview of all courses for an instructor.
 - QuerySet of Course objects with annotations:
   - total_enrollments
   - total_revenue
-  - avg_rating
   - completion_rate
 
 ### get_student_engagement(instructor)
@@ -210,8 +205,7 @@ Get comprehensive instructor dashboard data.
     {
       "id": 1,
       "title": "Course Title",
-      "enrollments": 150,
-      "avg_rating": 4.5
+      "enrollments": 150
     }
   ],
   "students": [
@@ -278,7 +272,6 @@ Get or update instructor profile.
   "total_courses": 5,
   "total_students": 250,
   "total_revenue": "10000.00",
-  "average_rating": "4.5",
   "is_verified": true
 }
 ```
@@ -389,10 +382,6 @@ Get lesson-by-lesson drop-off analytics.
 - Platform fee calculation
 - Payout processing
 
-### Social App
-- Course reviews and ratings
-- Instructor rating calculation
-- Student feedback
 
 ### Analytics App
 - Detailed course analytics

@@ -15,7 +15,7 @@ class QuestionBankAdmin(admin.ModelAdmin):
             'fields': ('course', 'question_text', 'question_type', 'difficulty', 'marks')
         }),
         ('Answer Options', {
-            'fields': ('options', 'correct_answer', 'explanation')
+            'fields': ('options', 'explanation')
         }),
         ('Metadata', {
             'fields': ('tags', 'created_by', 'created_at', 'updated_at')
@@ -68,7 +68,7 @@ class ExamAttemptAdmin(admin.ModelAdmin):
     list_display = ['id', 'user_email', 'exam_title', 'score', 'percentage', 'passed', 'status', 'started_at', 'completed_at']
     list_filter = ['status', 'passed', 'exam', 'started_at']
     search_fields = ['user__email', 'exam__title']
-    readonly_fields = ['started_at', 'time_remaining_seconds', 'auto_graded_at', 'manually_graded_at']
+    readonly_fields = ['started_at', 'time_remaining_seconds', 'auto_graded_at']
     
     fieldsets = (
         ('Attempt Info', {
@@ -81,7 +81,7 @@ class ExamAttemptAdmin(admin.ModelAdmin):
             'fields': ('answers', 'score', 'percentage', 'passed')
         }),
         ('Grading', {
-            'fields': ('auto_graded_at', 'manually_graded_at', 'graded_by')
+            'fields': ('auto_graded_at',)
         }),
     )
     
@@ -124,4 +124,3 @@ class ExamResultAdmin(admin.ModelAdmin):
     def attempt_exam(self, obj):
         return obj.attempt.exam.title
     attempt_exam.short_description = 'Exam'
-

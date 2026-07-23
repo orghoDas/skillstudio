@@ -26,12 +26,6 @@ SIMPLE_JWT = {
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
-LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
-LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
-LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
-LIVEKIT_ENABLED = os.getenv("LIVEKIT_ENABLED", "False") == "True"
-LIVEKIT_TOKEN_TTL_SECONDS = int(os.getenv("LIVEKIT_TOKEN_TTL_SECONDS", "3600"))
-
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
@@ -68,7 +62,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",      
-    "channels",
     "core.apps.CoreConfig",
     "accounts",
     "courses",
@@ -76,9 +69,7 @@ INSTALLED_APPS = [
     'enrollments',
     "exams",
     # "events",  # Removed
-    "social",
     "payments",
-    'live',
     'certificates',
     'students',
     'instructors',
@@ -87,6 +78,7 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.APIKeyAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -96,21 +88,6 @@ REST_FRAMEWORK = {
 }
 
 ASGI_APPLICATION = "skillstudio.asgi.application"
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": (
-            "channels_redis.core.RedisChannelLayer"
-            if os.getenv("REDIS_URL")
-            else "channels.layers.InMemoryChannelLayer"
-        ),
-        **(
-            {"CONFIG": {"hosts": [os.getenv("REDIS_URL")]}}
-            if os.getenv("REDIS_URL")
-            else {}
-        ),
-    },
-}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

@@ -1,5 +1,6 @@
 from functools import wraps
 from rest_framework.exceptions import PermissionDenied
+from .utils import is_platform_admin
 
 
 def role_required(*roles):
@@ -12,7 +13,7 @@ def role_required(*roles):
             if not request.user.is_authenticated:
                 raise PermissionDenied("Authentication required")
 
-            if request.user.role == "admin":
+            if is_platform_admin(request.user):
                 return view_func(request, *args, **kwargs)
 
             if request.user.role not in roles:

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The courses app is the core module of SkillStudio, providing comprehensive course management functionality including course creation, content organization, reviews, and analytics. It supports the complete course lifecycle from draft creation to publishing and student enrollment.
+The courses app is the core module of SkillStudio, providing comprehensive course management functionality including course creation, content organization, publishing, and analytics. It supports the complete course lifecycle from draft creation to publishing and student enrollment.
 
 ## Features
 
@@ -11,7 +11,7 @@ The courses app is the core module of SkillStudio, providing comprehensive cours
 - **Publishing Workflow**: Draft → Under Review → Published → Archived
 - **Version Control**: Track course versions and changes
 - **Multi-level Content**: Organize content with Modules and Lessons
-- **Rich Content**: Support for video, text, quiz, and assignment content types
+- **Rich Content**: Support for video, text, and quiz content types
 
 ### Content Organization
 - **Categories**: Organize courses by subject area
@@ -19,12 +19,6 @@ The courses app is the core module of SkillStudio, providing comprehensive cours
 - **Modules**: Group related lessons together
 - **Lessons**: Individual learning units with various content types
 - **Resources**: Attach supplementary materials to lessons
-
-### Reviews & Ratings
-- **Student Reviews**: Enrolled students can review courses
-- **Rating System**: 1-5 star ratings with comments
-- **Rating Statistics**: Average ratings and distribution
-- **Review Management**: Update and delete reviews
 
 ### Analytics
 - **Instructor Dashboard**: View course performance metrics
@@ -63,8 +57,6 @@ Main course model with all course information.
 
 **Properties:**
 - `enrollment_count` - Total enrolled students
-- `average_rating` - Average review rating
-- `total_reviews` - Total number of reviews
 - `total_lessons` - Total lessons across all modules
 
 ### Module
@@ -95,7 +87,7 @@ Individual learning unit within a module.
 - `duration` - Lesson duration in minutes
 - `is_preview` - Free preview flag
 - `is_published` - Publication flag
-- `content_type` - Type: video, text, quiz, assignment
+- `content_type` - Type: video, text, quiz
 - `created_at` - Creation timestamp
 - `updated_at` - Last update timestamp
 
@@ -297,60 +289,6 @@ POST /api/v1/courses/{course_slug}/lessons/{id}/complete/
 ```
 **Permission:** Enrolled student
 
-### Review Endpoints
-
-#### List Reviews
-```
-GET /api/v1/courses/{course_slug}/reviews/
-```
-
-#### Create Review
-```
-POST /api/v1/courses/{course_slug}/reviews/create/
-```
-**Permission:** Enrolled student
-
-**Request Body:**
-```json
-{
-  "rating": 5,
-  "title": "Excellent Course",
-  "comment": "Very informative and well structured"
-}
-```
-
-#### Update Review
-```
-PATCH /api/v1/courses/{course_slug}/reviews/{id}/update/
-```
-**Permission:** Review author
-
-#### Delete Review
-```
-DELETE /api/v1/courses/{course_slug}/reviews/{id}/delete/
-```
-**Permission:** Review author or Admin
-
-#### Rating Statistics
-```
-GET /api/v1/courses/{course_slug}/reviews/stats/
-```
-
-**Response:**
-```json
-{
-  "average_rating": 4.5,
-  "total_reviews": 120,
-  "rating_distribution": {
-    "5": 80,
-    "4": 25,
-    "3": 10,
-    "2": 3,
-    "1": 2
-  }
-}
-```
-
 ### Analytics Endpoints
 
 #### Course Analytics
@@ -366,8 +304,6 @@ GET /api/v1/courses/{course_slug}/analytics/
   "active_enrollments": 180,
   "completed_enrollments": 65,
   "average_progress": 62.5,
-  "average_rating": 4.5,
-  "total_reviews": 120,
   "completion_rate": 26.5,
   "revenue": "24255.00"
 }
@@ -387,7 +323,6 @@ GET /api/v1/courses/instructor/dashboard/
   "draft_courses": 2,
   "total_enrollments": 450,
   "total_revenue": "44775.00",
-  "average_rating": 4.3,
   "courses": [...]
 }
 ```
@@ -496,17 +431,6 @@ progress = LessonProgress.objects.create(
     is_completed=True,
     completed_at=timezone.now()
 )
-
-# Student reviews course
-from social.models import Review
-
-review = Review.objects.create(
-    user=student_user,
-    course=course,
-    rating=5,
-    title="Great course!",
-    comment="Learned a lot from this course"
-)
 ```
 
 ## Settings
@@ -518,7 +442,6 @@ INSTALLED_APPS = [
     ...
     'courses',
     'enrollments',
-    'social',
     ...
 ]
 
@@ -541,7 +464,6 @@ The courses app provides enhanced Django admin interface with:
 - **Module Admin**: Lesson count display, bulk publishing
 - **Lesson Admin**: Duration formatting, content type filters
 - **Category Admin**: Hierarchical display, course count
-- **Review Admin**: Rating stars display, course links
 
 ## Testing
 
@@ -557,7 +479,6 @@ Test coverage includes:
 - Permission checks
 - Publishing workflow
 - Analytics calculations
-- Review system
 
 ## Dependencies
 
@@ -569,15 +490,12 @@ Test coverage includes:
 Related apps:
 - `accounts` - User management
 - `enrollments` - Student enrollment and progress
-- `social` - Reviews and social features
 - `instructors` - Instructor management
 
 ## Future Enhancements
 
 - [ ] Course certificates upon completion
 - [ ] Interactive quizzes and assessments
-- [ ] Discussion forums per lesson
-- [ ] Live sessions integration
 - [ ] Course bundles and packages
 - [ ] Advanced analytics with charts
 - [ ] Student notes and bookmarks

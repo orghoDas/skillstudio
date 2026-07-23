@@ -207,7 +207,6 @@ enrollments/
 - **courses** app: Course, Module, Lesson models
 - **certificates** app: Auto-certificate on completion
 - **analytics** app: Instructor analytics
-- **social** app: Review integration ready
 
 ### Testing Coverage
 

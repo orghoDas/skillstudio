@@ -1,11 +1,15 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 
 from certificates.services import issue_certificate
+from accounts.utils import is_platform_admin
 from courses.models import Lesson
 from enrollments.constants import LESSON_COMPLETION_THRESHOLD
 from .models import Enrollment, LessonProgress
+
+MAX_WATCH_PROGRESS_DELTA_SECONDS = 120
+WATCH_PROGRESS_GRACE_SECONDS = 15
 
 
 def mark_lesson_completed(enrollment, lesson):
@@ -109,6 +113,69 @@ def auto_complete_lesson(progress):
     return watched_ratio >= LESSON_COMPLETION_THRESHOLD
 
 
+@transaction.atomic
+def update_lesson_watch_progress(enrollment, lesson, watch_time_delta):
+    """
+    Apply one bounded incremental watch-progress event.
+
+    Clients may not set absolute watch time. They can only report a plausible
+    delta since the last accepted progress event.
+    """
+    if watch_time_delta < 0:
+        raise ValidationError("Watch time delta cannot be negative.")
+    if watch_time_delta > MAX_WATCH_PROGRESS_DELTA_SECONDS:
+        raise ValidationError(
+            f"Watch time delta cannot exceed {MAX_WATCH_PROGRESS_DELTA_SECONDS} seconds."
+        )
+
+    enrollment = Enrollment.objects.select_for_update().get(pk=enrollment.pk)
+    now = timezone.now()
+
+    try:
+        progress = LessonProgress.objects.select_for_update().get(
+            enrollment=enrollment,
+            user=enrollment.user,
+            lesson=lesson,
+        )
+        created = False
+    except LessonProgress.DoesNotExist:
+        try:
+            progress = LessonProgress.objects.create(
+                enrollment=enrollment,
+                user=enrollment.user,
+                lesson=lesson,
+            )
+            created = True
+        except IntegrityError:
+            progress = LessonProgress.objects.select_for_update().get(
+                enrollment=enrollment,
+                user=enrollment.user,
+                lesson=lesson,
+            )
+            created = False
+
+    if not created:
+        elapsed_seconds = max(0, int((now - progress.updated_at).total_seconds()))
+        plausible_delta = min(
+            MAX_WATCH_PROGRESS_DELTA_SECONDS,
+            elapsed_seconds + WATCH_PROGRESS_GRACE_SECONDS,
+        )
+        if watch_time_delta > plausible_delta:
+            raise ValidationError(
+                f"Watch time delta is too large for elapsed playback time; maximum allowed is {plausible_delta} seconds."
+            )
+
+    max_duration = lesson.duration_seconds
+    next_watch_time = progress.watch_time + watch_time_delta
+    if max_duration > 0:
+        next_watch_time = min(next_watch_time, max_duration)
+
+    progress.watch_time = next_watch_time
+    progress.updated_at = now
+    progress.save(update_fields=["watch_time", "updated_at"])
+    return progress
+
+
 def get_previous_lesson(lesson):
     pre_lesson = Lesson.objects.filter(
         module=lesson.module,
@@ -157,7 +224,7 @@ def get_next_lesson(enrollment, current_lesson):
 
 def require_active_enrollment(user, course):
     """Validate that user has active enrollment for course."""
-    if user.is_staff or user.is_superuser:
+    if is_platform_admin(user):
         return None
 
     if course.instructor == user:

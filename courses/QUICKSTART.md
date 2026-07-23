@@ -8,7 +8,6 @@ INSTALLED_APPS = [
     ...
     'courses',
     'enrollments',
-    'social',
     ...
 ]
 ```
@@ -170,7 +169,6 @@ GET /api/v1/courses/?level=beginner&ordering=-created_at
       "category": "Web Development",
       "price": "199.99",
       "level": "beginner",
-      "average_rating": 4.8,
       "enrollment_count": 1250
     }
   ]
@@ -201,7 +199,6 @@ GET /api/v1/courses/complete-web-dev-bootcamp/
   },
   "price": "199.99",
   "level": "beginner",
-  "average_rating": 4.8,
   "enrollment_count": 1250,
   "total_lessons": 45,
   "estimated_duration": 1800,
@@ -250,68 +247,7 @@ Authorization: Bearer <student_token>
 }
 ```
 
-### 11. Write a Review (Enrolled Student)
-
-**Request:**
-```bash
-POST /api/v1/courses/complete-web-dev-bootcamp/reviews/create/
-Authorization: Bearer <student_token>
-Content-Type: application/json
-
-{
-  "rating": 5,
-  "title": "Amazing Course!",
-  "comment": "This course exceeded my expectations. The instructor explains everything clearly."
-}
-```
-
-### 12. View Course Reviews
-
-**Request:**
-```bash
-GET /api/v1/courses/complete-web-dev-bootcamp/reviews/
-```
-
-**Response:**
-```json
-{
-  "count": 120,
-  "results": [
-    {
-      "id": 1,
-      "user_name": "Jane Smith",
-      "rating": 5,
-      "title": "Amazing Course!",
-      "comment": "This course exceeded my expectations...",
-      "created_at": "2024-01-10T15:30:00Z"
-    }
-  ]
-}
-```
-
-### 13. Get Rating Statistics
-
-**Request:**
-```bash
-GET /api/v1/courses/complete-web-dev-bootcamp/reviews/stats/
-```
-
-**Response:**
-```json
-{
-  "average_rating": 4.8,
-  "total_reviews": 120,
-  "rating_distribution": {
-    "5": 95,
-    "4": 20,
-    "3": 3,
-    "2": 1,
-    "1": 1
-  }
-}
-```
-
-### 14. View Course Analytics (Instructor)
+### 11. View Course Analytics (Instructor)
 
 **Request:**
 ```bash
@@ -326,8 +262,6 @@ Authorization: Bearer <instructor_token>
   "active_enrollments": 800,
   "completed_enrollments": 450,
   "average_progress": 65.5,
-  "average_rating": 4.8,
-  "total_reviews": 120,
   "completion_rate": 36.0,
   "revenue": "249875.00"
 }
@@ -349,7 +283,6 @@ Authorization: Bearer <instructor_token>
   "draft_courses": 2,
   "total_enrollments": 3500,
   "total_revenue": "698000.00",
-  "average_rating": 4.6,
   "courses": [
     {
       "id": 1,
@@ -434,8 +367,6 @@ POST /api/v1/accounts/login/
 | Publish Course | Admin Only |
 | Create Module/Lesson | Course Instructor/Admin |
 | Complete Lesson | Enrolled Student |
-| Create Review | Enrolled Student |
-| Update Review | Review Author |
 | View Analytics | Course Instructor/Admin |
 | Instructor Dashboard | Instructor/Admin |
 | Admin Stats | Admin Only |
@@ -453,7 +384,7 @@ POST /api/v1/accounts/login/
 
 3. **Pricing**: Set `price=0` or `discount_price=0` for free courses
 
-4. **Content Types**: Use appropriate content types (video, text, quiz, assignment) for better organization
+4. **Content Types**: Use appropriate content types (video, text, quiz) for better organization
 
 5. **Order**: Always set proper `order` values for modules and lessons to maintain sequence
 

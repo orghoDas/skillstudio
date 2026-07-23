@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
@@ -30,6 +31,7 @@ from .services import (
     get_resume_lesson,
     get_next_lesson,
     get_lesson_completion_stats,
+    update_lesson_watch_progress,
 )
 
 
@@ -194,21 +196,38 @@ class LessonProgressView(APIView):
             status='active'
         )
 
-        progress, _ = LessonProgress.objects.get_or_create(
+        progress = LessonProgress.objects.filter(
             enrollment=enrollment,
             user=request.user,
             lesson=lesson
-        )
+        ).first()
 
-        serializer = LessonProgressDetailSerializer(progress)
-        return Response(serializer.data)
+        if progress:
+            serializer = LessonProgressDetailSerializer(progress)
+            return Response(serializer.data)
+
+        return Response({
+            'id': None,
+            'lesson': {
+                'id': lesson.id,
+                'title': lesson.title,
+                'duration_seconds': lesson.duration_seconds,
+                'module_id': lesson.module.id,
+                'module_title': lesson.module.title,
+                'position': lesson.position,
+            },
+            'watch_time': 0,
+            'is_completed': False,
+            'completed_at': None,
+            'progress_percentage': 0,
+            'started_at': None,
+        })
 
 
 class LessonWatchTimeView(APIView):
-    """Update lesson watch time."""
+    """Update lesson watch time using incremental deltas."""
     permission_classes = [IsAuthenticated]
 
-    @transaction.atomic
     def patch(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         enrollment = get_object_or_404(
@@ -218,39 +237,46 @@ class LessonWatchTimeView(APIView):
             status='active'
         )
 
-        watch_time = request.data.get('watch_time', 0)
+        if 'watch_time' in request.data and 'watch_time_delta' not in request.data:
+            return Response(
+                {'error': 'Use watch_time_delta; absolute watch_time updates are not accepted.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        watch_time_delta = request.data.get('watch_time_delta', 0)
         try:
-            watch_time = int(watch_time)
+            watch_time_delta = int(watch_time_delta)
         except (TypeError, ValueError):
             return Response(
-                {'error': 'Watch time must be an integer number of seconds.'},
+                {'error': 'Watch time delta must be an integer number of seconds.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if watch_time < 0:
+        if watch_time_delta < 0:
             return Response(
-                {'error': 'Watch time cannot be negative.'},
+                {'error': 'Watch time delta cannot be negative.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        progress, _ = LessonProgress.objects.get_or_create(
-            enrollment=enrollment,
-            user=request.user,
-            lesson=lesson
-        )
-
-        # Update watch time monotonically and do not exceed lesson duration.
-        max_duration = lesson.duration_seconds
-        progress.watch_time = max(progress.watch_time, min(watch_time, max_duration))
-        progress.save(update_fields=['watch_time'])
+        try:
+            progress = update_lesson_watch_progress(
+                enrollment=enrollment,
+                lesson=lesson,
+                watch_time_delta=watch_time_delta,
+            )
+        except DjangoValidationError as exc:
+            message = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
 
         # Auto-complete lesson if threshold reached
         if auto_complete_lesson(progress) and not progress.is_completed:
             progress = mark_lesson_completed(enrollment, lesson)
             check_and_complete_course(enrollment)
 
+        max_duration = lesson.duration_seconds
         return Response({
             'watch_time': progress.watch_time,
+            'accepted_delta': watch_time_delta,
             'completed': progress.is_completed,
             'progress_percentage': round((progress.watch_time / max_duration * 100), 2) if max_duration > 0 else 0,
         })

@@ -76,7 +76,6 @@ class InstructorDashboardView(APIView, InstructorOnlyMixin):
                     "id": c.id,
                     "title": c.title,
                     "enrollments": c.total_enrollments,
-                    "avg_rating": c.avg_rating,
                 }
                 for c in courses
             ],

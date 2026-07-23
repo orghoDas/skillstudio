@@ -173,8 +173,6 @@
                         <select id="new-question-type" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded">
                             <option value="mcq">MCQ</option>
                             <option value="tf">True/False</option>
-                            <option value="short">Short Answer</option>
-                            <option value="essay">Essay</option>
                         </select>
                     </div>
                     <div>
@@ -204,6 +202,13 @@
                         <div class="mt-2">
                             <button type="button" onclick="addMcqOption()" class="px-3 py-1 bg-gray-700 text-white rounded text-sm">Add option</button>
                         </div>
+                    </div>
+                    <div id="tf-answer-container" class="hidden md:col-span-2">
+                        <label class="block text-sm mb-1">Correct answer</label>
+                        <select id="tf-correct-answer" class="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded">
+                            <option value="true">True</option>
+                            <option value="false">False</option>
+                        </select>
                     </div>
                     <div class="md:col-span-2 flex items-center space-x-3">
                         <button id="submit-create-question" type="button" onclick="submitCreateQuestion()" class="px-4 py-2 bg-blue-600 text-white rounded">Create</button>
@@ -453,6 +458,12 @@ function toggleCreateQuestionForm(hideOnly = false) {
     form.classList.toggle('hidden');
 }
 
+document.getElementById('new-question-type')?.addEventListener('change', function() {
+    const isTrueFalse = this.value === 'tf';
+    document.getElementById('mcq-options-container')?.classList.toggle('hidden', isTrueFalse);
+    document.getElementById('tf-answer-container')?.classList.toggle('hidden', !isTrueFalse);
+});
+
 function addMcqOption() {
     const list = document.getElementById('mcq-options-list');
     const idx = list.querySelectorAll('.mcq-option-text').length;
@@ -470,6 +481,7 @@ function addMcqOption() {
 }
 
 async function submitCreateQuestion() {
+    const statusEl = document.getElementById('create-question-status');
     const courseId = document.getElementById('course-select').value;
     if (!courseId) {
         showToast('Select a course before creating a question', 'warning');
@@ -506,9 +518,13 @@ async function submitCreateQuestion() {
         let correctIndex = 0;
         for (let r of radios) if (r.checked) { correctIndex = parseInt(r.value, 10); break; }
         payload.options = options.map((text, idx) => ({ text, is_correct: idx === correctIndex }));
+    } else if (type === 'tf') {
+        const correctAnswer = document.getElementById('tf-correct-answer').value;
+        payload.options = [
+            { text: 'True', is_correct: correctAnswer === 'true' },
+            { text: 'False', is_correct: correctAnswer === 'false' }
+        ];
     }
-
-    const statusEl = document.getElementById('create-question-status');
     statusEl.textContent = 'Creating...';
 
     try {
