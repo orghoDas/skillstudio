@@ -4,20 +4,23 @@ from django.db.models import F, Q, Avg, Count, Prefetch
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
-from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
+from courses.policies import can_view_course_catalog
 from courses.permissions import CanEditCourse
 from courses.services import validate_course_for_submission
-from enrollments.services import get_next_lesson, require_active_enrollment
+from courses.progression import get_next_lesson
+from enrollments.services import require_active_enrollment
 
 from .models import Course, Lesson, Module, Category, Tag, LessonResource
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
     ModuleSerializer, ModuleCreateUpdateSerializer, LessonSerializer,
     LessonCreateUpdateSerializer, CategorySerializer, TagSerializer,
-    CourseCurriculumSerializer, LessonDataSerializer, LessonResourceSerializer
+    CourseCurriculumSerializer, CatalogModuleSerializer, CatalogLessonSummarySerializer,
+    LessonDataSerializer, LessonResourceSerializer
 )
 from enrollments.models import Enrollment, LessonProgress
 
@@ -42,7 +45,7 @@ class TagListCreateView(generics.ListCreateAPIView):
     """List and create tags"""
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
-    
+
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsAdmin()]
@@ -55,7 +58,7 @@ class CourseListView(generics.ListAPIView):
     """List all published courses with search and filtering"""
     serializer_class = CourseListSerializer
     permission_classes = [AllowAny]
-    
+
     def get_queryset(self):
         # Filter by instructor first (including "me" for current user)
         instructor = self.request.query_params.get('instructor')
@@ -192,7 +195,7 @@ class CourseUpdateView(generics.UpdateAPIView):
             raise ValidationError("Cannot edit published or archived courses.")
         
         return course
-    
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -263,28 +266,34 @@ class ModuleListView(generics.ListCreateAPIView):
     """List and create modules for a course (supports both course_id and slug)"""
     serializer_class = ModuleSerializer
     permission_classes = [AllowAny]
-    
-    def get_queryset(self):
-        # Support both course_id and slug lookups
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_course(self):
         if 'slug' in self.kwargs:
-            course = Course.objects.get(slug=self.kwargs['slug'])
-            course_id = course.id
+            course = get_object_or_404(Course, slug=self.kwargs['slug'])
         else:
-            course_id = self.kwargs['course_id']
-        
-        return Module.objects.filter(course_id=course_id).prefetch_related('lessons').order_by('position')
+            course = get_object_or_404(Course, id=self.kwargs['course_id'])
+
+        if self.request.method in SAFE_METHODS and not can_view_course_catalog(self.request.user, course):
+            raise PermissionDenied("You don't have permission to view this course curriculum.")
+
+        return course
+
+    def get_queryset(self):
+        course = self.get_course()
+        return Module.objects.filter(course=course).prefetch_related('lessons').order_by('position')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return ModuleCreateUpdateSerializer
-        return ModuleSerializer
+        return CatalogModuleSerializer
     
     def perform_create(self, serializer):
-        # Get course from slug or id
-        if 'slug' in self.kwargs:
-            course = Course.objects.get(slug=self.kwargs['slug'])
-        else:
-            course = Course.objects.get(id=self.kwargs['course_id'])
+        course = self.get_course()
         
         # Check permissions
         if course.instructor != self.request.user:
@@ -355,22 +364,33 @@ class ModuleDeleteView(generics.DestroyAPIView):
 class LessonListView(generics.ListCreateAPIView):
     """List and create lessons for a module/section"""
     serializer_class = LessonSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_module(self):
+        module_id = self.kwargs.get('module_id') or self.kwargs.get('id')
+        module = get_object_or_404(Module.objects.select_related('course'), id=module_id)
+
+        if self.request.method in SAFE_METHODS and not can_view_course_catalog(self.request.user, module.course):
+            raise PermissionDenied("You don't have permission to view this course curriculum.")
+
+        return module
     
     def get_queryset(self):
-        # Support both module_id and section id (they're the same)
-        module_id = self.kwargs.get('module_id') or self.kwargs.get('id')
-        return Lesson.objects.filter(module_id=module_id).prefetch_related('resources').order_by('position')
+        module = self.get_module()
+        return Lesson.objects.filter(module=module).select_related('module__course').order_by('position')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return LessonCreateUpdateSerializer
-        return LessonSerializer
+        return CatalogLessonSummarySerializer
     
     def perform_create(self, serializer):
-        # Get module/section id
-        module_id = self.kwargs.get('module_id') or self.kwargs.get('id')
-        module = Module.objects.get(id=module_id)
+        module = self.get_module()
         
         # Check permissions
         if module.course.instructor != self.request.user:
@@ -463,11 +483,14 @@ class LessonDetailView(APIView):
         course = lesson.module.course
         user = request.user
 
+        if not can_view_course_catalog(user, course):
+            raise PermissionDenied("You don't have permission to view this lesson.")
+
         # Increment view count
         Lesson.objects.filter(id=lesson.id).update(view_count=F('view_count') + 1)
 
-        # Free lesson → public access
-        if lesson.is_free:
+        # Free lessons and free courses are public after catalog visibility passes.
+        if lesson.is_free or course.is_free:
             return Response(LessonDataSerializer(lesson).data)
 
         # Protected lesson requires authentication
@@ -671,7 +694,8 @@ class ResumeLearningView(APIView):
 
     def get(self, request, course_id):
         user = request.user
-        enrollment = require_active_enrollment(user, course_id)
+        course = get_object_or_404(Course, id=course_id)
+        enrollment = require_active_enrollment(user, course)
         lesson = get_next_lesson(enrollment)
 
         if not lesson:

@@ -44,21 +44,30 @@ def get_course_assessment_overview(course):
 
 
 def get_quiz_question_analytics(quiz):
-    questions = QuizQuestion.objects.filter(quiz=quiz)
+    questions = QuizQuestion.objects.filter(quiz=quiz).prefetch_related("options")
+    attempts = list(QuizAttempt.objects.filter(quiz=quiz).only("answers"))
 
     analytics = []
 
     for q in questions:
-        total = QuizAttempt.objects.filter(
-            quiz=quiz,
-            answers__has_key=str(q.id)
-        ).count()
+        question_key = str(q.id)
+        correct_option_ids = {
+            str(option.id)
+            for option in q.options.all()
+            if option.is_correct
+        }
+        answered_values = [
+            str(attempt.answers[question_key])
+            for attempt in attempts
+            if question_key in attempt.answers
+        ]
 
-        wrong = QuizAttempt.objects.filter(
-            quiz=quiz
-        ).exclude(
-            answers__contains={str(q.id): q.correct_answer}
-        ).count()
+        total = len(answered_values)
+        wrong = sum(
+            1
+            for selected_option_id in answered_values
+            if selected_option_id not in correct_option_ids
+        )
 
         analytics.append({
             "question_id": q.id,

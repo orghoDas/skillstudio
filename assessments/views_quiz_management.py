@@ -25,14 +25,12 @@ class ManageQuizView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Get or create quiz
-        quiz, created = Quiz.objects.get_or_create(
-            lesson=lesson,
-            defaults={
-                'title': f"{lesson.title} Quiz",
-                'passing_percentage': 50
-            }
-        )
+        quiz = Quiz.objects.filter(lesson=lesson).first()
+        if not quiz:
+            return Response(
+                {'error': 'Quiz not found for this lesson.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         return Response(ManageQuizDetailSerializer(quiz).data)
 
@@ -57,41 +55,55 @@ class ManageQuizView(APIView):
                 'time_limit_minutes': request.data.get('time_limit_minutes')
             }
         )
-        
+
+        replacing_questions = 'questions' in request.data
+        if not created and replacing_questions and quiz.attempts.exists():
+            return Response(
+                {
+                    'error': (
+                        'Quiz questions cannot be replaced after attempts exist. '
+                        'Create a new quiz version instead.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
         # Update quiz settings
         quiz.title = request.data.get('title', quiz.title)
         quiz.passing_percentage = request.data.get('passing_percentage', quiz.passing_percentage)
-        time_limit_minutes = request.data.get('time_limit_minutes')
-        quiz.time_limit_minutes = None if time_limit_minutes in (None, '', 0) else time_limit_minutes
-        
-        # Delete existing questions
-        quiz.questions.all().delete()
-        
-        # Create new questions
-        questions_data = request.data.get('questions', [])
-        total_marks = 0
-        
-        for q_data in questions_data:
-            question = QuizQuestion.objects.create(
-                quiz=quiz,
-                question_text=q_data.get('text', ''),
-                question_type=q_data.get('type', 'mcq'),
-                marks=q_data.get('marks', 1)
-            )
-            total_marks += question.marks
-            
-            # Create options
-            for opt_data in q_data.get('options', []):
-                QuestionOption.objects.create(
-                    question=question,
-                    option_text=opt_data.get('text', ''),
-                    is_correct=opt_data.get('is_correct', False)
+        if 'time_limit_minutes' in request.data:
+            time_limit_minutes = request.data.get('time_limit_minutes')
+            quiz.time_limit_minutes = None if time_limit_minutes in (None, '', 0) else time_limit_minutes
+
+        if replacing_questions:
+            # Replace questions only while there is no attempt history to preserve.
+            quiz.questions.all().delete()
+
+            questions_data = request.data.get('questions', [])
+            total_marks = 0
+
+            for q_data in questions_data:
+                question = QuizQuestion.objects.create(
+                    quiz=quiz,
+                    question_text=q_data.get('text', ''),
+                    question_type=q_data.get('type', 'mcq'),
+                    marks=q_data.get('marks', 1)
                 )
-        
-        # Update total marks
-        quiz.total_marks = total_marks
+                total_marks += question.marks
+
+                # Create options
+                for opt_data in q_data.get('options', []):
+                    QuestionOption.objects.create(
+                        question=question,
+                        option_text=opt_data.get('text', ''),
+                        is_correct=opt_data.get('is_correct', False)
+                    )
+
+            # Update total marks
+            quiz.total_marks = total_marks
+
         quiz.save()
-        
+
         return Response({
             'message': 'Quiz saved successfully',
             'quiz': ManageQuizDetailSerializer(quiz).data
