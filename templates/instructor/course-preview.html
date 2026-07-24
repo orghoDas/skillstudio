@@ -235,7 +235,7 @@ async function loadCourse() {
         // Thumbnail
         if (courseData.thumbnail) {
             document.getElementById('course-thumbnail-container').innerHTML = `
-                <img src="${courseData.thumbnail}" alt="${courseData.title}" class="w-full h-full object-cover rounded-lg">
+                <img src="${safeUrl(courseData.thumbnail)}" alt="${escapeHtml(courseData.title)}" class="w-full h-full object-cover rounded-lg">
             `;
         }
         
@@ -247,7 +247,7 @@ async function loadCourse() {
                     <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                     </svg>
-                    <span>${outcome}</span>
+                    <span>${escapeHtml(outcome)}</span>
                 </li>
             `).join('');
         } else {
@@ -276,7 +276,7 @@ function renderCurriculum() {
         container.innerHTML = `
             <div class="text-center py-8 text-gray-400">
                 <p>No content added yet</p>
-                <a href="/instructor/courses/${courseSlug}/content/" class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">
+                <a href="/instructor/courses/${escapeHtml(courseSlug)}/content/" class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">
                     Add your first section
                 </a>
             </div>
@@ -293,8 +293,8 @@ function renderCurriculum() {
             <div class="border border-dark-border rounded-lg overflow-hidden">
                 <div class="bg-dark-hover p-4 flex items-center justify-between">
                     <div>
-                        <h3 class="font-semibold">Section ${index + 1}: ${module.title}</h3>
-                        <p class="text-sm text-gray-400 mt-1">${lessons.length} lessons · ${durationMinutes} min</p>
+                        <h3 class="font-semibold">Section ${escapeHtml(index + 1)}: ${escapeHtml(module.title)}</h3>
+                        <p class="text-sm text-gray-400 mt-1">${escapeHtml(lessons.length)} lessons · ${escapeHtml(durationMinutes)} min</p>
                     </div>
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -312,12 +312,12 @@ function renderCurriculum() {
                             <div class="p-3 flex items-center space-x-3 hover:bg-dark-hover transition-colors">
                                 <div class="w-8 h-8 bg-blue-900/50 rounded flex items-center justify-center flex-shrink-0">
                                     <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        ${icons[lesson.content_type] || icons.text}
+                                        ${escapeHtml(icons[lesson.content_type] || icons.text)}
                                     </svg>
                                 </div>
                                 <div class="flex-1">
-                                    <p class="text-sm font-medium">${lesson.title}</p>
-                                    <p class="text-xs text-gray-400 capitalize">${lesson.content_type}${lesson.duration_seconds ? ` · ${Math.round(lesson.duration_seconds / 60)} min` : ''}</p>
+                                    <p class="text-sm font-medium">${escapeHtml(lesson.title)}</p>
+                                    <p class="text-xs text-gray-400 capitalize">${escapeHtml(lesson.content_type)}${lesson.duration_seconds ? ` · ${Math.round(lesson.duration_seconds / 60)} min` : ''}</p>
                                 </div>
                                 ${lesson.is_free ? '<span class="text-xs px-2 py-1 bg-green-900/30 text-green-400 rounded">Preview</span>' : ''}
                             </div>

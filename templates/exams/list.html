@@ -61,25 +61,7 @@ const API_BASE = '/api';
 let currentFilter = 'all';
 let isInstructor = false;
 
-async function apiRequest(endpoint, options = {}) {
-    const token = localStorage.getItem('access_token');
-    const headers = {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-    };
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers: { ...headers, ...options.headers }
-    });
-
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(error.detail || error.message || 'Request failed');
-    }
-
-    return response.json();
-}
+// Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
 async function loadExams() {
     const container = document.getElementById('exams-container');
@@ -139,7 +121,7 @@ async function loadExams() {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 <p class="text-red-400 text-lg mb-2">Failed to load exams</p>
-                <p class="text-gray-400 text-sm mb-4">${error.message || 'Please try again later'}</p>
+                <p class="text-gray-400 text-sm mb-4">${escapeHtml(error.message || 'Please try again later')}</p>
                 <button onclick="loadExams()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     Retry
                 </button>
@@ -174,55 +156,55 @@ function createExamCard(exam) {
     card.innerHTML = `
         <div class="flex items-start justify-between mb-4">
             <div class="flex-1">
-                <h3 class="text-xl font-semibold mb-2">${exam.title}</h3>
-                <p class="text-sm text-gray-400 mb-3">${exam.course_name || 'Course'}</p>
+                <h3 class="text-xl font-semibold mb-2">${escapeHtml(exam.title)}</h3>
+                <p class="text-sm text-gray-400 mb-3">${escapeHtml(exam.course_name || 'Course')}</p>
             </div>
             ${statusBadge}
         </div>
         
-        <p class="text-gray-300 mb-4 line-clamp-2">${exam.description || 'No description'}</p>
+        <p class="text-gray-300 mb-4 line-clamp-2">${escapeHtml(exam.description || 'No description')}</p>
         
         <div class="grid grid-cols-2 gap-4 mb-4">
             <div class="flex items-center text-sm text-gray-400">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                ${exam.duration_minutes} minutes
+                ${escapeHtml(exam.duration_minutes)} minutes
             </div>
             <div class="flex items-center text-sm text-gray-400">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
-                ${exam.question_count || 0} questions
+                ${escapeHtml(exam.question_count || 0)} questions
             </div>
             <div class="flex items-center text-sm text-gray-400">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                 </svg>
-                ${exam.total_marks} marks
+                ${escapeHtml(exam.total_marks)} marks
             </div>
             <div class="flex items-center text-sm text-gray-400">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
-                ${exam.attempt_count || 0}/${exam.max_attempts} attempts
+                ${escapeHtml(exam.attempt_count || 0)}/${escapeHtml(exam.max_attempts)} attempts
             </div>
         </div>
         
         <div class="flex items-center justify-between pt-4 border-t border-dark-border">
             <div class="text-sm text-gray-400">
-                <div>Starts: ${new Date(exam.start_datetime).toLocaleString()}</div>
-                <div>Ends: ${new Date(exam.end_datetime).toLocaleString()}</div>
+                <div>Starts: ${escapeHtml(new Date(exam.start_datetime).toLocaleString())}</div>
+                <div>Ends: ${escapeHtml(new Date(exam.end_datetime).toLocaleString())}</div>
             </div>
             <div class="flex space-x-2">
                 ${hasAttempts ? `
-                    <button onclick="viewResults(${exam.id})" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                    <button onclick="viewResults(${escapeHtml(exam.id)})" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                         View Results
                     </button>
                 ` : ''}
                 ${isActive && canRetake ? `
-                    <button onclick="startExam(${exam.id})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                        ${hasAttempts ? 'Retake Exam' : 'Start Exam'}
+                    <button onclick="startExam(${escapeHtml(exam.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                        ${escapeHtml(hasAttempts ? 'Retake Exam' : 'Start Exam')}
                     </button>
                 ` : ''}
             </div>
@@ -255,11 +237,6 @@ function viewResults(examId) {
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-        window.location.href = '/login/';
-        return;
-    }
     
     // Check if user is instructor
     try {
@@ -273,9 +250,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Show create button for instructors
     fetch('/api/accounts/me/', {
-        headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
+        credentials: 'same-origin'
     })
     .then(response => response.json())
     .then(user => {

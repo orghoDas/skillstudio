@@ -171,7 +171,7 @@ async function loadCourseDetails() {
         document.getElementById('course-details').innerHTML = `
             <div class="flex items-start space-x-4">
                 ${courseData.thumbnail ? `
-                    <img src="${courseData.thumbnail}" alt="${courseData.title}" class="w-24 h-24 object-cover rounded-lg">
+                    <img src="${safeUrl(courseData.thumbnail)}" alt="${escapeHtml(courseData.title)}" class="w-24 h-24 object-cover rounded-lg">
                 ` : `
                     <div class="w-24 h-24 bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg flex items-center justify-center">
                         <svg class="w-10 h-10 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,11 +180,11 @@ async function loadCourseDetails() {
                     </div>
                 `}
                 <div class="flex-1">
-                    <h3 class="text-xl font-semibold mb-2">${courseData.title}</h3>
-                    <p class="text-sm text-gray-400 mb-3">${courseData.short_description || ''}</p>
+                    <h3 class="text-xl font-semibold mb-2">${escapeHtml(courseData.title)}</h3>
+                    <p class="text-sm text-gray-400 mb-3">${escapeHtml(courseData.short_description || '')}</p>
                     <div class="flex items-center space-x-4 text-sm text-gray-500">
-                        <span class="capitalize">${courseData.level || 'All Levels'}</span>
-                        ${courseData.duration ? `<span>${courseData.duration} hours</span>` : ''}
+                        <span class="capitalize">${escapeHtml(courseData.level || 'All Levels')}</span>
+                        ${courseData.duration ? `<span>${escapeHtml(courseData.duration)} hours</span>` : ''}
                     </div>
                 </div>
             </div>
@@ -199,11 +199,11 @@ async function loadCourseDetails() {
             <div class="space-y-3">
                 <div class="flex items-center justify-between">
                     <span class="text-gray-400">Course Price</span>
-                    <span class="font-semibold">$${price.toFixed(2)}</span>
+                    <span class="font-semibold">$${escapeHtml(price.toFixed(2))}</span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-gray-400">Tax (10%)</span>
-                    <span class="font-semibold">$${tax.toFixed(2)}</span>
+                    <span class="font-semibold">$${escapeHtml(tax.toFixed(2))}</span>
                 </div>
             </div>
         `;

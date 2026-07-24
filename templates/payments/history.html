@@ -110,11 +110,6 @@ let allTransactions = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/payments/history/';
-        return;
-    }
 
     loadTransactions();
 });
@@ -205,44 +200,44 @@ function renderTransaction(tx) {
     return `
         <tr class="hover:bg-dark-bg/50 transition-colors">
             <td class="px-6 py-4">
-                <span class="font-mono text-sm text-gray-400">#${tx.transaction_id || tx.id}</span>
+                <span class="font-mono text-sm text-gray-400">#${escapeHtml(tx.transaction_id || tx.id)}</span>
             </td>
             <td class="px-6 py-4">
                 <div class="text-sm">
-                    <div class="font-medium">${date.toLocaleDateString()}</div>
-                    <div class="text-gray-500 text-xs">${date.toLocaleTimeString()}</div>
+                    <div class="font-medium">${escapeHtml(date.toLocaleDateString())}</div>
+                    <div class="text-gray-500 text-xs">${escapeHtml(date.toLocaleTimeString())}</div>
                 </div>
             </td>
             <td class="px-6 py-4">
                 <div class="max-w-xs">
-                    <p class="font-medium truncate">${tx.course_title || 'Course'}</p>
-                    ${tx.course_slug ? `<a href="/courses/${tx.course_slug}/" class="text-xs text-blue-400 hover:underline">View Course</a>` : ''}
+                    <p class="font-medium truncate">${escapeHtml(tx.course_title || 'Course')}</p>
+                    ${tx.course_slug ? `<a href="/courses/${escapeHtml(tx.course_slug)}/" class="text-xs text-blue-400 hover:underline">View Course</a>` : ''}
                 </div>
             </td>
             <td class="px-6 py-4">
-                <span class="font-semibold text-lg">\$${parseFloat(tx.amount || 0).toFixed(2)}</span>
+                <span class="font-semibold text-lg">\$${escapeHtml(parseFloat(tx.amount || 0).toFixed(2))}</span>
             </td>
             <td class="px-6 py-4">
                 <div class="flex items-center space-x-2">
-                    ${paymentMethodIcons[tx.payment_method] || ''}
-                    <span class="capitalize text-sm">${tx.payment_method || 'Card'}</span>
+                    ${escapeHtml(paymentMethodIcons[tx.payment_method] || '')}
+                    <span class="capitalize text-sm">${escapeHtml(tx.payment_method || 'Card')}</span>
                 </div>
             </td>
             <td class="px-6 py-4">
-                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium border ${statusColors[tx.status] || statusColors.pending}">
-                    ${statusIcons[tx.status] || statusIcons.pending}
-                    <span class="capitalize">${tx.status || 'Pending'}</span>
+                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium border ${escapeHtml(statusColors[tx.status] || statusColors.pending)}">
+                    ${escapeHtml(statusIcons[tx.status] || statusIcons.pending)}
+                    <span class="capitalize">${escapeHtml(tx.status || 'Pending')}</span>
                 </span>
             </td>
             <td class="px-6 py-4">
                 <div class="flex items-center space-x-2">
                     ${tx.status === 'completed' ? `
-                        <button onclick="downloadInvoice('${tx.id}')" class="p-2 hover:bg-blue-900/50 rounded-lg transition-colors" title="Download Invoice">
+                        <button onclick="downloadInvoice('${escapeHtml(tx.id)}')" class="p-2 hover:bg-blue-900/50 rounded-lg transition-colors" title="Download Invoice">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                             </svg>
                         </button>
-                        <button onclick="viewReceipt('${tx.id}')" class="p-2 hover:bg-green-900/50 rounded-lg transition-colors" title="View Receipt">
+                        <button onclick="viewReceipt('${escapeHtml(tx.id)}')" class="p-2 hover:bg-green-900/50 rounded-lg transition-colors" title="View Receipt">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -250,7 +245,7 @@ function renderTransaction(tx) {
                         </button>
                     ` : ''}
                     ${tx.status === 'failed' ? `
-                        <button onclick="retryPayment('${tx.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-semibold transition-colors">
+                        <button onclick="retryPayment('${escapeHtml(tx.id)}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-semibold transition-colors">
                             Retry
                         </button>
                     ` : ''}

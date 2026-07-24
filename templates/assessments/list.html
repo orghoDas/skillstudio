@@ -67,11 +67,6 @@ let currentTab = 'available';
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/assessments/';
-        return;
-    }
 
     loadAssessments();
 
@@ -167,16 +162,16 @@ function renderAssessmentCard(assessment) {
     return `
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
             <div class="flex items-start justify-between mb-4">
-                <span class="px-3 py-1 text-xs rounded-full ${typeColor} capitalize">
-                    ${assessment.assessment_type}
+                <span class="px-3 py-1 text-xs rounded-full ${escapeHtml(typeColor)} capitalize">
+                    ${escapeHtml(assessment.assessment_type)}
                 </span>
-                <span class="px-3 py-1 text-xs rounded-full ${difficultyColor} capitalize">
-                    ${assessment.difficulty || 'N/A'}
+                <span class="px-3 py-1 text-xs rounded-full ${escapeHtml(difficultyColor)} capitalize">
+                    ${escapeHtml(assessment.difficulty || 'N/A')}
                 </span>
             </div>
             
-            <h3 class="text-xl font-semibold mb-2">${assessment.title}</h3>
-            <p class="text-sm text-gray-400 mb-4 line-clamp-2">${assessment.description || 'No description'}</p>
+            <h3 class="text-xl font-semibold mb-2">${escapeHtml(assessment.title)}</h3>
+            <p class="text-sm text-gray-400 mb-4 line-clamp-2">${escapeHtml(assessment.description || 'No description')}</p>
             
             <div class="space-y-2 mb-4 text-sm text-gray-400">
                 <div class="flex items-center justify-between">
@@ -184,7 +179,7 @@ function renderAssessmentCard(assessment) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span>${assessment.total_questions || 0} Questions</span>
+                        <span>${escapeHtml(assessment.total_questions || 0)} Questions</span>
                     </span>
                 </div>
                 ${assessment.time_limit ? `
@@ -192,7 +187,7 @@ function renderAssessmentCard(assessment) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span>${assessment.time_limit} minutes</span>
+                        <span>${escapeHtml(assessment.time_limit)} minutes</span>
                     </div>
                 ` : ''}
                 ${assessment.passing_score ? `
@@ -200,7 +195,7 @@ function renderAssessmentCard(assessment) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span>Pass: ${assessment.passing_score}%</span>
+                        <span>Pass: ${escapeHtml(assessment.passing_score)}%</span>
                     </div>
                 ` : ''}
             </div>
@@ -209,19 +204,19 @@ function renderAssessmentCard(assessment) {
                 <div class="mb-4 p-3 bg-dark-bg rounded border border-dark-border">
                     <div class="flex items-center justify-between text-sm">
                         <span class="text-gray-400">Latest Score:</span>
-                        <span class="font-semibold ${latestAttempt.score >= assessment.passing_score ? 'text-green-400' : 'text-red-400'}">
-                            ${latestAttempt.score}%
+                        <span class="font-semibold ${escapeHtml(latestAttempt.score >= assessment.passing_score ? 'text-green-400' : 'text-red-400')}">
+                            ${escapeHtml(latestAttempt.score)}%
                         </span>
                     </div>
                     ${latestAttempt.status === 'completed' ? `
-                        <a href="/assessments/${assessment.id}/results/${latestAttempt.id}/" class="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
+                        <a href="/assessments/${escapeHtml(assessment.id)}/results/${escapeHtml(latestAttempt.id)}/" class="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
                             View Results →
                         </a>
                     ` : ''}
                 </div>
             ` : ''}
 
-            ${renderActionButton(assessment, latestAttempt)}
+            ${escapeHtml(renderActionButton(assessment, latestAttempt))}
         </div>
     `;
 }
@@ -234,7 +229,7 @@ function renderActionButton(assessment, latestAttempt) {
 
     if (latestAttempt && latestAttempt.status === 'in_progress') {
         return `
-            <a href="/assessments/${assessment.id}/attempt/${latestAttempt.id}/" 
+            <a href="/assessments/${escapeHtml(assessment.id)}/attempt/${escapeHtml(latestAttempt.id)}/" 
                 class="block w-full text-center px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-semibold transition-colors">
                 Continue Attempt
             </a>
@@ -251,7 +246,7 @@ function renderActionButton(assessment, latestAttempt) {
 
     if (latestAttempt && latestAttempt.score >= assessment.passing_score) {
         return `
-            <a href="/assessments/${assessment.id}/results/${latestAttempt.id}/" 
+            <a href="/assessments/${escapeHtml(assessment.id)}/results/${escapeHtml(latestAttempt.id)}/" 
                 class="block w-full text-center px-4 py-3 bg-green-700 hover:bg-green-800 text-white rounded-lg font-semibold transition-colors">
                 View Results (Passed)
             </a>
@@ -259,9 +254,9 @@ function renderActionButton(assessment, latestAttempt) {
     }
 
     return `
-        <a href="/assessments/${assessment.id}/attempt/" 
+        <a href="/assessments/${escapeHtml(assessment.id)}/attempt/" 
             class="block w-full text-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-            ${latestAttempt ? 'Retake Assessment' : 'Start Assessment'}
+            ${escapeHtml(latestAttempt ? 'Retake Assessment' : 'Start Assessment')}
         </a>
     `;
 }

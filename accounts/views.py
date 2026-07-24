@@ -50,24 +50,25 @@ class RegisterView(generics.CreateAPIView):
 
 
 class LogoutView(APIView):
-    """Log out by blacklisting the supplied refresh token."""
+    """Log out: blacklist the refresh token (from body or cookie) and clear the
+    auth cookies. Succeeds even without a token so clients can always log out."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh = request.data.get('refresh')
-        if not refresh:
-            return Response(
-                {"detail": "A 'refresh' token is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            RefreshToken(refresh).blacklist()
-        except TokenError:
-            return Response(
-                {"detail": "Invalid or already blacklisted token."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response({"message": "Logged out."}, status=status.HTTP_205_RESET_CONTENT)
+        from django.conf import settings
+        from .cookies import clear_jwt_cookies
+
+        refresh = request.data.get('refresh') or request.COOKIES.get(
+            settings.JWT_AUTH_REFRESH_COOKIE
+        )
+        if refresh:
+            try:
+                RefreshToken(refresh).blacklist()
+            except TokenError:
+                pass  # already invalid/blacklisted — clearing cookies still logs out
+
+        response = Response({"message": "Logged out."}, status=status.HTTP_205_RESET_CONTENT)
+        return clear_jwt_cookies(response)
 
 
 class ChangePasswordView(APIView):

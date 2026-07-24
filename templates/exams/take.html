@@ -81,28 +81,7 @@ let answers = {};
 let timerInterval = null;
 let timeRemaining = 0;
 
-async function apiRequest(endpoint, options = {}) {
-    const token = localStorage.getItem('access_token');
-    const headers = {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-    };
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers: { ...headers, ...options.headers }
-    });
-
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-        console.error('API Error:', endpoint, error);
-        // Check if error is a validation error object
-        const errorMessage = error.detail || error.message || JSON.stringify(error) || 'Request failed';
-        throw new Error(errorMessage);
-    }
-
-    return response.json();
-}
+// Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
@@ -143,7 +122,7 @@ async function loadExam() {
         console.error('Error loading exam:', error);
         loadingState.innerHTML = `
             <div class="text-center py-16">
-                <p class="text-red-500 mb-4">${error.message || 'Failed to load exam'}</p>
+                <p class="text-red-500 mb-4">${escapeHtml(error.message || 'Failed to load exam')}</p>
                 <a href="/exams/" class="text-blue-500 hover:underline">Return to exams</a>
             </div>
         `;
@@ -173,22 +152,22 @@ function createQuestionCard(question, number) {
         <div class="flex items-start justify-between mb-4">
             <div class="flex items-center space-x-3">
                 <span class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-semibold text-sm">
-                    ${number}
+                    ${escapeHtml(number)}
                 </span>
-                <h3 class="text-lg font-semibold">${question.question_text}</h3>
+                <h3 class="text-lg font-semibold">${escapeHtml(question.question_text)}</h3>
             </div>
-            <span class="px-3 py-1 bg-blue-900/30 text-blue-400 text-sm rounded-full">${question.marks} ${question.marks == 1 ? 'mark' : 'marks'}</span>
+            <span class="px-3 py-1 bg-blue-900/30 text-blue-400 text-sm rounded-full">${escapeHtml(question.marks)} ${escapeHtml(question.marks == 1 ? 'mark' : 'marks')}</span>
         </div>
         
         <div class="space-y-3 ml-11">
             ${options.map((option, optIndex) => `
                 <label class="flex items-start p-4 bg-dark-bg border-2 border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-all option-label">
                     <input type="radio" 
-                        name="question-${question.id}" 
-                        value="${optIndex}"
-                        onchange="selectAnswer(${question.id}, ${optIndex})"
+                        name="question-${escapeHtml(question.id)}" 
+                        value="${escapeHtml(optIndex)}"
+                        onchange="selectAnswer(${escapeHtml(question.id)}, ${escapeHtml(optIndex)})"
                         class="mt-1 w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500">
-                    <span class="ml-3 flex-1 text-gray-200">${option.text || option}</span>
+                    <span class="ml-3 flex-1 text-gray-200">${escapeHtml(option.text || option)}</span>
                 </label>
             `).join('')}
         </div>
@@ -321,11 +300,6 @@ window.addEventListener('beforeunload', (e) => {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-        window.location.href = '/login/';
-        return;
-    }
     
     getUrlParams();
     

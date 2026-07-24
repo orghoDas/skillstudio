@@ -118,7 +118,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication and role
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     
     if (!accessToken || user.role !== 'instructor') {
@@ -209,7 +209,7 @@ function renderCourseCard(course) {
                 <!-- Thumbnail -->
                 <div class="flex-shrink-0">
                     ${course.thumbnail ? `
-                        <img src="${course.thumbnail}" alt="${course.title}" class="w-48 h-32 object-cover rounded-lg">
+                        <img src="${safeUrl(course.thumbnail)}" alt="${escapeHtml(course.title)}" class="w-48 h-32 object-cover rounded-lg">
                     ` : `
                         <div class="w-48 h-32 bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg flex items-center justify-center">
                             <svg class="w-12 h-12 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,11 +223,11 @@ function renderCourseCard(course) {
                 <div class="flex-1 min-w-0">
                     <div class="flex items-start justify-between mb-3">
                         <div class="flex-1">
-                            <h3 class="text-xl font-semibold mb-2">${course.title}</h3>
-                            <p class="text-sm text-gray-400 line-clamp-2">${course.short_description || 'No description'}</p>
+                            <h3 class="text-xl font-semibold mb-2">${escapeHtml(course.title)}</h3>
+                            <p class="text-sm text-gray-400 line-clamp-2">${escapeHtml(course.short_description || 'No description')}</p>
                         </div>
-                        <span class="ml-4 px-3 py-1 text-xs rounded-full ${statusColors[course.status] || statusColors.draft} capitalize">
-                            ${course.status}
+                        <span class="ml-4 px-3 py-1 text-xs rounded-full ${escapeHtml(statusColors[course.status] || statusColors.draft)} capitalize">
+                            ${escapeHtml(course.status)}
                         </span>
                     </div>
 
@@ -236,36 +236,36 @@ function renderCourseCard(course) {
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                             </svg>
-                            <span>${course.enrollments_count || 0} students</span>
+                            <span>${escapeHtml(course.enrollments_count || 0)} students</span>
                         </div>
                         <div class="flex items-center space-x-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
                             </svg>
-                            <span>${course.level || 'N/A'}</span>
+                            <span>${escapeHtml(course.level || 'N/A')}</span>
                         </div>
                         ${course.price ? `
                             <div class="flex items-center space-x-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                <span>$${course.price}</span>
+                                <span>$${escapeHtml(course.price)}</span>
                             </div>
                         ` : '<span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded">Free</span>'}
                     </div>
 
                     <!-- Actions -->
                     <div class="flex space-x-3">
-                        <a href="/instructor/courses/${course.slug}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                        <a href="/instructor/courses/${escapeHtml(course.slug)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             Edit Course
                         </a>
-                        <a href="/instructor/courses/${course.slug}/content/" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                        <a href="/instructor/courses/${escapeHtml(course.slug)}/content/" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             Manage Content
                         </a>
-                        <a href="/instructor/courses/${course.slug}/students/" class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-semibold transition-colors">
+                        <a href="/instructor/courses/${escapeHtml(course.slug)}/students/" class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-semibold transition-colors">
                             Students
                         </a>
-                        <a href="/instructor/courses/${course.slug}/preview/" class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-white text-sm rounded-lg font-semibold transition-colors">
+                        <a href="/instructor/courses/${escapeHtml(course.slug)}/preview/" class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-white text-sm rounded-lg font-semibold transition-colors">
                             Preview
                         </a>
                     </div>

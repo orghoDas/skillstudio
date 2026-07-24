@@ -49,11 +49,6 @@ let currentFilter = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/enrollments/';
-        return;
-    }
 
     // Redirect instructors and admins to their dashboards
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -112,7 +107,7 @@ async function loadEnrollments() {
         if (enrollments.length > 0) {
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    ${enrollments.map(enrollment => renderEnrollmentCard(enrollment)).join('')}
+                    ${escapeHtml(enrollments.map(enrollment => renderEnrollmentCard(enrollment)).join(''))}
                 </div>
             `;
         } else {
@@ -157,28 +152,28 @@ function renderEnrollmentCard(enrollment) {
         <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
             <div class="relative">
                 ${course.thumbnail ? 
-                    `<img src="${course.thumbnail}" alt="${course.title}" class="w-full h-40 object-cover">` :
+                    `<img src="${safeUrl(course.thumbnail)}" alt="${escapeHtml(course.title)}" class="w-full h-40 object-cover">` :
                     `<div class="w-full h-40 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                         <svg class="w-16 h-16 text-white opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
                         </svg>
                     </div>`
                 }
-                <span class="absolute top-2 right-2 px-2 py-1 text-xs rounded ${statusColors[status]} capitalize">
-                    ${status.replace('_', ' ')}
+                <span class="absolute top-2 right-2 px-2 py-1 text-xs rounded ${escapeHtml(statusColors[status])} capitalize">
+                    ${escapeHtml(status.replace('_', ' '))}
                 </span>
             </div>
             <div class="p-4">
-                <h3 class="font-semibold mb-2 line-clamp-2">${course.title || 'Untitled Course'}</h3>
+                <h3 class="font-semibold mb-2 line-clamp-2">${escapeHtml(course.title || 'Untitled Course')}</h3>
                 
                 <!-- Progress Bar -->
                 <div class="mb-3">
                     <div class="flex items-center justify-between text-sm mb-1">
                         <span class="text-gray-400">Progress</span>
-                        <span class="text-blue-400 font-semibold">${Math.round(progress)}%</span>
+                        <span class="text-blue-400 font-semibold">${escapeHtml(Math.round(progress))}%</span>
                     </div>
                     <div class="w-full bg-dark-bg rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${progress}%"></div>
+                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${escapeHtml(progress)}%"></div>
                     </div>
                 </div>
                 
@@ -188,14 +183,14 @@ function renderEnrollmentCard(enrollment) {
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        ${enrollment.time_spent ? Math.round(enrollment.time_spent / 3600) : 0}h
+                        ${escapeHtml(enrollment.time_spent ? Math.round(enrollment.time_spent / 3600) : 0)}h
                     </span>
-                    <span>Enrolled ${new Date(enrollment.enrolled_at).toLocaleDateString()}</span>
+                    <span>Enrolled ${escapeHtml(new Date(enrollment.enrolled_at).toLocaleDateString())}</span>
                 </div>
                 
                 <!-- Action Button -->
-                <a href="/learn/${course.slug}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                    ${progress > 0 ? 'Continue Learning' : 'Start Learning'}
+                <a href="/learn/${escapeHtml(course.slug)}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    ${escapeHtml(progress > 0 ? 'Continue Learning' : 'Start Learning')}
                 </a>
             </div>
         </div>

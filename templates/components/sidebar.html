@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update sidebar based on user role
     function updateSidebar() {
-        const accessToken = localStorage.getItem('access_token');
+        const accessToken = localStorage.getItem('user');
         const user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
         
         if (accessToken && user) {

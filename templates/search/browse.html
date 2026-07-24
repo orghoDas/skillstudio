@@ -147,15 +147,15 @@ async function loadFeaturedInstructors() {
 
         if (instructors.length > 0) {
             container.innerHTML = instructors.map(instructor => `
-                <a href="/instructors/${instructor.id}/" class="block bg-dark-bg rounded-lg p-6 hover:bg-dark-surface border border-transparent hover:border-blue-500 transition-all text-center">
+                <a href="/instructors/${escapeHtml(instructor.id)}/" class="block bg-dark-bg rounded-lg p-6 hover:bg-dark-surface border border-transparent hover:border-blue-500 transition-all text-center">
                     <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-900 to-purple-900 rounded-full flex items-center justify-center text-2xl font-bold">
-                        ${instructor.first_name ? instructor.first_name[0] : instructor.username[0]}
+                        ${escapeHtml(instructor.first_name ? instructor.first_name[0] : instructor.username[0])}
                     </div>
-                    <h4 class="font-semibold mb-1">${instructor.first_name || ''} ${instructor.last_name || ''}</h4>
-                    <p class="text-sm text-gray-400 mb-3">${instructor.title || 'Instructor'}</p>
+                    <h4 class="font-semibold mb-1">${escapeHtml(instructor.first_name || '')} ${escapeHtml(instructor.last_name || '')}</h4>
+                    <p class="text-sm text-gray-400 mb-3">${escapeHtml(instructor.title || 'Instructor')}</p>
                     <div class="flex items-center justify-center space-x-4 text-xs text-gray-500">
-                        <span>${instructor.courses_count || 0} courses</span>
-                        <span>${instructor.students_count || 0} students</span>
+                        <span>${escapeHtml(instructor.courses_count || 0)} courses</span>
+                        <span>${escapeHtml(instructor.students_count || 0)} students</span>
                     </div>
                 </a>
             `).join('');

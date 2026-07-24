@@ -211,11 +211,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/settings/';
-        return;
-    }
 
     // Load account info
     await loadAccountInfo();

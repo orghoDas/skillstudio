@@ -151,30 +151,30 @@ async function loadCourses(page = 1) {
         
         if (courses && courses.length > 0) {
             container.innerHTML = courses.map(course => `
-                <a href="/courses/${course.slug || course.id}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+                <a href="/courses/${escapeHtml(course.slug || course.id)}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
                     <div class="h-48 bg-gradient-to-br from-blue-500 to-purple-600 relative">
                         ${course.price === 0 || course.price === '0.00' || course.is_free ? 
                             '<span class="absolute top-3 right-3 bg-green-600 text-white text-xs px-3 py-1 rounded-full font-semibold">FREE</span>' : 
-                            `<span class="absolute top-3 right-3 bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">$${course.price}</span>`
+                            `<span class="absolute top-3 right-3 bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">$${escapeHtml(course.price)}</span>`
                         }
                     </div>
                     <div class="p-4">
                         <div class="flex items-center space-x-2 mb-2">
-                            ${course.category_name ? `<span class="text-xs px-2 py-1 bg-purple-900/50 text-purple-300 rounded">${course.category_name}</span>` : ''}
-                            ${course.level ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded capitalize">${course.level}</span>` : ''}
+                            ${course.category_name ? `<span class="text-xs px-2 py-1 bg-purple-900/50 text-purple-300 rounded">${escapeHtml(course.category_name)}</span>` : ''}
+                            ${course.level ? `<span class="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded capitalize">${escapeHtml(course.level)}</span>` : ''}
                         </div>
-                        <h3 class="font-semibold mb-2 line-clamp-2">${course.title}</h3>
-                        <p class="text-sm text-gray-400 mb-3 line-clamp-2">${course.description || 'No description available'}</p>
+                        <h3 class="font-semibold mb-2 line-clamp-2">${escapeHtml(course.title)}</h3>
+                        <p class="text-sm text-gray-400 mb-3 line-clamp-2">${escapeHtml(course.description || 'No description available')}</p>
                         <div class="flex items-center justify-between text-sm">
                             <div class="flex items-center space-x-1 text-gray-400">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                                 </svg>
-                                <span>${course.instructor_name || 'Instructor'}</span>
+                                <span>${escapeHtml(course.instructor_name || 'Instructor')}</span>
                             </div>
-                            <span class="text-gray-400">${course.lesson_count || 0} lessons</span>
+                            <span class="text-gray-400">${escapeHtml(course.lesson_count || 0)} lessons</span>
                         </div>
-                        ${course.enrollments_count ? `<p class="text-xs text-gray-500 mt-2">${course.enrollments_count} students enrolled</p>` : ''}
+                        ${course.enrollments_count ? `<p class="text-xs text-gray-500 mt-2">${escapeHtml(course.enrollments_count)} students enrolled</p>` : ''}
                     </div>
                 </a>
             `).join('');
@@ -215,17 +215,17 @@ function renderPagination(data, currentPage) {
     
     // Previous button
     if (currentPage > 1) {
-        html += `<button onclick="loadCourses(${currentPage - 1})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Previous</button>`;
+        html += `<button onclick="loadCourses(${escapeHtml(currentPage - 1)})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Previous</button>`;
     }
     
     // Page numbers
     for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
-        html += `<button onclick="loadCourses(${i})" class="px-4 py-2 rounded-lg transition-colors ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-dark-surface border border-dark-border hover:border-blue-500'}">${i}</button>`;
+        html += `<button onclick="loadCourses(${escapeHtml(i)})" class="px-4 py-2 rounded-lg transition-colors ${escapeHtml(i === currentPage ? 'bg-blue-600 text-white' : 'bg-dark-surface border border-dark-border hover:border-blue-500')}">${escapeHtml(i)}</button>`;
     }
     
     // Next button
     if (currentPage < totalPages) {
-        html += `<button onclick="loadCourses(${currentPage + 1})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Next</button>`;
+        html += `<button onclick="loadCourses(${escapeHtml(currentPage + 1)})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Next</button>`;
     }
     
     container.innerHTML = html;

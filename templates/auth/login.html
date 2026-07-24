@@ -127,24 +127,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify({ email, password })
             });
 
             const data = await response.json();
 
             if (response.ok) {
-                // Store tokens
-                localStorage.setItem('access_token', data.access);
-                localStorage.setItem('refresh_token', data.refresh);
-                
-                // Fetch user details
+                // Tokens are set as httpOnly cookies by the server — nothing is
+                // stored in JS-readable storage. Fetch user details for UI only.
                 const userResponse = await fetch('/api/accounts/me/', {
-                    headers: {
-                        'Authorization': `Bearer ${data.access}`
-                    }
+                    credentials: 'same-origin'
                 });
-                
+
                 if (userResponse.ok) {
                     const userData = await userResponse.json();
                     localStorage.setItem('user', JSON.stringify(userData));
@@ -190,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Check if already logged in
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     if (accessToken) {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         if (user.role === 'instructor') {

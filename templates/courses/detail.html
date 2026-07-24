@@ -201,7 +201,7 @@ async function loadCourse(slug) {
 }
 
 async function checkEnrollmentStatus() {
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     if (!accessToken) {
         document.getElementById('enroll-btn').textContent = 'Login to Enroll';
         document.getElementById('enroll-btn').onclick = () => window.location.href = '/auth/login/?next=' + window.location.pathname;
@@ -227,9 +227,9 @@ async function checkEnrollmentStatus() {
                     <p class="text-green-400 font-semibold">✓ You're enrolled</p>
                     <div class="mt-2">
                         <div class="w-full bg-dark-bg rounded-full h-2">
-                            <div class="bg-green-600 h-2 rounded-full" style="width: ${enrollment.progress || 0}%"></div>
+                            <div class="bg-green-600 h-2 rounded-full" style="width: ${escapeHtml(enrollment.progress || 0)}%"></div>
                         </div>
-                        <p class="text-gray-400 text-xs mt-1">${enrollment.progress || 0}% Complete</p>
+                        <p class="text-gray-400 text-xs mt-1">${escapeHtml(enrollment.progress || 0)}% Complete</p>
                     </div>
                 </div>
             `;
@@ -241,11 +241,6 @@ async function checkEnrollmentStatus() {
 }
 
 async function handleEnrollment() {
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=' + window.location.pathname;
-        return;
-    }
     
     const btn = document.getElementById('enroll-btn');
     btn.disabled = true;

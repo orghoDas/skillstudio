@@ -111,25 +111,7 @@ let attemptId = null;
 let exam = null;
 let currentAttempt = null;
 
-async function apiRequest(endpoint, options = {}) {
-    const token = localStorage.getItem('access_token');
-    const headers = {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-    };
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers: { ...headers, ...options.headers }
-    });
-
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(error.detail || error.message || 'Request failed');
-    }
-
-    return response.json();
-}
+// Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
@@ -198,7 +180,7 @@ async function loadResults() {
         console.error('Error loading results:', error);
         loadingState.innerHTML = `
             <div class="text-center py-16">
-                <p class="text-red-500 mb-4">${error.message || 'Failed to load results'}</p>
+                <p class="text-red-500 mb-4">${escapeHtml(error.message || 'Failed to load results')}</p>
                 <a href="/exams/" class="text-blue-500 hover:underline">Return to exams</a>
             </div>
         `;
@@ -315,21 +297,21 @@ async function loadAttemptHistory() {
             const attemptNumber = index + 1;
             
             return `
-                <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${isCurrent ? 'border-2 border-blue-500' : ''}">
+                <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${escapeHtml(isCurrent ? 'border-2 border-blue-500' : '')}">
                     <div class="flex items-center space-x-4">
-                        <div class="w-10 h-10 rounded-full ${passed ? 'bg-green-900/30' : 'bg-red-900/30'} flex items-center justify-center">
-                            <span class="font-semibold ${passed ? 'text-green-400' : 'text-red-400'}">#${attemptNumber}</span>
+                        <div class="w-10 h-10 rounded-full ${escapeHtml(passed ? 'bg-green-900/30' : 'bg-red-900/30')} flex items-center justify-center">
+                            <span class="font-semibold ${escapeHtml(passed ? 'text-green-400' : 'text-red-400')}">#${escapeHtml(attemptNumber)}</span>
                         </div>
                         <div>
-                            <div class="font-semibold">${attempt.score}/${exam.total_marks} (${percentage.toFixed(1)}%)</div>
-                            <div class="text-sm text-gray-400">${formattedDate}</div>
+                            <div class="font-semibold">${escapeHtml(attempt.score)}/${escapeHtml(exam.total_marks)} (${escapeHtml(percentage.toFixed(1))}%)</div>
+                            <div class="text-sm text-gray-400">${escapeHtml(formattedDate)}</div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-3">
-                        <span class="px-3 py-1 ${passed ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'} text-sm rounded-full">
-                            ${passed ? 'Passed' : 'Failed'}
+                        <span class="px-3 py-1 ${escapeHtml(passed ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400')} text-sm rounded-full">
+                            ${escapeHtml(passed ? 'Passed' : 'Failed')}
                         </span>
-                        ${!isCurrent ? `<button onclick="viewAttempt(${attempt.id})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
+                        ${!isCurrent ? `<button onclick="viewAttempt(${escapeHtml(attempt.id)})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
                     </div>
                 </div>
             `;
@@ -355,18 +337,18 @@ function displayQuestionReview() {
         const isCorrect = answer.is_correct;
         
         return `
-            <div class="p-4 bg-dark-bg border-2 ${isCorrect ? 'border-green-500' : 'border-red-500'} rounded-lg">
+            <div class="p-4 bg-dark-bg border-2 ${escapeHtml(isCorrect ? 'border-green-500' : 'border-red-500')} rounded-lg">
                 <div class="flex items-start justify-between mb-3">
-                    <h4 class="font-semibold">Question ${index + 1}</h4>
-                    <span class="px-3 py-1 ${isCorrect ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'} text-sm rounded-full">
-                        ${isCorrect ? '✓ Correct' : '✗ Wrong'}
+                    <h4 class="font-semibold">Question ${escapeHtml(index + 1)}</h4>
+                    <span class="px-3 py-1 ${escapeHtml(isCorrect ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400')} text-sm rounded-full">
+                        ${escapeHtml(isCorrect ? '✓ Correct' : '✗ Wrong')}
                     </span>
                 </div>
-                <p class="text-gray-300 mb-3">${answer.question_text}</p>
+                <p class="text-gray-300 mb-3">${escapeHtml(answer.question_text)}</p>
                 <div class="space-y-2">
                     <div class="text-sm">
                         <span class="text-gray-400">Your answer:</span>
-                        <span class="${isCorrect ? 'text-green-400' : 'text-red-400'} ml-2">${answer.user_answer || 'Not answered'}</span>
+                        <span class="${escapeHtml(isCorrect ? 'text-green-400' : 'text-red-400')} ml-2">${escapeHtml(answer.user_answer || 'Not answered')}</span>
                     </div>
                 </div>
             </div>
@@ -393,11 +375,6 @@ async function retakeExam() {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-        window.location.href = '/login/';
-        return;
-    }
     
     getUrlParams();
     

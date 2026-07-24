@@ -59,11 +59,6 @@ let currentTab = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/my-courses/';
-        return;
-    }
 
     loadCourses();
 
@@ -147,7 +142,7 @@ function renderCourseCard(enrollment) {
             <!-- Thumbnail -->
             <div class="relative">
                 ${course.thumbnail ? `
-                    <img src="${course.thumbnail}" alt="${course.title}" class="w-full h-48 object-cover">
+                    <img src="${safeUrl(course.thumbnail)}" alt="${escapeHtml(course.title)}" class="w-full h-48 object-cover">
                 ` : `
                     <div class="w-full h-48 bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center">
                         <svg class="w-16 h-16 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,35 +162,35 @@ function renderCourseCard(enrollment) {
 
             <!-- Content -->
             <div class="p-6">
-                <h3 class="text-lg font-semibold mb-2 line-clamp-2">${course.title}</h3>
-                <p class="text-sm text-gray-400 mb-4 line-clamp-2">${course.short_description || 'No description'}</p>
+                <h3 class="text-lg font-semibold mb-2 line-clamp-2">${escapeHtml(course.title)}</h3>
+                <p class="text-sm text-gray-400 mb-4 line-clamp-2">${escapeHtml(course.short_description || 'No description')}</p>
 
                 <!-- Progress Bar -->
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs text-gray-400">${isCompleted ? 'Completed' : 'Progress'}</span>
-                        <span class="text-xs font-semibold ${isCompleted ? 'text-green-400' : 'text-blue-400'}">${Math.round(progress)}%</span>
+                        <span class="text-xs text-gray-400">${escapeHtml(isCompleted ? 'Completed' : 'Progress')}</span>
+                        <span class="text-xs font-semibold ${escapeHtml(isCompleted ? 'text-green-400' : 'text-blue-400')}">${escapeHtml(Math.round(progress))}%</span>
                     </div>
                     <div class="w-full bg-dark-bg rounded-full h-2">
-                        <div class="h-2 rounded-full transition-all ${isCompleted ? 'bg-green-600' : 'bg-blue-600'}" style="width: ${progress}%"></div>
+                        <div class="h-2 rounded-full transition-all ${escapeHtml(isCompleted ? 'bg-green-600' : 'bg-blue-600')}" style="width: ${escapeHtml(progress)}%"></div>
                     </div>
                 </div>
 
                 <!-- Meta Info -->
                 <div class="flex items-center justify-between text-xs text-gray-500 mb-4">
-                    <span>${enrollment.completed_lessons_count || 0} / ${enrollment.total_lessons_count || 0} lessons</span>
+                    <span>${escapeHtml(enrollment.completed_lessons_count || 0)} / ${escapeHtml(enrollment.total_lessons_count || 0)} lessons</span>
                     ${enrollment.last_accessed ? `
-                        <span>Last: ${new Date(enrollment.last_accessed).toLocaleDateString()}</span>
+                        <span>Last: ${escapeHtml(new Date(enrollment.last_accessed).toLocaleDateString())}</span>
                     ` : ''}
                 </div>
 
                 <!-- Actions -->
                 <div class="flex space-x-2">
-                    <a href="/learn/${course.slug}/" class="flex-1 text-center px-4 py-3 ${isCompleted ? 'bg-green-700 hover:bg-green-800' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg font-semibold transition-colors">
-                        ${isCompleted ? 'Review Course' : (progress > 0 ? 'Continue Learning' : 'Start Learning')}
+                    <a href="/learn/${escapeHtml(course.slug)}/" class="flex-1 text-center px-4 py-3 ${escapeHtml(isCompleted ? 'bg-green-700 hover:bg-green-800' : 'bg-blue-600 hover:bg-blue-700')} text-white rounded-lg font-semibold transition-colors">
+                        ${escapeHtml(isCompleted ? 'Review Course' : (progress > 0 ? 'Continue Learning' : 'Start Learning'))}
                     </a>
                     ${isCompleted && enrollment.certificate_available ? `
-                        <button onclick="downloadCertificate('${enrollment.id}')" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
+                        <button onclick="downloadCertificate('${escapeHtml(enrollment.id)}')" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>

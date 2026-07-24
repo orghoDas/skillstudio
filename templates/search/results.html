@@ -301,9 +301,9 @@ function getActiveFilters() {
 
 function renderCourseCard(course) {
     return `
-        <a href="/courses/${course.slug}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+        <a href="/courses/${escapeHtml(course.slug)}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/10">
             ${course.thumbnail ? `
-                <img src="${course.thumbnail}" alt="${course.title}" class="w-full h-48 object-cover">
+                <img src="${safeUrl(course.thumbnail)}" alt="${escapeHtml(course.title)}" class="w-full h-48 object-cover">
             ` : `
                 <div class="w-full h-48 bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center">
                     <svg class="w-16 h-16 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -313,18 +313,18 @@ function renderCourseCard(course) {
             `}
             <div class="p-6">
                 <div class="flex items-center justify-between mb-3">
-                    <span class="px-2.5 py-1 bg-blue-900/50 text-blue-400 text-xs font-semibold rounded">${course.category || 'General'}</span>
+                    <span class="px-2.5 py-1 bg-blue-900/50 text-blue-400 text-xs font-semibold rounded">${escapeHtml(course.category || 'General')}</span>
                     ${course.price ? `
-                        <span class="text-lg font-bold text-blue-400">$${parseFloat(course.price).toFixed(2)}</span>
+                        <span class="text-lg font-bold text-blue-400">$${escapeHtml(parseFloat(course.price).toFixed(2))}</span>
                     ` : `
                         <span class="px-2.5 py-1 bg-green-900/50 text-green-400 text-xs font-semibold rounded">FREE</span>
                     `}
                 </div>
-                <h3 class="font-semibold text-lg mb-2 line-clamp-2">${course.title}</h3>
-                <p class="text-sm text-gray-400 mb-4 line-clamp-2">${course.short_description || ''}</p>
+                <h3 class="font-semibold text-lg mb-2 line-clamp-2">${escapeHtml(course.title)}</h3>
+                <p class="text-sm text-gray-400 mb-4 line-clamp-2">${escapeHtml(course.short_description || '')}</p>
                 <div class="flex items-center justify-between text-sm text-gray-500">
-                    <span>${course.lesson_count || 0} lessons</span>
-                    ${course.level ? `<span class="capitalize">${course.level}</span>` : ''}
+                    <span>${escapeHtml(course.lesson_count || 0)} lessons</span>
+                    ${course.level ? `<span class="capitalize">${escapeHtml(course.level)}</span>` : ''}
                 </div>
             </div>
         </a>

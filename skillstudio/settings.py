@@ -27,6 +27,12 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+# JWTs are delivered to browsers as httpOnly cookies (not readable by JS), so
+# XSS cannot exfiltrate them. API clients may still use the Authorization header.
+JWT_AUTH_COOKIE = "access_token"
+JWT_AUTH_REFRESH_COOKIE = "refresh_token"
+JWT_AUTH_COOKIE_SAMESITE = "Lax"
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
@@ -84,7 +90,7 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.CookieJWTAuthentication",
         "accounts.authentication.APIKeyAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (

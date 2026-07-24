@@ -14,10 +14,10 @@ A hand-rolled SPA living inside Django templates, with no build step and no fram
 
 | Area | State |
 |---|---|
-| Frontend security | 🔴 Pervasive DOM-XSS + tokens in `localStorage` |
+| Frontend security | 🟢 Tokens httpOnly + DOM-XSS sinks escaped; CSP still recommended |
 | Build / delivery | 🟠 CDN Tailwind, no build, no static assets, no SSR |
-| Code consistency | 🟠 Shared helper exists but ~7 templates bypass it |
-| Integration (auth/contract) | 🟠 Session/JWT split-brain, unprotected pages, no API contract |
+| Code consistency | 🟠 Shared helper now used more widely; a few raw GET fetches remain |
+| Integration (auth/contract) | 🟠 Auth split-brain + page gating fixed; no API contract remains |
 
 ---
 
@@ -34,18 +34,17 @@ API data is injected into `innerHTML` via template literals with **no escaping**
 container.innerHTML = courses.map(course => `...<h3>${course.title}</h3>...`);
 ```
 
-Course titles, categories, bios, and instructor names are **user-authored**, so this is **stored XSS**. The pattern appears in essentially all 20+ data templates (`students/learn.html` alone has 10 `innerHTML` writes). Combined with Critical #2, one malicious course title can steal every visitor's session.
+Course titles, categories, bios, and instructor names are **user-authored**, so this is **stored XSS**. The pattern appeared in essentially all 20+ data templates.
 
-- **Fix:** Add a single HTML-escaping helper and route all interpolated API data through it, or build nodes with `textContent`/`createElement`.
+- **RESOLVED 2026-07-24.** Two layers: (1) the token-theft payoff was removed by moving JWTs to httpOnly cookies (#2), and (2) every interpolation of API data into an `innerHTML` template literal is now routed through `escapeHtml()` (text/quoted-attribute) or `safeUrl()` (`href`/`src`) — **387 `escapeHtml` + 8 `safeUrl` wraps across 31 templates**, including recursion into HTML-producing ternaries so nested user data (e.g. `${course.category_name}` inside a `<span>`) is escaped too. Developer-composed HTML variables (`statusBadge`, `videoEmbed`) were deliberately left unescaped, with their *internal* user data (e.g. the video ID) escaped instead. `querySelector` selector strings were correctly left untouched. Verified: no unescaped user-data interpolation remains in any HTML text/attribute context; `manage.py check` clean; template-rendering tests pass.
+  - **Residual (defense-in-depth, not blocking):** inline `onclick="fn('${id}')"` handlers pass escaped IDs, which is safe for the numeric/UUID IDs in use but is not a general JS-context defense — the clean long-term fix is `addEventListener` + `data-` attributes (also needed for a strict CSP). A CSP header is still worth adding.
 
-### 2. JWTs stored in `localStorage`
-32 `getItem('access_token')` reads across templates. Any XSS (see #1) reads the token directly.
-
-- **Fix:** Prefer `httpOnly` cookies for the token, or at minimum eliminate the XSS surface in #1.
+### 2. JWTs stored in `localStorage` — RESOLVED 2026-07-24
+JWTs are no longer in `localStorage`. The server issues access/refresh as **httpOnly cookies** (`CookieJWTAuthentication` + `CustomTokenObtainPairView`/`CookieTokenRefreshView`), so JS — and therefore XSS — cannot read them. `login.html` stores only non-sensitive `user` display info; `apiRequest`/logout rely on the cookie. Because auth is now cookie-borne, CSRF is enforced on cookie-authenticated mutations (see Part B).
 
 ## 🟠 High
 
-- **Inconsistent API access → duplicated, weaker logic.** `base.html:165-230` has a solid `apiRequest` helper (401 → refresh → retry, CSRF header, error-body parsing). But ~7 templates (`courses/list.html`, `home.html`, `exams/*`) use **raw `fetch()`**, bypassing token refresh and unified error handling.
+- **Inconsistent API access → duplicated, weaker logic.** `base.html` has a solid global `apiRequest` helper (401 → cookie refresh → retry, CSRF header, error-body parsing). The `exams/*` templates' local `apiRequest` shadows were removed during the cookie migration so they now use the global one; a few templates still use raw `fetch()` for public GETs.
 - **Tailwind loaded from `cdn.tailwindcss.com`** (`base.html:11`) — the CDN build explicitly warns it is not for production: no purge/tree-shaking, large payload, runtime compilation, hard network dependency. No build pipeline, minification, or cache-busting exists.
 - **No SSR / SEO / crawlability.** Pages ship empty and hydrate client-side, so crawlers and no-JS clients see blank pages; there is a content flash on every load.
 - **Leftover debug code** — `console.log('API Response', ...)` shipped in `courses/list.html`.
@@ -62,8 +61,8 @@ Course titles, categories, bios, and instructor names are **user-authored**, so 
 
 Where the two halves quietly disagree:
 
-- **Split-brain auth model.** Templates are **session-rendered** but auth is **JWT-in-`localStorage`**. So `{% if user.is_authenticated %}` (`base.html:77`) is **always false** — dead code. More importantly, **page routes have zero server-side protection**: `/dashboard/`, `/instructor/...`, `/checkout/` all render for anyone; only the API enforces auth. Result: protected pages load, then redirect client-side (content flash + structure leak).
-- **Confused CSRF/JWT mix.** The helper sends `X-CSRFToken` on mutations (`base.html:178`), but JWT bearer auth does not use CSRF and there is no session cookie. Harmless, but signals the security model was not deliberately chosen.
+- **Split-brain auth model — RESOLVED 2026-07-24.** Auth is now cookie-based end to end. Protected page routes are gated **server-side** via `@cookie_login_required` (`core/auth.py`) — anonymous users are redirected to `/auth/login/?next=…` before the page renders (no content flash, no structure leak), and the ~25 client-side `if (!token) redirect` gates were removed. UI still reads the non-sensitive `user` object for display state only.
+- **CSRF/JWT model — now deliberate.** With auth on an httpOnly cookie, CSRF is a real concern and is now **enforced**: `CookieJWTAuthentication` runs Django's CSRF check on cookie-authenticated unsafe methods, `base.html` guarantees the `csrftoken` cookie, and the helper sends `X-CSRFToken` on mutations. Header-based API clients remain CSRF-exempt (a bearer header is not auto-attached cross-site). Covered by CSRF negative/positive tests.
 - **No API contract.** The frontend hardcodes route strings and guesses response shapes (`data.results || data` everywhere) — a symptom of contract instability. No OpenAPI/schema gate, so backend changes silently break pages.
 - **End-to-end price integrity is broken.** `payments/checkout.html` computes `final_amount` client-side and posts `amount`, which the backend then trusts (`payments/views.py:80`). The client-controlled-amount flaw is **full-stack**, not just backend.
 - **Dead removed-feature wiring.** The AI recommender was removed from the backend, but `core/urls.py` still routes `recommendations/` → `ai_recommendations` and `base.html:78` keeps an "AI recommender widget removed" placeholder. Stale surface on both sides.
@@ -72,8 +71,9 @@ Where the two halves quietly disagree:
 
 ## Recommended fix order
 
-1. Kill the XSS: add an escaping helper and route all interpolated API data through it (Frontend Critical #1).
-2. Add server-side auth guards on protected page routes (Integration).
-3. Route every data call through `apiRequest`; delete raw `fetch()` duplicates (Frontend High).
-4. Replace CDN Tailwind with a real build (purge + minify + cache-bust) and move JS into versioned static files.
-5. Publish an OpenAPI schema and align template route/response assumptions to it.
+1. ~~Move the JWT out of `localStorage` into an httpOnly cookie~~ — **done 2026-07-24** (kills token exfiltration).
+2. ~~Add server-side auth guards on protected page routes~~ — **done 2026-07-24** (`@cookie_login_required`).
+3. ~~Kill the XSS sinks: route all interpolated API data through `escapeHtml()`/`safeUrl()`~~ — **done 2026-07-24** (387 `escapeHtml` + 8 `safeUrl` across 31 templates).
+4. Add a Content-Security-Policy header and migrate inline `onclick="fn('${id}')"` handlers to `addEventListener` + `data-` attributes (remaining defense-in-depth for the XSS class).
+5. Replace CDN Tailwind with a real build (purge + minify + cache-bust) and move JS into versioned static files.
+6. Publish an OpenAPI schema and align template route/response assumptions to it.

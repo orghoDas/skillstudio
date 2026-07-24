@@ -86,7 +86,7 @@ async function loadAssessment() {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
                 <p class="text-xl font-semibold mb-2">Error Loading Assessment</p>
-                <p class="text-gray-400 mb-6">${error.message || 'Failed to load assessment'}</p>
+                <p class="text-gray-400 mb-6">${escapeHtml(error.message || 'Failed to load assessment')}</p>
                 <a href="/assessments/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     Back to Assessments
                 </a>
@@ -101,7 +101,7 @@ function renderAssessment(attempt) {
         <!-- Header -->
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
-                <h1 class="text-2xl font-bold">${attempt.assessment.title}</h1>
+                <h1 class="text-2xl font-bold">${escapeHtml(attempt.assessment.title)}</h1>
                 ${timeRemaining > 0 ? `
                     <div id="timer" class="px-4 py-2 bg-red-900/30 border border-red-500/50 rounded-lg">
                         <div class="flex items-center space-x-2 text-red-400">
@@ -119,7 +119,7 @@ function renderAssessment(attempt) {
                 <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
             </div>
             <p class="text-sm text-gray-400">
-                Question <span id="current-question">1</span> of ${questions.length}
+                Question <span id="current-question">1</span> of ${escapeHtml(questions.length)}
             </p>
         </div>
 
@@ -170,12 +170,12 @@ function renderQuestion() {
     
     container.innerHTML = `
         <div class="mb-6">
-            <h2 class="text-xl font-semibold mb-4">Question ${currentQuestionIndex + 1}</h2>
-            <p class="text-lg text-gray-300 mb-6">${question.question_text}</p>
+            <h2 class="text-xl font-semibold mb-4">Question ${escapeHtml(currentQuestionIndex + 1)}</h2>
+            <p class="text-lg text-gray-300 mb-6">${escapeHtml(question.question_text)}</p>
         </div>
 
         <div class="space-y-3">
-            ${renderAnswerOptions(question)}
+            ${escapeHtml(renderAnswerOptions(question))}
         </div>
     `;
 
@@ -196,12 +196,12 @@ function renderAnswerOptions(question) {
     const savedAnswer = answers[question.id];
 
     return question.options.map((option) => `
-        <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${savedAnswer === option.id ? 'border-blue-500 bg-blue-900/20' : ''}">
-            <input type="radio" name="answer" value="${option.id}"
-                ${savedAnswer === option.id ? 'checked' : ''}
-                onchange="saveAnswer(${question.id}, this.value)"
+        <label class="flex items-start space-x-3 p-4 bg-dark-bg border border-dark-border rounded-lg cursor-pointer hover:border-blue-500 transition-colors ${escapeHtml(savedAnswer === option.id ? 'border-blue-500 bg-blue-900/20' : '')}">
+            <input type="radio" name="answer" value="${escapeHtml(option.id)}"
+                ${escapeHtml(savedAnswer === option.id ? 'checked' : '')}
+                onchange="saveAnswer(${escapeHtml(question.id)}, this.value)"
                 class="mt-1 w-4 h-4 text-blue-600 bg-dark-bg border-dark-border focus:ring-2 focus:ring-blue-500">
-            <span class="flex-1">${option.option_text}</span>
+            <span class="flex-1">${escapeHtml(option.option_text)}</span>
         </label>
     `).join('');
 }
@@ -216,13 +216,11 @@ function updateQuestionNav() {
     if (!nav) return;
     
     nav.innerHTML = questions.map((q, index) => `
-        <button onclick="goToQuestion(${index})" 
-            class="w-10 h-10 rounded-lg font-semibold transition-colors ${
-                index === currentQuestionIndex ? 'bg-blue-600 text-white' :
+        <button onclick="goToQuestion(${escapeHtml(index)})" 
+            class="w-10 h-10 rounded-lg font-semibold transition-colors ${escapeHtml(index === currentQuestionIndex ? 'bg-blue-600 text-white' :
                 answers[q.id] ? 'bg-green-700 text-white' :
-                'bg-dark-bg border border-dark-border text-gray-400 hover:border-blue-500'
-            }">
-            ${index + 1}
+                'bg-dark-bg border border-dark-border text-gray-400 hover:border-blue-500')}">
+            ${escapeHtml(index + 1)}
         </button>
     `).join('');
 }
