@@ -106,11 +106,6 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/dashboard/';
-        return;
-    }
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     document.getElementById('user-name').textContent = user.email?.split('@')[0] || 'Student';
@@ -159,15 +154,15 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 if (inProgressCourses.length > 0) {
                     container.innerHTML = inProgressCourses.map(course => `
-                        <a href="/courses/${course.course_id}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
+                        <a href="/courses/${escapeHtml(course.course_id)}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
                             <div class="h-40 bg-gradient-to-br from-blue-500 to-purple-600"></div>
                             <div class="p-4">
-                                <h3 class="font-semibold mb-2">${course.course_title}</h3>
+                                <h3 class="font-semibold mb-2">${escapeHtml(course.course_title)}</h3>
                                 <div class="mb-3">
                                     <div class="w-full bg-dark-bg rounded-full h-2">
-                                        <div class="bg-blue-600 h-2 rounded-full" style="width: ${course.progress_percentage}%"></div>
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: ${escapeHtml(course.progress_percentage)}%"></div>
                                     </div>
-                                    <p class="text-xs text-gray-400 mt-1">${course.progress_percentage.toFixed(1)}% Complete</p>
+                                    <p class="text-xs text-gray-400 mt-1">${escapeHtml(course.progress_percentage.toFixed(1))}% Complete</p>
                                 </div>
                                 <span class="text-blue-400 text-sm">Continue Learning →</span>
                             </div>
@@ -298,10 +293,8 @@ function showNotification(title, message, type = 'info') {
     notification.innerHTML = `
         <div class="flex items-start">
             <div class="flex-1">
-                <h4 class="font-bold ${
-                    type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500'
-                }">${title}</h4>
-                <p class="text-sm text-gray-400 mt-1">${message}</p>
+                <h4 class="font-bold ${escapeHtml(type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500')}">${escapeHtml(title)}</h4>
+                <p class="text-sm text-gray-400 mt-1">${escapeHtml(message)}</p>
             </div>
             <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-white ml-4">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

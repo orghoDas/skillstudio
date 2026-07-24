@@ -158,12 +158,12 @@ function renderContent() {
                 <svg class="w-4 h-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                 </svg>
-                <span>${courseData.title}</span>
+                <span>${escapeHtml(courseData.title)}</span>
             </div>
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-3xl font-bold mb-2">Course Content</h1>
-                    <p class="text-gray-400">${sections.length} sections, ${getTotalLessons()} lessons</p>
+                    <p class="text-gray-400">${escapeHtml(sections.length)} sections, ${escapeHtml(getTotalLessons())} lessons</p>
                 </div>
                 <button onclick="openModal('section-modal')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,15 +199,15 @@ function renderSection(section, index) {
             <div class="p-6 border-b border-dark-border">
                 <div class="flex items-center justify-between">
                     <div class="flex-1">
-                        <h3 class="text-xl font-semibold mb-1">Section ${index + 1}: ${section.title}</h3>
-                        ${section.description ? `<p class="text-sm text-gray-400">${section.description}</p>` : ''}
+                        <h3 class="text-xl font-semibold mb-1">Section ${escapeHtml(index + 1)}: ${escapeHtml(section.title)}</h3>
+                        ${section.description ? `<p class="text-sm text-gray-400">${escapeHtml(section.description)}</p>` : ''}
                     </div>
                     <div class="flex items-center space-x-2">
-                        <span class="text-sm text-gray-400">${lessons.length} lessons</span>
-                        <button onclick="openAddLesson(${section.id})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                        <span class="text-sm text-gray-400">${escapeHtml(lessons.length)} lessons</span>
+                        <button onclick="openAddLesson(${escapeHtml(section.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             + Add Lesson
                         </button>
-                        <button onclick="deleteSection(${section.id})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                        <button onclick="deleteSection(${escapeHtml(section.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
@@ -218,7 +218,7 @@ function renderSection(section, index) {
             
             ${lessons.length > 0 ? `
                 <div class="divide-y divide-dark-border">
-                    ${lessons.map((lesson, lessonIndex) => renderLesson(lesson, lessonIndex)).join('')}
+                    ${escapeHtml(lessons.map((lesson, lessonIndex) => renderLesson(lesson, lessonIndex)).join(''))}
                 </div>
             ` : `
                 <div class="p-8 text-center text-gray-400">
@@ -241,23 +241,23 @@ function renderLesson(lesson, index) {
             <div class="flex items-center space-x-4 flex-1">
                 <div class="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        ${typeIcons[lesson.content_type] || typeIcons.article}
+                        ${escapeHtml(typeIcons[lesson.content_type] || typeIcons.article)}
                     </svg>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <h4 class="font-medium mb-1">${lesson.title}</h4>
+                    <h4 class="font-medium mb-1">${escapeHtml(lesson.title)}</h4>
                     <div class="flex items-center space-x-4 text-xs text-gray-400">
-                        <span class="capitalize">${lesson.content_type}</span>
-                        ${lesson.duration ? `<span>${lesson.duration} min</span>` : ''}
+                        <span class="capitalize">${escapeHtml(lesson.content_type)}</span>
+                        ${lesson.duration ? `<span>${escapeHtml(lesson.duration)} min</span>` : ''}
                         ${lesson.is_free_preview ? '<span class="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">Free Preview</span>' : ''}
                     </div>
                 </div>
             </div>
             <div class="flex items-center space-x-2">
-                <a href="/instructor/lessons/${lesson.id}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                <a href="/instructor/lessons/${escapeHtml(lesson.id)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                     Edit Content
                 </a>
-                <button onclick="deleteLesson(${lesson.id})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
+                <button onclick="deleteLesson(${escapeHtml(lesson.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
                     Delete
                 </button>
             </div>

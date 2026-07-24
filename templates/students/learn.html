@@ -20,7 +20,7 @@ let sections = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     if (!accessToken) {
         const currentPath = window.location.pathname;
         window.location.href = `/auth/login/?next=${currentPath}`;
@@ -109,19 +109,19 @@ function renderLearningInterface() {
                     <a href="/my-courses/" class="text-sm text-gray-400 hover:text-white mb-3 inline-block">
                         ← Back to My Courses
                     </a>
-                    <h2 class="text-xl font-semibold mb-2">${course.title}</h2>
+                    <h2 class="text-xl font-semibold mb-2">${escapeHtml(course.title)}</h2>
                     <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
-                        <span>${enrollmentData.completed_lessons_count || 0} / ${enrollmentData.total_lessons_count || 0} lessons</span>
-                        <span>${Math.round(enrollmentData.progress_percentage || 0)}% complete</span>
+                        <span>${escapeHtml(enrollmentData.completed_lessons_count || 0)} / ${escapeHtml(enrollmentData.total_lessons_count || 0)} lessons</span>
+                        <span>${escapeHtml(Math.round(enrollmentData.progress_percentage || 0))}% complete</span>
                     </div>
                     <div class="w-full bg-dark-bg rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${enrollmentData.progress_percentage || 0}%"></div>
+                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${escapeHtml(enrollmentData.progress_percentage || 0)}%"></div>
                     </div>
                 </div>
 
                 <!-- Sections & Lessons -->
                 <div class="p-4">
-                    ${sections.map((section, sectionIndex) => renderSection(section, sectionIndex)).join('')}
+                    ${escapeHtml(sections.map((section, sectionIndex) => renderSection(section, sectionIndex)).join(''))}
                 </div>
             </div>
 
@@ -168,14 +168,14 @@ function renderSection(section, sectionIndex) {
 
     return `
         <div class="mb-4">
-            <button onclick="toggleSection(${sectionIndex})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
-                <span class="font-semibold">Section ${sectionIndex + 1}: ${section.title}</span>
+            <button onclick="toggleSection(${escapeHtml(sectionIndex)})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
+                <span class="font-semibold">Section ${escapeHtml(sectionIndex + 1)}: ${escapeHtml(section.title)}</span>
                 <svg class="section-chevron w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
             </button>
             <div class="section-content space-y-1 mt-2">
-                ${lessons.map(lesson => renderLesson(lesson, completedLessonIds)).join('')}
+                ${escapeHtml(lessons.map(lesson => renderLesson(lesson, completedLessonIds)).join(''))}
             </div>
         </div>
     `;
@@ -192,23 +192,21 @@ function renderLesson(lesson, completedLessonIds) {
     };
 
     return `
-        <button onclick="loadLesson(${lesson.id})" class="w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 ${
-            isCurrent ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'hover:bg-dark-hover'
-        }">
-            <div class="w-8 h-8 flex-shrink-0 ${isCompleted ? 'bg-green-900/50' : 'bg-dark-bg'} rounded-lg flex items-center justify-center">
+        <button onclick="loadLesson(${escapeHtml(lesson.id)})" class="w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 ${escapeHtml(isCurrent ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'hover:bg-dark-hover')}">
+            <div class="w-8 h-8 flex-shrink-0 ${escapeHtml(isCompleted ? 'bg-green-900/50' : 'bg-dark-bg')} rounded-lg flex items-center justify-center">
                 ${isCompleted ? `
                     <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                     </svg>
                 ` : `
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${typeIcons[lesson.content_type] || typeIcons.article}"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${escapeHtml(typeIcons[lesson.content_type] || typeIcons.article)}"/>
                     </svg>
                 `}
             </div>
             <div class="flex-1 min-w-0">
-                <p class="font-medium text-sm truncate ${isCompleted ? 'text-green-400' : ''}">${lesson.title}</p>
-                <p class="text-xs text-gray-500 capitalize">${lesson.content_type}${lesson.duration ? ` • ${lesson.duration} min` : ''}</p>
+                <p class="font-medium text-sm truncate ${escapeHtml(isCompleted ? 'text-green-400' : '')}">${escapeHtml(lesson.title)}</p>
+                <p class="text-xs text-gray-500 capitalize">${escapeHtml(lesson.content_type)}${lesson.duration ? ` • ${lesson.duration} min` : ''}</p>
             </div>
         </button>
     `;
@@ -267,7 +265,7 @@ async function loadLesson(lessonId) {
                 videoEmbed = `
                     <iframe 
                         class="w-full h-full rounded-lg" 
-                        src="https://www.youtube.com/embed/${videoId}" 
+                        src="https://www.youtube.com/embed/${escapeHtml(videoId)}" 
                         frameborder="0" 
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                         allowfullscreen>
@@ -278,7 +276,7 @@ async function loadLesson(lessonId) {
                 videoEmbed = `
                     <iframe 
                         class="w-full h-full rounded-lg" 
-                        src="https://player.vimeo.com/video/${videoId}" 
+                        src="https://player.vimeo.com/video/${escapeHtml(videoId)}" 
                         frameborder="0" 
                         allow="autoplay; fullscreen; picture-in-picture" 
                         allowfullscreen>
@@ -305,7 +303,7 @@ async function loadLesson(lessonId) {
                     ${currentLesson.content_text ? `
                         <div class="prose prose-invert max-w-none">
                             <h3>Description</h3>
-                            <p class="text-gray-300">${currentLesson.content_text}</p>
+                            <p class="text-gray-300">${escapeHtml(currentLesson.content_text)}</p>
                         </div>
                     ` : ''}
                 </div>
@@ -313,7 +311,7 @@ async function loadLesson(lessonId) {
         } else if (currentLesson.content_type === 'article' || currentLesson.content_type === 'text') {
             contentArea.innerHTML = `
                 <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
-                    <div class="text-gray-300 whitespace-pre-wrap">${currentLesson.content_text || 'No content available'}</div>
+                    <div class="text-gray-300 whitespace-pre-wrap">${escapeHtml(currentLesson.content_text || 'No content available')}</div>
                 </div>
             `;
         } else if (currentLesson.content_type === 'quiz') {
@@ -326,7 +324,7 @@ async function loadLesson(lessonId) {
                     <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <p class="text-xl font-semibold mb-2">${currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1)}</p>
+                    <p class="text-xl font-semibold mb-2">${escapeHtml(currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1))}</p>
                     <p class="text-gray-400">This lesson type is not yet supported</p>
                 </div>
             `;
@@ -468,11 +466,11 @@ async function loadQuizInterface() {
         
         contentArea.innerHTML = `
             <div class="max-w-4xl mx-auto text-center py-12">
-                <svg class="w-20 h-20 mx-auto mb-4 ${isNotFound ? 'text-yellow-500' : 'text-red-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-20 h-20 mx-auto mb-4 ${escapeHtml(isNotFound ? 'text-yellow-500' : 'text-red-500')}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
-                <p class="text-xl font-semibold mb-2">${isNotFound ? 'Quiz Not Created Yet' : 'Error Loading Quiz'}</p>
-                <p class="text-gray-400 mb-4">${isNotFound ? 'This lesson is set up as a quiz, but no questions have been added yet.' : (error.message || 'An error occurred while loading the quiz')}</p>
+                <p class="text-xl font-semibold mb-2">${escapeHtml(isNotFound ? 'Quiz Not Created Yet' : 'Error Loading Quiz')}</p>
+                <p class="text-gray-400 mb-4">${escapeHtml(isNotFound ? 'This lesson is set up as a quiz, but no questions have been added yet.' : (error.message || 'An error occurred while loading the quiz'))}</p>
                 ${isNotFound ? `
                     <div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 max-w-md mx-auto mb-4">
                         <p class="text-sm text-blue-300">
@@ -500,7 +498,7 @@ function renderQuizStartScreen() {
                         </svg>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold">${quizData.title || currentLesson.title}</h3>
+                        <h3 class="text-xl font-semibold">${escapeHtml(quizData.title || currentLesson.title)}</h3>
                         <p class="text-sm text-gray-400">Test your knowledge</p>
                     </div>
                 </div>
@@ -508,16 +506,16 @@ function renderQuizStartScreen() {
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Questions</p>
-                        <p class="text-2xl font-bold">${questionCount}</p>
+                        <p class="text-2xl font-bold">${escapeHtml(questionCount)}</p>
                     </div>
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Total Marks</p>
-                        <p class="text-2xl font-bold">${totalMarks}</p>
+                        <p class="text-2xl font-bold">${escapeHtml(totalMarks)}</p>
                     </div>
                     ${quizData.time_limit_minutes ? `
                         <div class="bg-dark-bg p-4 rounded-lg col-span-2">
                             <p class="text-sm text-gray-400 mb-1">Time Limit</p>
-                            <p class="text-2xl font-bold">${quizData.time_limit_minutes} minutes</p>
+                            <p class="text-2xl font-bold">${escapeHtml(quizData.time_limit_minutes)} minutes</p>
                         </div>
                     ` : ''}
                 </div>
@@ -525,7 +523,7 @@ function renderQuizStartScreen() {
                 ${currentLesson.content_text ? `
                     <div class="prose prose-invert mb-6">
                         <h4>Instructions</h4>
-                        <p class="text-gray-300">${currentLesson.content_text}</p>
+                        <p class="text-gray-300">${escapeHtml(currentLesson.content_text)}</p>
                     </div>
                 ` : ''}
                 
@@ -565,7 +563,7 @@ function renderQuizQuestions() {
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-6 border border-dark-border mb-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-semibold">${quizData.title || 'Quiz'}</h3>
+                    <h3 class="text-xl font-semibold">${escapeHtml(quizData.title || 'Quiz')}</h3>
                     ${quizData.time_limit_minutes ? `
                         <div id="quiz-timer" class="bg-blue-900/30 border border-blue-500 px-4 py-2 rounded-lg">
                             <span class="text-blue-400 font-mono font-bold">--:--</span>
@@ -575,7 +573,7 @@ function renderQuizQuestions() {
             </div>
             
             <div class="space-y-6">
-                ${quizData.questions.map((question, index) => renderQuestion(question, index)).join('')}
+                ${escapeHtml(quizData.questions.map((question, index) => renderQuestion(question, index)).join(''))}
             </div>
             
             <div class="mt-8 bg-dark-surface rounded-lg p-6 border border-dark-border">
@@ -600,11 +598,11 @@ function renderQuestion(question, index) {
         <div class="bg-dark-surface rounded-lg p-6 border border-dark-border">
             <div class="flex items-start space-x-3 mb-4">
                 <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">${index + 1}</span>
+                    <span class="text-white font-semibold">${escapeHtml(index + 1)}</span>
                 </div>
                 <div class="flex-1">
-                    <p class="text-lg font-medium mb-1">${question.question_text}</p>
-                    <p class="text-sm text-gray-400">${question.marks} mark${question.marks > 1 ? 's' : ''}</p>
+                    <p class="text-lg font-medium mb-1">${escapeHtml(question.question_text)}</p>
+                    <p class="text-sm text-gray-400">${escapeHtml(question.marks)} mark${escapeHtml(question.marks > 1 ? 's' : '')}</p>
                 </div>
             </div>
             
@@ -613,12 +611,12 @@ function renderQuestion(question, index) {
                     <label class="flex items-center p-4 bg-dark-bg hover:bg-dark-hover border border-dark-border rounded-lg cursor-pointer transition-colors">
                         <input 
                             type="radio" 
-                            name="question_${question.id}" 
-                            value="${option.id}"
-                            onchange="selectAnswer(${question.id}, ${option.id})"
+                            name="question_${escapeHtml(question.id)}" 
+                            value="${escapeHtml(option.id)}"
+                            onchange="selectAnswer(${escapeHtml(question.id)}, ${escapeHtml(option.id)})"
                             class="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
-                        <span class="ml-3 text-gray-300">${option.option_text}</span>
+                        <span class="ml-3 text-gray-300">${escapeHtml(option.option_text)}</span>
                     </label>
                 `).join('')}
             </div>
@@ -708,7 +706,7 @@ function renderQuizResults(result) {
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-8 border border-dark-border text-center">
-                <div class="w-20 h-20 mx-auto mb-4 ${passed ? 'bg-green-600' : 'bg-red-600'} rounded-full flex items-center justify-center">
+                <div class="w-20 h-20 mx-auto mb-4 ${escapeHtml(passed ? 'bg-green-600' : 'bg-red-600')} rounded-full flex items-center justify-center">
                     ${passed ? `
                         <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -720,12 +718,12 @@ function renderQuizResults(result) {
                     `}
                 </div>
                 
-                <h3 class="text-2xl font-bold mb-2">${passed ? 'Quiz Passed!' : 'Quiz Complete'}</h3>
-                <p class="text-gray-400 mb-8">You scored ${score} out of ${totalMarks} marks</p>
+                <h3 class="text-2xl font-bold mb-2">${escapeHtml(passed ? 'Quiz Passed!' : 'Quiz Complete')}</h3>
+                <p class="text-gray-400 mb-8">You scored ${escapeHtml(score)} out of ${escapeHtml(totalMarks)} marks</p>
                 
                 <div class="bg-dark-bg rounded-lg p-6 mb-6">
-                    <div class="text-6xl font-bold ${passed ? 'text-green-400' : 'text-red-400'} mb-2">
-                        ${percentage}%
+                    <div class="text-6xl font-bold ${escapeHtml(passed ? 'text-green-400' : 'text-red-400')} mb-2">
+                        ${escapeHtml(percentage)}%
                     </div>
                     <p class="text-gray-400">Your Score</p>
                 </div>
@@ -733,11 +731,11 @@ function renderQuizResults(result) {
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Correct</p>
-                        <p class="text-xl font-bold text-green-400">${score}</p>
+                        <p class="text-xl font-bold text-green-400">${escapeHtml(score)}</p>
                     </div>
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Total</p>
-                        <p class="text-xl font-bold">${totalMarks}</p>
+                        <p class="text-xl font-bold">${escapeHtml(totalMarks)}</p>
                     </div>
                 </div>
                 

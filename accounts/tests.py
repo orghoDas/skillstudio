@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from datetime import timedelta
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from .models import Profile, APIKey
 from .utils import is_platform_admin
@@ -494,3 +494,93 @@ class PermissionsTest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.get('/api/accounts/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class CookieJWTAuthTests(APITestCase):
+    """JWTs delivered as httpOnly cookies; cookie mutations require CSRF."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email='cookie@example.com', password='pw123456')
+
+    def _login(self):
+        return self.client.post(
+            '/api/accounts/token/',
+            {'email': 'cookie@example.com', 'password': 'pw123456'},
+            format='json',
+        )
+
+    def _csrf(self):
+        # Any page rendered from base.html sets the csrftoken cookie.
+        self.client.get('/')
+        return self.client.cookies['csrftoken'].value
+
+    def test_login_sets_httponly_jwt_cookies(self):
+        resp = self._login()
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('access_token', resp.cookies)
+        self.assertIn('refresh_token', resp.cookies)
+        self.assertTrue(resp.cookies['access_token']['httponly'])
+        self.assertTrue(resp.cookies['refresh_token']['httponly'])
+
+    def test_cookie_authenticates_get_request(self):
+        self._login()  # client now carries the httpOnly cookies
+        resp = self.client.get('/api/accounts/me/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['email'], 'cookie@example.com')
+
+    def test_cookie_mutation_without_csrf_is_forbidden(self):
+        # A CSRF-enforcing client (browser-like) must be rejected without a token.
+        strict = APIClient(enforce_csrf_checks=True)
+        strict.post(
+            '/api/accounts/token/',
+            {'email': 'cookie@example.com', 'password': 'pw123456'},
+            format='json',
+        )
+        resp = strict.post('/api/students/wallet/', {'amount': '10.00'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cookie_mutation_with_csrf_succeeds(self):
+        strict = APIClient(enforce_csrf_checks=True)
+        strict.post(
+            '/api/accounts/token/',
+            {'email': 'cookie@example.com', 'password': 'pw123456'},
+            format='json',
+        )
+        strict.get('/')  # sets the csrftoken cookie
+        csrf = strict.cookies['csrftoken'].value
+        resp = strict.post(
+            '/api/students/wallet/', {'amount': '10.00'}, format='json', HTTP_X_CSRFTOKEN=csrf
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_cookie_refresh_and_logout_clear_cookies(self):
+        self._login()
+        csrf = self._csrf()
+        # Cookie-based refresh (no body) issues a fresh access cookie.
+        refreshed = self.client.post(
+            '/api/accounts/token/refresh/', {}, format='json', HTTP_X_CSRFTOKEN=csrf
+        )
+        self.assertEqual(refreshed.status_code, status.HTTP_200_OK)
+        self.assertIn('access_token', refreshed.cookies)
+
+        # Logout clears both cookies.
+        out = self.client.post(
+            '/api/accounts/logout/', {}, format='json', HTTP_X_CSRFTOKEN=csrf
+        )
+        self.assertEqual(out.status_code, status.HTTP_205_RESET_CONTENT)
+        self.assertEqual(out.cookies['access_token'].value, '')
+        self.assertEqual(out.cookies['refresh_token'].value, '')
+
+
+class PageGatingTests(TestCase):
+    """Protected HTML page routes are gated server-side by the auth cookie."""
+
+    def test_protected_page_redirects_anonymous_to_login(self):
+        resp = self.client.get('/dashboard/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/auth/login/', resp['Location'])
+        self.assertIn('next=', resp['Location'])
+
+    def test_public_page_is_open_to_anonymous(self):
+        resp = self.client.get('/courses/')
+        self.assertEqual(resp.status_code, 200)

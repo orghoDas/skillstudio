@@ -393,10 +393,10 @@ function addQuestion(questionData = null) {
     const questionId = questionData?.id || `q${questionCount}`;
     
     const questionHtml = `
-        <div class="quiz-question" data-question-id="${questionId}">
+        <div class="quiz-question" data-question-id="${escapeHtml(questionId)}">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="font-semibold">Question ${questionCount}</h3>
-                <button onclick="removeQuestion('${questionId}')" class="text-red-400 hover:text-red-300">
+                <h3 class="font-semibold">Question ${escapeHtml(questionCount)}</h3>
+                <button onclick="removeQuestion('${escapeHtml(questionId)}')" class="text-red-400 hover:text-red-300">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -406,15 +406,15 @@ function addQuestion(questionData = null) {
             <div class="mb-4">
                 <label class="block text-sm mb-2">Question Text</label>
                 <input type="text" class="question-text w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg" 
-                    value="${questionData?.text || ''}" placeholder="Enter your question...">
+                    value="${escapeHtml(questionData?.text || '')}" placeholder="Enter your question...">
             </div>
             
             <div class="mb-4">
                 <label class="block text-sm mb-2">Options</label>
                 <div class="space-y-2 question-options">
-                    ${renderQuestionOptions(questionData?.options || [])}
+                    ${escapeHtml(renderQuestionOptions(questionData?.options || []))}
                 </div>
-                <button onclick="addOption('${questionId}')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
+                <button onclick="addOption('${escapeHtml(questionId)}')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
                     + Add Option
                 </button>
             </div>
@@ -422,7 +422,7 @@ function addQuestion(questionData = null) {
             <div>
                 <label class="block text-sm mb-2">Explanation (optional)</label>
                 <textarea class="question-explanation w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg" 
-                    rows="2" placeholder="Explain the correct answer...">${questionData?.explanation || ''}</textarea>
+                    rows="2" placeholder="Explain the correct answer...">${escapeHtml(questionData?.explanation || '')}</textarea>
             </div>
         </div>
     `;
@@ -440,11 +440,11 @@ function addQuestion(questionData = null) {
 
 function renderQuestionOptions(options) {
     return options.map((opt, index) => `
-        <div class="quiz-option ${opt.is_correct ? 'correct' : ''}" data-option-index="${index}">
-            <input type="radio" name="correct-${Date.now()}" ${opt.is_correct ? 'checked' : ''} 
+        <div class="quiz-option ${escapeHtml(opt.is_correct ? 'correct' : '')}" data-option-index="${escapeHtml(index)}">
+            <input type="radio" name="correct-${escapeHtml(Date.now())}" ${escapeHtml(opt.is_correct ? 'checked' : '')} 
                 onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
             <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
-                value="${opt.text || ''}" placeholder="Option ${String.fromCharCode(65 + index)}">
+                value="${escapeHtml(opt.text || '')}" placeholder="Option ${escapeHtml(String.fromCharCode(65 + index))}">
             <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -461,10 +461,10 @@ function addOption(questionId) {
     const radioName = `correct-${questionId}`;
     
     const optionHtml = `
-        <div class="quiz-option" data-option-index="${optionCount}">
-            <input type="radio" name="${radioName}" onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
+        <div class="quiz-option" data-option-index="${escapeHtml(optionCount)}">
+            <input type="radio" name="${escapeHtml(radioName)}" onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
             <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
-                placeholder="Option ${String.fromCharCode(65 + optionCount)}">
+                placeholder="Option ${escapeHtml(String.fromCharCode(65 + optionCount))}">
             <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>

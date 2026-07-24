@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Check if already logged in
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     if (accessToken) {
         window.location.href = '/dashboard/';
     }

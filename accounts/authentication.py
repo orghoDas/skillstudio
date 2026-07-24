@@ -1,10 +1,58 @@
 import hmac
 
+from django.conf import settings
+from django.middleware.csrf import CsrfViewMiddleware
 from django.utils import timezone
+from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import APIKey
+
+
+class _EnforcedCsrfCheck(CsrfViewMiddleware):
+    """CsrfViewMiddleware subclass whose rejection returns the reason string."""
+
+    def _reject(self, request, reason):
+        return reason
+
+
+class CookieJWTAuthentication(JWTAuthentication):
+    """Authenticate via JWT from the Authorization header OR an httpOnly cookie.
+
+    Browsers receive the token as an httpOnly cookie (unreadable by JS, so XSS
+    cannot steal it). Because cookies are sent automatically, cookie-based
+    requests are CSRF-enforced on unsafe methods. Header-based requests
+    (API clients) are not CSRF-checked — a bearer header is not auto-attached
+    cross-site, so it is not CSRF-exploitable.
+    """
+
+    def authenticate(self, request):
+        header = self.get_header(request)
+        if header is not None:
+            raw_token = self.get_raw_token(header)
+            if raw_token is None:
+                return None
+            validated = self.get_validated_token(raw_token)
+            return self.get_user(validated), validated
+
+        raw_token = request.COOKIES.get(settings.JWT_AUTH_COOKIE)
+        if not raw_token:
+            return None
+
+        validated = self.get_validated_token(raw_token)
+        self._enforce_csrf(request)
+        return self.get_user(validated), validated
+
+    def _enforce_csrf(self, request):
+        if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
+            return
+        check = _EnforcedCsrfCheck(lambda req: None)
+        check.process_request(request)
+        reason = check.process_view(request, None, (), {})
+        if reason:
+            raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")
 
 
 class APIKeyAuthentication(BaseAuthentication):

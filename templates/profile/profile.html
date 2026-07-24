@@ -187,11 +187,6 @@ let isEditing = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/profile/';
-        return;
-    }
 
     await loadProfile();
     

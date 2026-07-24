@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Referencing the token here ensures Django sets the csrftoken cookie on every page. #}
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}SkillStudio - Learn, Teach, Grow{% endblock %}</title>
     
     <!-- Tailwind CSS -->
@@ -160,57 +162,80 @@
         }
         
         const csrftoken = getCookie('csrftoken');
-        
-        // API fetch helper
+
+        // ---------------------------------------------------------------
+        // XSS-safety helpers for interpolating untrusted API data into markup.
+        // Use escapeHtml() for any user-authored value placed inside innerHTML
+        // (text OR a quoted attribute); use safeUrl() for any value used as an
+        // href/src. A plain HTML escape does NOT neutralise javascript: URLs,
+        // which is why href/src need safeUrl instead.
+        // ---------------------------------------------------------------
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function safeUrl(value) {
+            if (value === null || value === undefined) return '#';
+            const url = String(value).trim();
+            // Same-origin relative/root-relative paths are safe.
+            if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+                return escapeHtml(url);
+            }
+            try {
+                const parsed = new URL(url, window.location.origin);
+                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                    return escapeHtml(url);
+                }
+            } catch (e) {
+                // Unparseable — fall through to the safe default.
+            }
+            return '#';
+        }
+
+        // API fetch helper.
+        // Auth travels as httpOnly cookies (sent automatically on same-origin
+        // requests), so no token is read from JS. CSRF token is sent on mutations.
         async function apiRequest(endpoint, options = {}) {
-            const token = localStorage.getItem('access_token');
             const isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
             const headers = {
                 ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
                 ...options.headers,
             };
-            
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-            
+
             if (options.method && options.method !== 'GET') {
-                headers['X-CSRFToken'] = csrftoken;
+                headers['X-CSRFToken'] = getCookie('csrftoken');
             }
-            
-            const response = await fetch(`${API_BASE}${endpoint}`, {
-                ...options,
-                headers,
-            });
-            
+
+            const fetchOpts = { ...options, headers, credentials: 'same-origin' };
+            const response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
+
             if (response.status === 401) {
-                // Token expired, try to refresh
-                const refreshToken = localStorage.getItem('refresh_token');
-                if (refreshToken) {
-                    const refreshResponse = await fetch(`${API_BASE}/accounts/token/refresh/`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ refresh: refreshToken }),
-                    });
-                    
-                    if (refreshResponse.ok) {
-                        const data = await refreshResponse.json();
-                        localStorage.setItem('access_token', data.access);
-                        // Retry original request
-                        headers['Authorization'] = `Bearer ${data.access}`;
-                        const retryResponse = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-                        if (!retryResponse.ok) {
-                            throw new Error(`HTTP error! status: ${retryResponse.status}`);
-                        }
-                        return retryResponse.json();
-                    } else {
-                        // Refresh failed, logout
-                        logout();
-                        return null;
+                // Access cookie expired — try a cookie-based refresh, then retry.
+                const refreshResponse = await fetch(`${API_BASE}/accounts/token/refresh/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'same-origin',
+                });
+
+                if (refreshResponse.ok) {
+                    const retryResponse = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
+                    if (!retryResponse.ok) {
+                        throw new Error(`HTTP error! status: ${retryResponse.status}`);
                     }
+                    return retryResponse.json();
+                } else {
+                    // Refresh failed — session is gone; send them to login.
+                    logout();
+                    return null;
                 }
             }
-            
+
             if (!response.ok) {
                 // Try to parse JSON error body for nicer client messages
                 let errorBody = null;
@@ -229,10 +254,19 @@
             return response.json();
         }
         
-        // Logout helper
-        function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
+        // Logout helper: clears the httpOnly auth cookies server-side, drops the
+        // cached (non-sensitive) user display info, and returns to login.
+        async function logout() {
+            try {
+                await fetch(`${API_BASE}/accounts/logout/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'same-origin',
+                });
+            } catch (e) {
+                // Even if the call fails, clear local state and redirect.
+            }
+            localStorage.removeItem('user');
             localStorage.removeItem('user_role');
             window.location.href = '/auth/login/';
         }

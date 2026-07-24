@@ -88,8 +88,8 @@ async function loadTransactions() {
                 return `
                     <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg hover:bg-opacity-80 transition-colors">
                         <div class="flex items-center space-x-4">
-                            <div class="${isCredit ? 'bg-green-600' : 'bg-red-600'} bg-opacity-20 p-3 rounded-lg">
-                                <svg class="w-5 h-5 ${isCredit ? 'text-green-500' : 'text-red-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="${escapeHtml(isCredit ? 'bg-green-600' : 'bg-red-600')} bg-opacity-20 p-3 rounded-lg">
+                                <svg class="w-5 h-5 ${escapeHtml(isCredit ? 'text-green-500' : 'text-red-500')}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     ${isCredit 
                                         ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>'
                                         : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>'
@@ -97,18 +97,18 @@ async function loadTransactions() {
                                 </svg>
                             </div>
                             <div>
-                                <p class="font-medium">${transaction.description}</p>
+                                <p class="font-medium">${escapeHtml(transaction.description)}</p>
                                 <p class="text-sm text-gray-400">
-                                    ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}
+                                    ${escapeHtml(date.toLocaleDateString())} at ${escapeHtml(date.toLocaleTimeString())}
                                 </p>
                             </div>
                         </div>
                         <div class="text-right">
-                            <p class="text-lg font-bold ${isCredit ? 'text-green-500' : 'text-red-500'}">
-                                ${isCredit ? '+' : '-'}$${parseFloat(transaction.amount).toFixed(2)}
+                            <p class="text-lg font-bold ${escapeHtml(isCredit ? 'text-green-500' : 'text-red-500')}">
+                                ${escapeHtml(isCredit ? '+' : '-')}$${escapeHtml(parseFloat(transaction.amount).toFixed(2))}
                             </p>
                             <p class="text-xs text-gray-400">
-                                Balance: $${parseFloat(transaction.balance_after).toFixed(2)}
+                                Balance: $${escapeHtml(parseFloat(transaction.balance_after).toFixed(2))}
                             </p>
                         </div>
                     </div>
@@ -225,10 +225,8 @@ function showNotification(title, message, type = 'info') {
     notification.innerHTML = `
         <div class="flex items-start">
             <div class="flex-1">
-                <h4 class="font-bold ${
-                    type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500'
-                }">${title}</h4>
-                <p class="text-sm text-gray-400 mt-1">${message}</p>
+                <h4 class="font-bold ${escapeHtml(type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-blue-500')}">${escapeHtml(title)}</h4>
+                <p class="text-sm text-gray-400 mt-1">${escapeHtml(message)}</p>
             </div>
             <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-white ml-4">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

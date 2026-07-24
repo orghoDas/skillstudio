@@ -106,7 +106,7 @@ let isEditing = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication
-    const accessToken = localStorage.getItem('access_token');
+    const accessToken = localStorage.getItem('user');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     
     if (!accessToken) {

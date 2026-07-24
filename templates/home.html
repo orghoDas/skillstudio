@@ -83,7 +83,7 @@
 <script>
     // Check if user is logged in and redirect to dashboard
     document.addEventListener('DOMContentLoaded', function() {
-        const accessToken = localStorage.getItem('access_token');
+        const accessToken = localStorage.getItem('user');
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         
         if (accessToken && user.role) {
@@ -107,14 +107,14 @@
             const container = document.getElementById('popular-courses');
             if (data.results && data.results.length > 0) {
                 container.innerHTML = data.results.map(course => `
-                    <a href="/courses/${course.slug}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
+                    <a href="/courses/${escapeHtml(course.slug)}/" class="block bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors">
                         <div class="h-48 bg-gradient-to-br from-blue-500 to-purple-600"></div>
                         <div class="p-4">
-                            <h3 class="font-semibold mb-2">${course.title}</h3>
-                            <p class="text-sm text-gray-400 mb-4">${course.description?.substring(0, 100)}...</p>
+                            <h3 class="font-semibold mb-2">${escapeHtml(course.title)}</h3>
+                            <p class="text-sm text-gray-400 mb-4">${escapeHtml(course.description?.substring(0, 100))}...</p>
                             <div class="flex items-center justify-between">
-                                <span class="text-sm text-gray-400">By ${course.instructor_name || 'Instructor'}</span>
-                                <span class="text-blue-400 font-semibold">$${course.price}</span>
+                                <span class="text-sm text-gray-400">By ${escapeHtml(course.instructor_name || 'Instructor')}</span>
+                                <span class="text-blue-400 font-semibold">$${escapeHtml(course.price)}</span>
                             </div>
                         </div>
                     </a>
