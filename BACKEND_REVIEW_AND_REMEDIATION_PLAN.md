@@ -10,7 +10,7 @@ This document tracks only backend work that still needs attention so it can be u
 
 ## Current Release Position
 
-The backend is still **not production-ready**, mainly because the money path is runtime-broken/insecure, account lifecycle policy is incomplete, and repository/deployment hygiene is not clean.
+The backend is still **not production-ready**, mainly because the money path is runtime-broken/insecure and repository/deployment hygiene is not clean.
 
 ### Current Verification Snapshot
 
@@ -30,7 +30,7 @@ Additional current checks:
 - `manage.py check`: clean.
 - `makemigrations --check --dry-run`: clean.
 - `git diff --check`: clean.
-- `manage.py check --deploy`: still reports production security warnings for HSTS, HTTPS redirect, insecure fallback secret, and secure session/CSRF cookies.
+- `manage.py check --deploy`: clean when `DJANGO_SECRET_KEY` is set (production TLS hardening + fail-loud secret loading added 2026-07-24). The committed insecure key value still needs rotation — see the hygiene section.
 
 The last full-suite baseline remains red because `payments.tests` still imports the removed `events` app. Treat this as an active test-baseline issue until the full suite collects and passes.
 
@@ -40,10 +40,10 @@ The last full-suite baseline remains red because `payments.tests` still imports 
    Fix payment model drift, server-side pricing, signed webhooks, idempotent fulfillment, and financial state reconciliation.
 
 2. **P0 repository/deployment gate**
-   Remove tracked secrets/generated artifacts, fix dependency encoding, add CI, and satisfy deploy security checks.
+   Remove tracked secrets/generated artifacts, lock dependencies, add CI, and satisfy deploy security checks.
 
-3. **P1 account lifecycle and identity policy**
-   Implement verification/reset delivery and token lifecycle.
+3. **P1 identity policy**
+   Constrain self-registration so it cannot grant privileged instructor capability by default.
 
 4. **P1 enrollment/progress trust**
    Fix wallet/enrollment transaction flow and reactivation semantics.
@@ -125,23 +125,20 @@ The last full-suite baseline remains red because `payments.tests` still imports 
 - One captured payment produces exactly one entitlement and one auditable ledger result.
 - Concurrent fulfillment calls are idempotent.
 
-### P0-05 Duplicate Wallets, Payouts, and Fee Policies
+### P0-05a Duplicate Wallet/Balance Sources — RESOLVED 2026-07-24
 
-**Problem:** Money state has multiple sources of truth.
+`students.Wallet` + `WalletTransaction` is now the single ledger-backed wallet. `Wallet.add_money`/`deduct_money` are atomic (row-locked via `select_for_update`) and always write a `WalletTransaction`, returning it. The enrollment purchase flow (`enrollments/serializers.py`) was rewritten to debit the student's canonical wallet and credit the instructor's canonical wallet, removing the best-effort `try/except` dual-write to `Profile.wallet`. Account profile serializers now derive `wallet` from the ledger. `Profile.wallet` was backfilled into `students.Wallet` (taking the max, with an audit ledger row) and dropped in migration `accounts/0009`. New tests cover the ledger, the paid-enrollment money flow, insufficient-balance rejection, and profile derivation.
 
-**Evidence needing attention:**
+### P0-05b Duplicate Payouts + Single Cross-Domain Ledger (deferred to payments)
 
-- `accounts.Profile.wallet` and `students.Wallet` both represent balances.
-- `payments.Payout` and `instructors.InstructorPayout` both represent payouts.
-- Enrollment wallet flow and payment service use different platform fee rates.
-- Students can credit their own wallet.
+**Problem:** `payments.Payout` and `instructors.InstructorPayout` both model payouts, and a true single ledger (purchases, wallet moves, payouts, refunds) spans the payments domain. Also: enrollment wallet flow and payment service use different platform fee rates, and students can credit their own wallet.
 
 **Required fix:**
 
-- Define one ledger-backed wallet/balance model.
 - Define one payout allocation model.
+- Unify the platform fee policy across enrollment and payment paths.
 - Remove or quarantine student self-credit until backed by real payment capture.
-- Backfill and reconcile existing balances before switching reads/writes.
+- Fold the wallet ledger (P0-05a) into one canonical cross-domain ledger with reconciliation.
 
 **Acceptance criteria:**
 
@@ -152,16 +149,16 @@ The last full-suite baseline remains red because `payments.tests` still imports 
 
 ## P1 Open Issues
 
-### P1-01 Account Verification and Password Reset Lifecycle
+### P1-01 Self-Registration Grants Instructor Capability
 
-**Problem:** Accounts are active before verification, email delivery is not wired, reset/verification tokens are not hashed/consumed robustly, and refresh tokens are not revoked after sensitive lifecycle events.
+**Problem:** `RegisterSerializer` accepts `role='instructor'` at signup, so anyone can self-provision an instructor account with no approval step.
 
 **Required fix:**
 
-- Decide whether new accounts start inactive until verification.
-- Implement delivery, throttling, hashed one-time tokens, expiry, consumption, and audit metadata.
-- Revoke refresh/session tokens after password reset and high-risk account changes.
 - Prevent self-registration from immediately granting privileged instructor capability unless that is explicitly the product policy.
+- If instructor access requires vetting, default new signups to `student` and gate instructor capability behind admin promotion (`PromoteToInstructorView` already exists).
+
+**Resolved (2026-07-24):** Email verification and password-reset delivery were removed entirely (product decision: no email). Accounts are intentionally active immediately. Refresh tokens are now revoked on password change and via a new logout endpoint, backed by `token_blacklist` with rotation/blacklist-after-rotation enabled.
 
 ### P1-06 Enrollment Purchase and Reactivation Flow
 
@@ -244,12 +241,12 @@ The new quiz no-retake constraint assumes existing deployed databases have at mo
 
 These are still active release blockers:
 
-- `.env` remains tracked and any real secrets must be rotated.
+- `.env` remains tracked; the DB password **and** the committed insecure `SECRET_KEY` must both be rotated (both are effectively public). Settings now require `DJANGO_SECRET_KEY` in production, but the live key value is unchanged.
 - A Windows `venv` and bytecode/cache files remain tracked.
-- `requirements.txt` is UTF-16 and should be converted to UTF-8 with reproducible dependency locking.
+- `requirements.txt` is pinned to exact versions but not hash-locked; add reproducible dependency locking (e.g. pip-tools or uv). *(UTF-16 → UTF-8 encoding fixed 2026-07-24.)*
 - Static/generated artifacts should stay ignored.
 - CI should run checks, migrations, full tests, deploy checks, dependency audit, and secret scanning.
-- Production settings must enable HTTPS redirect/proxy headers, secure cookies, HSTS, content-type nosniff, trusted CSRF origins, production logging, and safe secret loading.
+- Production HTTPS redirect/proxy headers, secure session/CSRF cookies, HSTS, content-type nosniff, env-driven `CSRF_TRUSTED_ORIGINS`, and fail-loud secret loading are in place (2026-07-24, gated on `DEBUG=False`). `CSRF_TRUSTED_ORIGINS` reads a comma-separated env var, which must be set to the real origin(s) in the deploy environment. Still to add: production logging.
 
 ---
 
@@ -258,7 +255,7 @@ These are still active release blockers:
 ### Phase 0: Trustworthy Baseline
 
 1. Remove tracked secrets/generated artifacts and rotate exposed secrets.
-2. Fix dependency encoding/locking.
+2. Add reproducible dependency locking (hashes).
 3. Fix account test URLs and payment test imports so the full suite collects.
 4. Add CI for checks, migrations, focused tests, full tests, deploy checks, dependency audit, and secret scanning.
 
@@ -268,13 +265,12 @@ These are still active release blockers:
 2. Move pricing to server-derived course snapshots.
 3. Verify provider webhook signatures and provider event idempotency.
 4. Fulfill entitlements and ledger effects atomically.
-5. Consolidate wallet/payout sources of truth.
+5. Consolidate payout sources of truth into the ledger (wallet consolidation done — P0-05a).
 
 ### Phase 2: Account and Enrollment Lifecycle
 
-1. Implement account verification/reset/token lifecycle.
-2. Resolve role/superuser/staff invariants.
-3. Move enrollment purchase/reactivation into a locked domain service.
+1. Resolve role/superuser/staff invariants (including self-registration instructor gating).
+2. Move enrollment purchase/reactivation into a locked domain service.
 
 ### Phase 3: Platform Reliability
 
@@ -290,7 +286,7 @@ These are still active release blockers:
 - Payment creation, pricing, webhook verification, fulfillment, refund, payout, and ledger flows are transactionally tested.
 - No tracked secrets, virtual environments, bytecode, or generated local artifacts remain.
 - Deployment checks pass or each remaining warning has a documented production-specific control.
-- Account lifecycle, role policy, enrollment purchase/reactivation, and progress trust have one documented policy and one transactional implementation path.
+- Role policy, enrollment purchase/reactivation, and progress trust have one documented policy and one transactional implementation path.
 - Assessment evidence has reproducible, auditable behavior.
 - OpenAPI and first-party clients agree on paths and response shapes.
 - CI blocks migration drift, missing tests, deploy warnings, dependency risk, and secret leakage.

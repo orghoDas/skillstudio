@@ -1,10 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
 
-from accounts.models import Profile, EmailVerificationToken, PasswordResetToken, APIKey
+from accounts.models import Profile, APIKey
 
 User = get_user_model()
 
@@ -50,18 +48,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"],
             role=role
         )
-        
-        # Create email verification token
-        EmailVerificationToken.objects.create(
-            user=user,
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
+
         return user
 
 
 class AccountProfileSerializer(serializers.ModelSerializer):
     """Serializer for shared account-owned profile data."""
+
+    # Balance is derived from the canonical students.Wallet ledger, not stored
+    # on Profile. Kept in the response under the same `wallet` key for clients.
+    wallet = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -79,17 +75,21 @@ class AccountProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("wallet", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_wallet(self, obj):
+        from students.services import get_or_create_wallet
+        return get_or_create_wallet(obj.user).balance
 
 
 class ProfileSerializer(AccountProfileSerializer):
     role = serializers.CharField(source='user.role', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
-    
+
     class Meta:
         model = Profile
         fields = ("role", "email", "first_name", "last_name", "full_name", "phone", "location", "bio", "avatar", "social_links", "interests", "wallet", "created_at", "updated_at")
-        read_only_fields = ("role", "email", "wallet", "created_at", "updated_at")
+        read_only_fields = ("role", "email", "created_at", "updated_at")
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -175,25 +175,6 @@ class ChangePasswordSerializer(serializers.Serializer):
         if attrs['new_password'] != attrs['new_password2']:
             raise serializers.ValidationError({"new_password2": "Passwords do not match."})
         return attrs
-
-
-class PasswordResetRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)
-
-
-class PasswordResetConfirmSerializer(serializers.Serializer):
-    token = serializers.UUIDField(required=True)
-    new_password = serializers.CharField(required=True, validators=[validate_password])
-    new_password2 = serializers.CharField(required=True)
-
-    def validate(self, attrs):
-        if attrs['new_password'] != attrs['new_password2']:
-            raise serializers.ValidationError({"new_password": "Passwords do not match."})
-        return attrs
-
-
-class EmailVerificationSerializer(serializers.Serializer):
-    token = serializers.UUIDField(required=True)
 
 
 class APIKeySerializer(serializers.ModelSerializer):

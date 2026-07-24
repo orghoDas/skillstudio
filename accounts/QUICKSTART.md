@@ -46,8 +46,6 @@
 ### 7. **Admin Interface**
 - ✅ Custom UserAdmin with proper fieldsets
 - ✅ Profile admin with search/filter
-- ✅ EmailVerificationToken admin
-- ✅ PasswordResetToken admin
 - ✅ APIKey admin
 
 ### 8. **Testing**
@@ -94,11 +92,8 @@ accounts/
 | POST | `/api/accounts/register/` | Register new user | No | - |
 | POST | `/api/accounts/token/` | Login (get JWT) | No | - |
 | POST | `/api/accounts/token/refresh/` | Refresh JWT | No | - |
-| POST | `/api/accounts/verify-email/` | Verify email | No | - |
-| POST | `/api/accounts/resend-verification/` | Resend verification | Yes | - |
-| POST | `/api/accounts/password-reset/` | Request reset | No | - |
-| POST | `/api/accounts/password-reset/confirm/` | Confirm reset | No | - |
-| POST | `/api/accounts/change-password/` | Change password | Yes | - |
+| POST | `/api/accounts/logout/` | Blacklist refresh token | Yes | - |
+| POST | `/api/accounts/change-password/` | Change password (revokes refresh tokens) | Yes | - |
 | GET/PATCH | `/api/accounts/me/` | Current user info | Yes | - |
 | GET/PATCH | `/api/accounts/profile/` | User profile | Yes | - |
 | GET | `/api/accounts/users/` | List users | Yes | Admin |

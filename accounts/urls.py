@@ -10,14 +10,11 @@ urlpatterns = [
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     
-    # Registration & Email Verification
+    # Registration
     path("register/", views.RegisterView.as_view(), name="api_register"),
-    path("verify-email/", views.EmailVerificationView.as_view(), name="verify_email"),
-    path("resend-verification/", views.ResendVerificationEmailView.as_view(), name="resend_verification"),
-    
+    path("logout/", views.LogoutView.as_view(), name="logout"),
+
     # Password Management
-    path("password-reset/", views.PasswordResetRequestView.as_view(), name="password_reset_request"),
-    path("password-reset/confirm/", views.PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
     path("change-password/", views.ChangePasswordView.as_view(), name="change_password"),
     
     # Current User

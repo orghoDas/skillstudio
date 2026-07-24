@@ -196,20 +196,11 @@ class WalletView(APIView):
         amount = serializer.validated_data['amount']
         
         try:
-            new_balance = wallet.add_money(amount)
-            
-            # Create transaction record
-            WalletTransaction.objects.create(
-                wallet=wallet,
-                transaction_type='credit',
-                amount=amount,
-                description='Funds added to wallet',
-                balance_after=new_balance
-            )
-            
+            txn = wallet.add_money(amount, description='Funds added to wallet')
+
             return Response({
                 'success': True,
-                'balance': new_balance,
+                'balance': txn.balance_after,
                 'message': f'Successfully added ${amount} to wallet'
             })
         except ValueError as e:

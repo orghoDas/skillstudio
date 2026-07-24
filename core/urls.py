@@ -7,8 +7,6 @@ urlpatterns = [
     # Authentication pages
     path('auth/login/', views.login_page, name='login_page'),
     path('auth/register/', views.register_page, name='register_page'),
-    path('auth/password-reset/', views.password_reset_page, name='password_reset_page'),
-    path('auth/password-reset/confirm/', views.password_reset_confirm_page, name='password_reset_confirm_page'),
     
     # Dashboard pages
     path('dashboard/', views.student_dashboard, name='student_dashboard'),

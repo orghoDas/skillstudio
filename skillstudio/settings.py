@@ -15,30 +15,36 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Rotate refresh tokens on use and blacklist the old one so a leaked
+    # refresh token has a bounded useful life. Requires the token_blacklist app.
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
-DEBUG = os.getenv("DEBUG", "False") == "True"
-
-
-
-# Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", 'django-insecure-*3p=71!&823iep%-11^-50vha!w$1st*icom33p@rrzc5h7qxe')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# A real key MUST be supplied via DJANGO_SECRET_KEY in production. The insecure
+# fallback is only tolerated when DEBUG is on so local dev works out of the box.
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-dev-only-do-not-use-in-production"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DEBUG=False")
 
 ALLOWED_HOSTS = [
     'localhost',
@@ -61,7 +67,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
-    "rest_framework",      
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "core.apps.CoreConfig",
     "accounts",
     "courses",
@@ -101,10 +108,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
-
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
+# Same-origin by default (the frontend is served by this app). Cross-origin
+# access is opt-in: set CORS_ALLOWED_ORIGINS to a comma-separated list of full
+# origins (with scheme) only if a separately-hosted frontend needs it.
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+CORS_ALLOW_CREDENTIALS = False
 
 ROOT_URLCONF = 'skillstudio.urls'
 
@@ -190,3 +200,32 @@ CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
 
 # Minimal beat schedule: run recommender hourly
 CELERY_BEAT_SCHEDULE = {}
+
+
+# Production security hardening
+# Applied only when DEBUG is off so local http development is unaffected.
+# See `manage.py check --deploy`.
+if not DEBUG:
+    # Trust the X-Forwarded-Proto header set by the platform's TLS-terminating
+    # proxy (e.g. Railway). Without this, SECURE_SSL_REDIRECT loops forever
+    # because Django never sees the request as HTTPS.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+    # Origins allowed for cookie/session-based POSTs over HTTPS (e.g. the admin,
+    # or a separately-hosted frontend). Supply a comma-separated list of full
+    # origins including scheme, e.g. "https://app.example.com,https://admin.example.com".
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]

@@ -425,6 +425,52 @@ class EnrollmentAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(Enrollment.objects.filter(user=self.user, course=self.course).exists())
     
+    def test_paid_enroll_debits_canonical_wallet_and_credits_instructor(self):
+        """Paid enrollment moves money through the canonical wallet ledger only."""
+        from students.models import Wallet, WalletTransaction
+
+        paid_course = Course.objects.create(
+            title='Paid Course', instructor=self.instructor, category=self.category,
+            price=Decimal('100.00'), is_free=False, status='published',
+        )
+        student_wallet = Wallet.objects.create(user=self.user, balance=Decimal('150.00'))
+
+        response = self.client.post(
+            '/api/enrollments/enroll/', {'course_id': paid_course.id}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        student_wallet.refresh_from_db()
+        self.assertEqual(student_wallet.balance, Decimal('50.00'))  # 150 - 100
+        self.assertEqual(
+            student_wallet.transactions.filter(transaction_type='debit').count(), 1
+        )
+
+        # Instructor earns price minus the 10% platform fee, in their own wallet.
+        instructor_wallet = Wallet.objects.get(user=self.instructor)
+        self.assertEqual(instructor_wallet.balance, Decimal('90.00'))
+        self.assertEqual(
+            instructor_wallet.transactions.filter(transaction_type='credit').count(), 1
+        )
+
+    def test_paid_enroll_insufficient_balance_is_rejected(self):
+        """Insufficient funds blocks enrollment and moves no money."""
+        from students.models import Wallet
+
+        paid_course = Course.objects.create(
+            title='Pricey Course', instructor=self.instructor, category=self.category,
+            price=Decimal('100.00'), is_free=False, status='published',
+        )
+        Wallet.objects.create(user=self.user, balance=Decimal('10.00'))
+
+        response = self.client.post(
+            '/api/enrollments/enroll/', {'course_id': paid_course.id}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            Enrollment.objects.filter(user=self.user, course=paid_course).exists()
+        )
+
     def test_enroll_in_nonexistent_course(self):
         """Test enrolling in a non-existent course."""
         url = '/api/enrollments/enroll/'

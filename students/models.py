@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.validators import MinValueValidator
@@ -242,23 +242,46 @@ class Wallet(models.Model):
     def __str__(self):
         return f"Wallet: {self.user.email} - ${self.balance}"
     
-    def add_money(self, amount):
-        """Add money to wallet."""
+    def add_money(self, amount, description='Funds added to wallet'):
+        """Atomically credit the wallet and record a ledger transaction.
+
+        Returns the created WalletTransaction. Row-locks the wallet so
+        concurrent credits/debits cannot lose updates.
+        """
+        return self._apply_delta('credit', amount, description)
+
+    def deduct_money(self, amount, description='Purchase'):
+        """Atomically debit the wallet and record a ledger transaction.
+
+        Returns the created WalletTransaction. Raises ValueError on
+        insufficient balance (checked under the row lock).
+        """
+        return self._apply_delta('debit', amount, description)
+
+    def _apply_delta(self, kind, amount, description):
+        amount = Decimal(str(amount))
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        self.balance += Decimal(str(amount))
-        self.save()
-        return self.balance
-    
-    def deduct_money(self, amount):
-        """Deduct money from wallet."""
-        if amount <= 0:
-            raise ValueError("Amount must be positive")
-        if self.balance < Decimal(str(amount)):
-            raise ValueError("Insufficient balance")
-        self.balance -= Decimal(str(amount))
-        self.save()
-        return self.balance
+        with transaction.atomic():
+            # Re-read under a row lock so the balance check and write are atomic.
+            locked = Wallet.objects.select_for_update().get(pk=self.pk)
+            if kind == 'debit':
+                if locked.balance < amount:
+                    raise ValueError("Insufficient balance")
+                locked.balance -= amount
+            else:
+                locked.balance += amount
+            locked.save(update_fields=['balance', 'updated_at'])
+            txn = WalletTransaction.objects.create(
+                wallet=locked,
+                transaction_type=kind,
+                amount=amount,
+                description=description,
+                balance_after=locked.balance,
+            )
+            # Keep this instance's in-memory balance consistent for callers.
+            self.balance = locked.balance
+        return txn
 
 
 class WalletTransaction(models.Model):
