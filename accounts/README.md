@@ -29,14 +29,6 @@ The accounts app handles user authentication, authorization, profile management,
   - `interests` (JSONField)
   - `created_at`, `updated_at` (DateTimeField)
 
-### EmailVerificationToken
-- Used for email verification during registration
-- **Fields:** `user`, `token` (UUID), `created_at`, `expires_at`, `is_used`
-
-### PasswordResetToken
-- Used for password reset functionality
-- **Fields:** `user`, `token` (UUID), `created_at`, `expires_at`
-
 ### APIKey
 - For API key authentication
 - Secrets are shown only once at creation time.
@@ -48,15 +40,10 @@ The accounts app handles user authentication, authorization, profile management,
 - `POST /api/accounts/register/` - Register new user
 - `POST /api/accounts/token/` - Obtain JWT token (login)
 - `POST /api/accounts/token/refresh/` - Refresh JWT token
-
-### Email Verification
-- `POST /api/accounts/verify-email/` - Verify email with token
-- `POST /api/accounts/resend-verification/` - Resend verification email
+- `POST /api/accounts/logout/` - Blacklist the supplied refresh token
 
 ### Password Management
-- `POST /api/accounts/password-reset/` - Request password reset
-- `POST /api/accounts/password-reset/confirm/` - Confirm password reset with token
-- `POST /api/accounts/change-password/` - Change password (authenticated)
+- `POST /api/accounts/change-password/` - Change password (authenticated); revokes existing refresh tokens
 
 ### User Profile
 - `GET /api/accounts/me/` - Get current user info with a stable profile envelope
@@ -198,22 +185,16 @@ Response:
 
 Use API keys with `Authorization: Api-Key {key}` or `X-API-Key: {key}`. List, detail, and toggle responses never return the full secret.
 
-### Password Reset Flow
+### Change Password
 ```json
-# 1. Request reset
-POST /api/accounts/password-reset/
+POST /api/accounts/change-password/
 {
-  "email": "user@example.com"
-}
-
-# 2. Confirm reset (using token from email)
-POST /api/accounts/password-reset/confirm/
-{
-  "token": "a8f5f167-0e5a-4f2b-8e0a-5c7f8d9e0f1a",
+  "old_password": "CurrentPass123!",
   "new_password": "NewSecurePass123!",
   "new_password2": "NewSecurePass123!"
 }
 ```
+Changing the password blacklists all of the user's outstanding refresh tokens, so other sessions must log in again. Self-service reset for logged-out users is intentionally not provided; an admin resets a forgotten password.
 
 ## Signals
 
@@ -226,8 +207,6 @@ POST /api/accounts/password-reset/confirm/
 All models are registered in the Django admin with custom configurations:
 - User: Custom UserAdmin with proper fieldsets
 - Profile: List display with user, name, and dates
-- EmailVerificationToken: Shows verification status
-- PasswordResetToken: Shows expiration status
 - APIKey: Shows prefix, active status, last-used, revocation, and creation dates
 
 ## Testing

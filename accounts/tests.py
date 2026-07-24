@@ -5,7 +5,7 @@ from django.utils import timezone
 from datetime import timedelta
 from rest_framework.test import APITestCase
 from rest_framework import status
-from .models import Profile, EmailVerificationToken, PasswordResetToken, APIKey
+from .models import Profile, APIKey
 from .utils import is_platform_admin
 from instructors.models import InstructorProfile
 from students.models import StudentProfile
@@ -263,6 +263,16 @@ class ProfileAPITest(APITestCase):
         self.assertEqual(self.user.profile.full_name, 'Test User')
         self.assertEqual(response.data['account_profile']['full_name'], 'Test User')
 
+    def test_account_profile_wallet_derives_from_canonical_wallet(self):
+        """The profile `wallet` field reflects the students.Wallet balance."""
+        from decimal import Decimal
+        from students.models import Wallet
+
+        Wallet.objects.create(user=self.user, balance=Decimal('42.50'))
+        response = self.client.get('/api/accounts/profile/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(str(response.data['account_profile']['wallet'])), Decimal('42.50'))
+
     def test_profile_shape_is_stable_for_instructor(self):
         instructor = User.objects.create_user(
             email='instructor-profile@example.com',
@@ -347,6 +357,37 @@ class PasswordManagementTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('NewPass123!'))
+
+    def test_change_password_revokes_existing_refresh_tokens(self):
+        """After a password change, previously issued refresh tokens stop working."""
+        token_resp = self.client.post(
+            '/api/accounts/token/',
+            {'email': 'test@example.com', 'password': 'oldpass123'},
+        )
+        refresh = token_resp.data['refresh']
+
+        self.client.post('/api/accounts/change-password/', {
+            'old_password': 'oldpass123',
+            'new_password': 'NewPass123!',
+            'new_password2': 'NewPass123!',
+        })
+
+        refresh_resp = self.client.post('/api/accounts/token/refresh/', {'refresh': refresh})
+        self.assertEqual(refresh_resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_logout_blacklists_refresh_token(self):
+        """Logout blacklists the supplied refresh token so it can't be reused."""
+        token_resp = self.client.post(
+            '/api/accounts/token/',
+            {'email': 'test@example.com', 'password': 'oldpass123'},
+        )
+        refresh = token_resp.data['refresh']
+
+        logout_resp = self.client.post('/api/accounts/logout/', {'refresh': refresh})
+        self.assertEqual(logout_resp.status_code, status.HTTP_205_RESET_CONTENT)
+
+        refresh_resp = self.client.post('/api/accounts/token/refresh/', {'refresh': refresh})
+        self.assertEqual(refresh_resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class APIKeyTest(APITestCase):

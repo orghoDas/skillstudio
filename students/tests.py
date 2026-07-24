@@ -8,7 +8,7 @@ from unittest.mock import patch
 from courses.models import Course, Module, Lesson
 from enrollments.models import Enrollment, LessonProgress
 from certificates.models import Certificate
-from .models import StudentProfile, StudentNote, StudentBookmark
+from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .services import (
     get_or_create_student_profile,
     update_student_profile,
@@ -27,6 +27,48 @@ from .services import (
 )
 
 User = get_user_model()
+
+
+class WalletLedgerTests(TestCase):
+    """Canonical wallet: every balance change writes an atomic ledger row."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email='wallet@example.com', password='pw')
+        self.wallet = Wallet.objects.create(user=self.user, balance=Decimal('0.00'))
+
+    def test_add_money_credits_and_writes_ledger_row(self):
+        txn = self.wallet.add_money(Decimal('50.00'), description='top up')
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('50.00'))
+        self.assertIsInstance(txn, WalletTransaction)
+        self.assertEqual(txn.transaction_type, 'credit')
+        self.assertEqual(txn.amount, Decimal('50.00'))
+        self.assertEqual(txn.balance_after, Decimal('50.00'))
+        self.assertEqual(self.wallet.transactions.count(), 1)
+
+    def test_deduct_money_debits_and_writes_ledger_row(self):
+        self.wallet.add_money(Decimal('50.00'))
+        txn = self.wallet.deduct_money(Decimal('20.00'), description='buy')
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('30.00'))
+        self.assertEqual(txn.transaction_type, 'debit')
+        self.assertEqual(txn.balance_after, Decimal('30.00'))
+        self.assertEqual(self.wallet.transactions.count(), 2)
+
+    def test_deduct_more_than_balance_raises_and_writes_nothing(self):
+        self.wallet.add_money(Decimal('10.00'))
+        with self.assertRaises(ValueError):
+            self.wallet.deduct_money(Decimal('25.00'))
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('10.00'))
+        # Only the credit row exists; the failed debit wrote no ledger row.
+        self.assertEqual(self.wallet.transactions.filter(transaction_type='debit').count(), 0)
+
+    def test_non_positive_amount_raises(self):
+        with self.assertRaises(ValueError):
+            self.wallet.add_money(Decimal('0'))
+        with self.assertRaises(ValueError):
+            self.wallet.deduct_money(Decimal('-5'))
 
 
 class StudentProfileModelTests(TestCase):

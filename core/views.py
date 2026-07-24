@@ -15,14 +15,6 @@ def register_page(request):
     """Registration page"""
     return render(request, 'auth/register.html')
 
-def password_reset_page(request):
-    """Password reset request page"""
-    return render(request, 'auth/password-reset.html')
-
-def password_reset_confirm_page(request):
-    """Password reset confirm page"""
-    return render(request, 'auth/password-reset-confirm.html')
-
 # Dashboard views
 def student_dashboard(request):
     """Student dashboard"""

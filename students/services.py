@@ -594,21 +594,11 @@ def add_funds_to_wallet(user, amount, description='Funds added to wallet'):
         raise ValidationError("Amount must be positive")
     
     wallet = get_or_create_wallet(user)
-    
-    with transaction.atomic():
-        new_balance = wallet.add_money(amount)
-        
-        transaction_record = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type='credit',
-            amount=amount,
-            description=description,
-            balance_after=new_balance
-        )
-    
+    transaction_record = wallet.add_money(amount, description=description)
+
     return {
         'success': True,
-        'balance': new_balance,
+        'balance': transaction_record.balance_after,
         'transaction': transaction_record
     }
 
@@ -632,26 +622,16 @@ def deduct_funds_from_wallet(user, amount, description='Purchase'):
         raise ValidationError("Amount must be positive")
     
     wallet = get_or_create_wallet(user)
-    
-    if wallet.balance < Decimal(str(amount)):
-        raise ValidationError(
-            f"Insufficient balance. Current balance: ${wallet.balance}, Required: ${amount}"
-        )
-    
-    with transaction.atomic():
-        new_balance = wallet.deduct_money(amount)
-        
-        transaction_record = WalletTransaction.objects.create(
-            wallet=wallet,
-            transaction_type='debit',
-            amount=amount,
-            description=description,
-            balance_after=new_balance
-        )
-    
+
+    try:
+        transaction_record = wallet.deduct_money(amount, description=description)
+    except ValueError as exc:
+        # e.g. "Insufficient balance" — raised under the row lock, authoritative.
+        raise ValidationError(str(exc))
+
     return {
         'success': True,
-        'balance': new_balance,
+        'balance': transaction_record.balance_after,
         'transaction': transaction_record
     }
 

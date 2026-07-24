@@ -3,7 +3,6 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.utils import timezone
 import hashlib
 import secrets
-import uuid
 
 
 class UserManager(BaseUserManager):
@@ -112,31 +111,10 @@ class Profile(models.Model):
     interests = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
-    wallet = models.DecimalField(default=0, max_digits=12, decimal_places=2, help_text="User wallet balance")
+    # Wallet balance moved to the canonical students.Wallet ledger.
 
     def __str__(self):
         return self.full_name or f"{self.first_name} {self.last_name}".strip() or self.user.email
-    
-
-class EmailVerificationToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    expires_at = models.DateTimeField()
-    is_used = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f'EmailVerification for {self.user.email} - Used: {self.is_used}'
-    
-
-class PasswordResetToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    token = models.UUIDField(default=uuid.uuid4, unique = True, editable=False)
-    expires_at = models.DateTimeField()
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return f'PasswordResetToken for {self.user.email}'
     
 
 class APIKey(models.Model):
@@ -215,27 +193,8 @@ class APIKey(models.Model):
 #     social_links JSONB NOT NULL DEFAULT '{}',
 #     interests JSONB NOT NULL DEFAULT '[]',
 #     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     wallet NUMERIC(12,2) NOT NULL DEFAULT 0
-# );
-
-# -- EmailVerificationToken table
-# CREATE TABLE accounts_emailverificationtoken (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     token UUID NOT NULL UNIQUE,
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     is_used BOOLEAN NOT NULL DEFAULT FALSE
-# );
-
-# -- PasswordResetToken table
-# CREATE TABLE accounts_passwordresettoken (
-#     id SERIAL PRIMARY KEY,
-#     user_id INTEGER NOT NULL REFERENCES accounts_user(id) ON DELETE CASCADE,
-#     token UUID NOT NULL UNIQUE,
-#     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-#     created_at TIMESTAMP WITH TIME ZONE NOT NULL
+#     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+#     -- wallet balance moved to the canonical students.Wallet ledger
 # );
 
 # -- APIKey table
