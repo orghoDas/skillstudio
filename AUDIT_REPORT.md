@@ -52,18 +52,51 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *1 (SEC-02, 2026-11-21); 66 open, of which SEC-03 is partially done* |
+| *Resolved so far* | *6 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-09, ENR-01; all 2026-11-21); 61 open, of which SEC-01, SEC-03, PAY-04, PAY-05, PAY-07, API-01, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
-1. [SEC-01](#sec-01) Remove free wallet top-up (to be replaced by Stripe test-mode top-ups for the demo).
-2. [PAY-01](#pay-01) Stop double-charging on enroll.
+1. [SEC-01](#sec-01) Remove free wallet top-up (to be replaced by Stripe test-mode top-ups for the demo). 🟡 Free top-up removed 2026-11-21; Stripe top-up pending.
+2. ~~[PAY-01](#pay-01) Stop double-charging on enroll.~~ ✅ Done 2026-11-21.
 3. ~~[SEC-02](#sec-02) Fix the login `next` open redirect / `javascript:` XSS.~~ ✅ Done 2026-11-21.
-4. [SEC-03](#sec-03) Rotate and untrack the committed secrets. 🟡 Untracking, `.env.example`, key guard and secret scanning are done (2026-11-21); **DB password + production key rotation and the history scrub are still owner actions.**
-5. [PAY-02](#pay-02)–[PAY-05](#pay-05) Put the payments API behind a kill switch until it is rebuilt.
+4. [SEC-03](#sec-03) Rotate and untrack the committed secrets. 🟡 Untracking, `.env.example`, key guard, secret scanning and the git-history scrub are done (2026-11-21); **DB password + production key rotation are still owner actions.**
+5. [PAY-02](#pay-02)–[PAY-05](#pay-05) Put the payments API behind a kill switch until it is rebuilt. 🟡 Superseded by [D-01](#d-01): card route deleted, PAY-02/03 done, webhook rejects all, course fulfilment done (2026-11-21); the Stripe top-up remains.
 6. [LRN-01](#lrn-01)–[LRN-03](#lrn-03) Make the learn → complete → certificate journey work.
 7. [FE-01](#fe-01) Unbreak the exam pages (a one-line fix in each of 4 files).
 8. [SEC-04](#sec-04), [SEC-05](#sec-05) Fix the ordering injection and the cross-course content injection.
+
+### Decisions
+
+<a id="d-01"></a>
+#### D-01 (2026-11-21): Payments architecture is "Stripe → wallet → course"
+
+**Decision.** There is **one money path**:
+- Money enters only through a **wallet top-up** paid with **Stripe in test mode** (demonstration only, see [SEC-01](#sec-01)).
+- **Courses are bought only from the wallet** (`POST /api/enrollments/enroll/` → `payments.services.purchase_course`).
+- There is **no "pay for a course by card" route.**
+
+**Why:**
+- The card route never worked: every call crashed on the removed `events` code, and its checkout page called a non-existent endpoint.
+- Two purchase paths had already drifted apart (different fees, coupons, fulfilment, double-charge rules). Most PAY findings came from that drift.
+- With one path, Stripe only ever handles "top-up paid → credit wallet". That's one verified webhook, which is easy to demo and reason about.
+
+**What this means for the code:**
+- `Payment` gets `purpose` ∈ {`course_purchase`, `wallet_topup`}.
+- Revenue figures count course purchases only.
+- One platform fee (`settings.PLATFORM_FEE_RATE`, default 10%).
+- Coupons apply at wallet checkout. Refunds of course purchases go back to the wallet.
+- A direct card-to-course route can be added later on top of the same fulfilment service if a real marketplace needs it.
+
+**Effect on the findings:**
+
+| Finding | Re-scoped to |
+|---|---|
+| [PAY-02](#pay-02) | Mostly **delete** the card route and event code, rather than repair it. |
+| [PAY-03](#pay-03) | No client amount anywhere: course price is always server-side. A top-up amount is user-chosen by design and needs only min/max bounds (`WALLET_TOPUP_MIN/MAX`). |
+| [PAY-05](#pay-05) | Course fulfilment = `purchase_course` (wallet). Top-up fulfilment = the verified Stripe webhook (with the Stripe work). |
+| [PAY-04](#pay-04) | Stripe only; PayPal dropped. |
+| [PAY-08](#pay-08) | Refunds of course purchases credit the wallet. Refunding a top-up itself to a card is out of scope for the demo. |
+| [PAY-06](#pay-06) / [PAY-07](#pay-07) | Unchanged in substance (payouts are internal). PAY-07's "where do earnings live" becomes: **in the instructor wallet ledger**. |
 
 ---
 
@@ -71,14 +104,14 @@ The domain layering (services, policies, serializers per app) is good, and the a
 
 | ID | Sev | Title |
 |---|---|---|
-| [SEC-01](#sec-01) | P0 | Students can add unlimited funds to their own wallet *(plan: Stripe test-mode top-ups)* |
+| [SEC-01](#sec-01) | P0 | Students can add unlimited funds to their own wallet — 🟡 hole closed 2026-11-21; Stripe test-mode top-up pending |
 | [SEC-02](#sec-02) | P0 | ~~Login `?next=` is an open redirect and a DOM-XSS sink~~ ✅ resolved 2026-11-21 |
-| [SEC-03](#sec-03) | P0 | Secrets committed to git; rotation still pending *(carried over)* — 🟡 repo side done 2026-11-21; rotation + history scrub pending |
-| [PAY-01](#pay-01) | P0 | Enrolling charges again for courses already owned (and on double-click) |
-| [PAY-02](#pay-02) | P0 | Payments API crashes: removed `events` domain still referenced *(carried over, expanded)* |
-| [PAY-03](#pay-03) | P0 | Payment amount is client-controlled *(carried over)* |
-| [PAY-04](#pay-04) | P0 | Webhooks are unsigned and not idempotent *(carried over)* |
-| [PAY-05](#pay-05) | P0 | A successful payment never grants an enrollment *(carried over)* |
+| [SEC-03](#sec-03) | P0 | Secrets committed to git; rotation still pending *(carried over)* — 🟡 repo side + history scrub done 2026-11-21; Neon password + production key rotation pending |
+| [PAY-01](#pay-01) | P0 | ~~Enrolling charges again for courses already owned (and on double-click)~~ ✅ resolved 2026-11-21 |
+| [PAY-02](#pay-02) | P0 | ~~Payments API crashes: removed `events` domain still referenced~~ ✅ resolved 2026-11-21 (card route deleted, D-01) |
+| [PAY-03](#pay-03) | P0 | ~~Payment amount is client-controlled~~ ✅ resolved 2026-11-21 (server-side pricing, D-01) |
+| [PAY-04](#pay-04) | P0 | Webhooks are unsigned and not idempotent — 🟡 contained 2026-11-21 (webhook rejects all); verified Stripe handler pending |
+| [PAY-05](#pay-05) | P0 | A successful payment never grants an enrollment — 🟡 course side resolved 2026-11-21; top-up side pending (Stripe) |
 | [LRN-01](#lrn-01) | P0 | Learn page never receives lesson content |
 | [LRN-02](#lrn-02) | P0 | Video lessons can never be completed from the UI |
 | [LRN-03](#lrn-03) | P0 | Completing a course locks the student out of it |
@@ -88,13 +121,13 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [SEC-06](#sec-06) | P1 | Token endpoints return JWTs in the JSON body, undoing httpOnly cookies |
 | [SEC-07](#sec-07) | P1 | Anyone can self-register as an instructor *(carried over; mislabelled resolved)* |
 | [PAY-06](#pay-06) | P1 | Instructor payout requests are not reserved or locked |
-| [PAY-07](#pay-07) | P1 | Two payout systems, two fee rates, and earnings counted twice |
-| [PAY-08](#pay-08) | P1 | Refunds can exceed the payment and have no financial effect *(carried over, expanded)* |
-| [PAY-09](#pay-09) | P1 | Every active coupon code is listed to every logged-in user |
+| [PAY-07](#pay-07) | P1 | Two payout systems, two fee rates, and earnings counted twice — 🟡 single fee rate done 2026-11-21 |
+| [PAY-08](#pay-08) | P1 | Refunds can exceed the payment and have no financial effect *(re-scoped by D-01: refund to wallet)* |
+| [PAY-09](#pay-09) | P1 | ~~Every active coupon code is listed to every logged-in user~~ ✅ resolved 2026-11-21 |
 | [ASM-01](#asm-01) | P1 | Unpublished or failed quizzes permanently block course completion |
 | [ASM-02](#asm-02) | P1 | Quiz time limit can be bypassed |
 | [EXM-01](#exm-01) | P1 | Exam questions are visible before the exam window opens |
-| [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist |
+| [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist — 🟡 checkout + payment history fixed 2026-11-21 |
 | [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs |
 | [API-03](#api-03) | P1 | Section and lesson delete buttons return 405 |
 | [BUG-01](#bug-01) | P1 | Instructor lesson-analytics CSV export always 500s |
@@ -103,7 +136,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 |
 | [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production |
 | [OPS-03](#ops-03) | P1 | `gunicorn==21.2.0` has known request-smuggling CVEs |
-| [TEST-01](#test-01) | P1 | Payments tests don't run, and tests write into the real `media/` |
+| [TEST-01](#test-01) | P1 | Payments tests don't run, and tests write into the real `media/` — 🟡 payments part resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract |
 | [OPS-05](#ops-05) | P1 | Tests and scratch scripts run against the hosted database by default |
 | [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
@@ -116,7 +149,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [CRS-05](#crs-05) | P2 | Course price, free flag and tags aren't validated |
 | [CRS-06](#crs-06) | P2 | Public course endpoints expose instructor emails |
 | [CRS-07](#crs-07) | P2 | Fake or stub features in the course API |
-| [ENR-01](#enr-01) | P2 | `was_reactivated` is always `true` |
+| [ENR-01](#enr-01) | P2 | ~~`was_reactivated` is always `true`~~ ✅ resolved 2026-11-21 |
 | [ENR-02](#enr-02) | P2 | Serializer fields silently dropped (`thumbnail_url`, `get_full_name`) |
 | [ENR-03](#enr-03) | P2 | Three different lesson-unlock algorithms |
 | [ERR-01](#err-01) | P2 | Broad `except Exception` leaks internals and hides bugs |
@@ -144,7 +177,15 @@ The domain layering (services, policies, serializers per app) is good, and the a
 ## 4. P0: Critical
 
 <a id="sec-01"></a>
-### SEC-01: Students can add unlimited funds to their own wallet
+### SEC-01: Students can add unlimited funds to their own wallet — 🟡 HOLE CLOSED 2026-11-21, STRIPE TOP-UP PENDING
+
+> **Progress 2026-11-21:** the free self-credit is gone.
+> - `WalletView` no longer accepts `POST` (it returns 405, covered by a test), and `AddFundsSerializer` was deleted.
+> - The **Add Funds** buttons and modals were removed from `student/wallet.html` and `dashboard/student.html`. The wallet page now shows a disabled "Top up — coming soon (Stripe test mode)" control.
+> - The course page's "Insufficient balance" dialog now links to the real `/wallet/` page; it used to link to `/student/wallet/`, which doesn't exist.
+> - **Still open:** the Stripe test-mode top-up (Decision [D-01](#d-01)) and the data audit of past `Funds added to wallet` credits (step 3 below).
+
+*Original finding:*
 
 **Evidence:**
 - [students/views.py:199](students/views.py#L199): `WalletView.post` calls `wallet.add_money(amount)` for any `IsStudent` user with no payment behind it.
@@ -203,7 +244,32 @@ Mirror the same check server-side if `next` is ever used in a Django redirect (`
 **Done when:** `next=//evil`, `next=https://evil`, `next=javascript:…` and `next=/\evil` all fall back to the role default.
 
 <a id="sec-03"></a>
-### SEC-03: Secrets committed to git; rotation still pending *(carried over)* — 🟡 REPO SIDE DONE 2026-11-21, ROTATION + HISTORY SCRUB PENDING
+### SEC-03: Secrets committed to git; rotation still pending *(carried over)* — 🟡 REPO SIDE + HISTORY SCRUB DONE 2026-11-21, CREDENTIAL ROTATION PENDING
+
+> **History scrub done 2026-11-21.** GitHub `main` was force-pushed (`--force-with-lease`) from `91e3e0d` to the rewritten `5f9cb72`. **Every commit ID changed;** the commit IDs quoted in the progress note below refer to the *old* history.
+>
+> **Two more leaks turned up while preparing the rewrite** (my earlier pattern scan missed both):
+> - The original hard-coded `SECRET_KEY` was compiled into the **tracked `skillstudio/__pycache__/settings.cpython-312.pyc`**, which was still present in `HEAD`.
+> - `DB_PASSWORD` was used as the example `"password"` in **`courses/QUICKSTART.md`** (also in `HEAD`) and in a since-deleted `SETUP_GUIDE.md`.
+>
+> **What the rewrite did** (`git filter-repo`):
+> - Removed `.env`, `BACKEND_CONDITION_REPORT.md`, every `*.pyc`, and the whole vendored `venv/` (5,965 files) from **all** commits.
+> - Replaced every leaked value (the old settings key, the `.env` `SECRET_KEY`, `DB_PASSWORD`, the full `DATABASE_URL` and its password, plus any `npg_*` token) with `***REMOVED***`. In the QUICKSTART example it became `<your-password>`.
+> - Pack size went from 27.6 MiB to 1.5 MiB.
+>
+> **Verified:**
+> - 92 commits remain; none contains a removed path.
+> - Zero occurrences of any leaked value in all 1,085 blobs, both on GitHub's new history and in this local clone (old objects purged locally, including two stale local `refs/codex/turn-diffs/checkpoints/*` refs that pinned the old history).
+> - The new `HEAD` differs from the old one only by the removed `venv/`/`.pyc` files and the one redacted doc line.
+> - `manage.py check` is clean.
+>
+> A full pre-rewrite backup mirror is at `../skillstudio-history-backup-2026-11-21.git`. **It still contains the secrets,** so delete it once you're satisfied.
+>
+> **Still required:**
+> 1. **Rotate the Neon DB password.**
+> 2. **Set a new `DJANGO_SECRET_KEY` in Railway.**
+>
+> The scrub does not invalidate already-leaked values. GitHub may also keep serving old commits by their SHA (and any forks keep the old history). If the repo is or was public, ask GitHub Support to purge cached views. Any other clone must be re-cloned; pulling into an old clone would bring the secrets back.
 
 > **Progress 2026-11-21: repo-side remediation done.**
 > - **Untracked:** `git rm --cached .env` is **staged** (not yet committed). The local file is kept, still git-ignored, and now `chmod 600`.
@@ -219,8 +285,8 @@ Mirror the same check server-side if `next` is ever used in a Django redirect (`
 > **Still required (outside the repo, owner action):**
 > 1. **Rotate the Neon DB password** (Neon console → role → reset password). Update `DATABASE_URL` in your local `.env` and in Railway's variables. Until this is done, the leaked password is valid.
 > 2. **Set a new production `DJANGO_SECRET_KEY` in Railway** (`python -c "import secrets; print(secrets.token_urlsafe(64))"`) and redeploy. This logs everyone out (all JWTs are re-signed).
-> 3. **Commit the staged `.env` removal** together with the new files.
-> 4. **Scrub history.** This is destructive and needs a force-push, so it was not run. Rotation (steps 1–2) is what actually fixes the exposure; the scrub is hygiene. The leaks are:
+> 3. ~~**Commit the staged `.env` removal** together with the new files.~~ ✅ Done by the owner (`git: secrets removed`).
+> 4. ~~**Scrub history.**~~ ✅ Done 2026-11-21; see the note above. *Original plan kept for reference:* This is destructive and needs a force-push, so it was not run. Rotation (steps 1–2) is what actually fixes the exposure; the scrub is hygiene. The leaks are:
 >    - `.env` in commits `0365a9c` and `c423c29`
 >    - the original hard-coded key in `settings.py` in `741ff0f` (made harmless by step 2)
 >    - a **prefix of the DB password** quoted in the old `BACKEND_CONDITION_REPORT.md` (still in `HEAD`)
@@ -246,7 +312,17 @@ Mirror the same check server-side if `next` is ever used in a Django redirect (`
 4. Add a secret scanner (gitleaks) to CI ([OPS-04](#ops-04)).
 
 <a id="pay-01"></a>
-### PAY-01: Enrolling charges again for courses already owned (and on double-click)
+### PAY-01: Enrolling charges again for courses already owned (and on double-click) — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Purchasing moved into `payments.services.purchase_course(user, course_id, coupon_code=None)`, a single atomic service:
+> - It locks the buyer's and instructor's wallets in a stable order. That serialises one user's purchases (double-clicks and retries) without risking deadlocks.
+> - If the user already owns the course, meaning the enrollment is `active` **or** `completed` (`enrollments.constants.ACCESS_STATUSES`), it returns `already_enrolled` and charges nothing.
+> - A **canceled** enrollment that was paid for before is **reactivated for free**. One that was never paid is charged.
+> - Instructors can't buy their own course, and draft courses can't be bought.
+>
+> `EnrollmentCreateSerializer` is now input-only (`course_id`, optional `coupon_code`). `EnrollCourseView` returns 201 `created`, 200 `reactivated`/`already_enrolled`, or 400 `{detail, code}`. Covered by service and API tests in `payments/tests.py`.
+
+*Original finding:*
 
 **Evidence:** [enrollments/serializers.py:196-266](enrollments/serializers.py#L196). Inside `EnrollmentCreateSerializer.create`, the wallet debit, instructor credit and `Payment` row are all written **before** `Enrollment.objects.get_or_create(...)`.
 
@@ -269,7 +345,17 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** these tests pass: re-enroll while active → no new `WalletTransaction` or `Payment`; two concurrent enroll requests → exactly one debit; instructor buying their own course → 400.
 
 <a id="pay-02"></a>
-### PAY-02: Payments API crashes: removed `events` domain still referenced *(carried over, expanded)*
+### PAY-02: Payments API crashes: removed `events` domain still referenced *(carried over, expanded)* — ✅ RESOLVED 2026-11-21 (re-scoped by D-01)
+
+> **Resolved 2026-11-21.** Per [D-01](#d-01), the broken card path was **deleted** rather than repaired:
+> - **Card purchase removed:** `POST /api/payments/create/`, `PaymentCreateSerializer`, `services.create_payment`, the old `process_payment_success`/`failure` handlers, and `templates/payments/checkout.html` with its `/checkout/` route.
+> - **All `event`/`Event`/`specific_events`/`event_id` references removed** from payments views, services and serializers. `CouponSerializer` builds again (coupon list, create and validate no longer 500).
+> - **Payout fix:** `get_unpaid_payments_for_instructor` no longer `select_related('event')`, which made `create_payout` crash.
+> - **Migration `payments/0002`:** adds `Payment.purpose` and `Coupon.is_public`, and drops the `events` coupon scope. Legacy events coupons are deactivated.
+> - **Tests:** `payments/tests.py` was rewritten and now collects and runs (38 tests), including a smoke test that builds every payments serializer.
+> - **Found and fixed while testing:** `PayoutSerializer.get_instructor_name` read `User.first_name`, which doesn't exist, so every non-empty payout list returned 500.
+
+*Original finding:*
 
 **Evidence (✔ verified):**
 - `Payment(event=None)` raises `TypeError: unexpected keyword arguments: 'event'`, and [payments/services.py:69](payments/services.py#L69) passes `event=event`. So **every** `POST /api/payments/create/` fails. The `except Exception` in the view turns that into a 400 that echoes the Python error.
@@ -286,7 +372,16 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** `manage.py test payments` collects and runs, and every payments route returns a non-500 for a valid request.
 
 <a id="pay-03"></a>
-### PAY-03: Payment amount is client-controlled *(carried over)*
+### PAY-03: Payment amount is client-controlled *(carried over)* — ✅ RESOLVED 2026-11-21 (re-scoped by D-01)
+
+> **Resolved 2026-11-21.**
+> - **No client-supplied amount anywhere:** the card route that trusted `amount` is gone.
+> - **Server-side pricing:** `quote_course_price` computes every course price from the course record (with the coupon applied server-side, `Decimal`, half-up rounding). Only `published` courses can be bought.
+> - **Coupon preview:** `POST /api/payments/coupons/validate/` now takes `{code, course_id}` only and ignores any `amount`.
+> - **Tests:** a test posts `amount=0.01` for a 100.00 course and still gets charged 100.00.
+> - **Remaining (Stripe work):** enforce the top-up amount bounds `WALLET_TOPUP_MIN/MAX` (already in settings) in the top-up endpoint.
+
+*Original finding:*
 
 **Evidence:** [payments/views.py:80](payments/views.py#L80) passes `amount=data['amount']` from the request body into `create_payment`. `CouponValidateView` also trusts the client `amount`. The course isn't required to be `published`.
 
@@ -298,7 +393,15 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** a test that posts `amount=0.01` for a 200.00 course still creates a 200.00 payment, and a draft course returns 404.
 
 <a id="pay-04"></a>
-### PAY-04: Webhooks are unsigned and not idempotent *(carried over)*
+### PAY-04: Webhooks are unsigned and not idempotent *(carried over)* — 🟡 CONTAINED 2026-11-21, VERIFIED HANDLER PENDING (Stripe)
+
+> **Contained 2026-11-21.**
+> - The PayPal webhook and its route were removed (D-01: Stripe only).
+> - `StripeWebhookView` now **rejects every request with 503** and changes nothing, so a forged `payment_intent.succeeded` can't complete a payment (covered by a test).
+> - The steps the real handler must follow (signature verification, event-id dedup, locked `pending → completed` + wallet credit, no payload echo) are documented in [payments/webhooks.py](payments/webhooks.py).
+> - **Still open:** implement it as part of the Stripe test-mode top-up.
+
+*Original finding:*
 
 **Evidence:** [payments/webhooks.py:30](payments/webhooks.py#L30) reads `HTTP_STRIPE_SIGNATURE` but never verifies it; the PayPal handler is the same. Any POST to `/api/payments/webhooks/stripe/` with `payment_intent.succeeded` marks a payment completed. The full payload, including PII, is stored in `PaymentWebhookLog`, and error responses echo `str(e)`.
 
@@ -309,7 +412,19 @@ The serializer becomes validation only; the view calls the service.
 - Return generic error bodies.
 
 <a id="pay-05"></a>
-### PAY-05: A successful payment never grants an enrollment *(carried over)*
+### PAY-05: A successful payment never grants an enrollment *(carried over)* — 🟡 COURSE SIDE RESOLVED 2026-11-21, TOP-UP SIDE PENDING (Stripe)
+
+> **Progress 2026-11-21 (re-scoped by [D-01](#d-01)).** Course fulfilment is now a single transaction in `purchase_course`:
+> - wallet debit + instructor credit (ledger rows)
+> - `Payment(purpose=course_purchase, status=completed)` with fee and earnings snapshot
+> - coupon redemption with an atomic `F('current_usage') + 1`
+> - the enrollment created or reactivated
+>
+> Either all of these happen or none do. Card payments no longer exist, so "payment succeeded but no enrollment" can't happen for courses.
+>
+> **Still open:** top-up fulfilment (`pending wallet_topup Payment → completed + wallet credit`, called only by the verified webhook) as part of the Stripe work.
+
+*Original finding:*
 
 **Evidence:** `process_payment_success` ([payments/services.py](payments/services.py)) updates the payment and coupon usage but never creates or reactivates an `Enrollment`. The two purchase paths (wallet via enrollments, provider via payments) share no fulfilment code.
 
@@ -456,7 +571,14 @@ Document the choice either way.
 - Fold this into the single payout model from [PAY-07](#pay-07).
 
 <a id="pay-07"></a>
-### PAY-07: Two payout systems, two fee rates, and earnings counted twice
+### PAY-07: Two payout systems, two fee rates, and earnings counted twice — 🟡 FEE UNIFIED 2026-11-21
+
+> **Progress 2026-11-21.**
+> - There is now **one fee rate**, `settings.PLATFORM_FEE_RATE` (env-overridable, default `0.10`, which keeps the rate users actually experienced). It's applied through `payments.services.split_platform_fee`; the unused `0.20` constant is gone.
+> - Revenue stats (`get_payment_stats`, `AdminCourseStatsView`) count only `course_purchase` payments, so top-ups aren't revenue.
+> - **Still open:** the two payout models, and the double-count between the instructor wallet and `Payment.instructor_earnings`. Per D-01, earnings should live in the **instructor wallet ledger** and payouts should debit it.
+
+*Original finding:*
 
 **Evidence:**
 - **Two payout models:** `payments.Payout` (statuses `paid`/`processing`/…, with an M2M to payments) and `instructors.InstructorPayout` (statuses `completed`/`processing`/…).
@@ -473,7 +595,11 @@ Document the choice either way.
 4. Add a reconciliation management command: Σ purchases − Σ fees − Σ payouts − Σ refunds = Σ balances.
 
 <a id="pay-08"></a>
-### PAY-08: Refunds can exceed the payment and have no financial effect *(carried over, expanded)*
+### PAY-08: Refunds can exceed the payment and have no financial effect *(carried over, expanded)* — open (re-scoped by D-01)
+
+> *Re-scoped 2026-11-21:* refunds apply to `course_purchase` payments and **credit the student's wallet**, debiting the instructor's wallet share. Refunding a Stripe top-up back to a card is out of scope for the demo. Not started yet.
+
+*Original finding:*
 
 **Evidence:** [payments/services.py:214](payments/services.py#L214)
 - `request_refund` checks each request against the payment amount individually, so repeated partial requests can sum to more than the payment.
@@ -488,7 +614,15 @@ Document the choice either way.
 - Pro-rate the fee and earnings reversal for partial refunds.
 
 <a id="pay-09"></a>
-### PAY-09: Every active coupon code is listed to every logged-in user
+### PAY-09: Every active coupon code is listed to every logged-in user — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **Visibility:** `Coupon.is_public` was added. Existing coupons default to private, so nothing is newly exposed. Students see only public, active coupons, through a slim `PublicCouponSerializer` (no usage stats or admin fields). Admins see all.
+> - **Race fixed:** the usage counter increments with `F('current_usage') + 1`.
+> - **Coupon creation:** validates `specific_course_ids` and requires them for `applies_to='specific'`.
+> - **Tests:** visibility, admin creation and student refusal are covered.
+
+*Original finding:*
 
 **Evidence:** [payments/views.py:343](payments/views.py#L343): `CouponListView` returns `get_active_coupons()` to any authenticated user. That includes private and targeted codes. (It currently 500s because of [PAY-02](#pay-02); fixing PAY-02 exposes this.) `current_usage += 1` is also a read-modify-write race.
 
@@ -541,8 +675,8 @@ Document the choice either way.
 | Template | Calls (all 404) | Effect |
 |---|---|---|
 | [assessments/list.html:122](templates/assessments/list.html#L122), [attempt.html:45-306](templates/assessments/attempt.html#L45), [results.html:38-253](templates/assessments/results.html#L38) | `/assessments/?…`, `/assessments/<id>/questions/`, `/assessments/<id>/start-attempt/`, `/assessments/attempts/<id>/`, `…/save/`, `…/submit/`, `…/results/`, `…/certificate/` | The whole `/assessments/` section is dead. The real API is `/api/assessments/quiz/...`. |
-| [payments/checkout.html:239](templates/payments/checkout.html#L239) | `POST /payments/checkout/` | Checkout page is dead. |
-| [payments/history.html:260-285](templates/payments/history.html#L260) and its list call | `/payments/transactions/…` (list, detail, invoice, retry) | Payment history is dead. |
+| ~~payments/checkout.html:239~~ | `POST /payments/checkout/` | ✅ **Resolved 2026-11-21:** page and `/checkout/` route deleted (D-01: courses are bought from the wallet on the course page). |
+| [payments/history.html](templates/payments/history.html) | `/payments/transactions/…` (list, detail, invoice, retry) | ✅ **Resolved 2026-11-21:** rewired to `GET /api/payments/?status=` (which also fixes a doubled `/api/api/` prefix). It labels top-ups vs purchases, counts "spent" from purchases only, and renders its own icons unescaped. The non-existent invoice/receipt/retry actions were removed. |
 | [courses/resources.html:158,409](templates/courses/resources.html#L158), [instructor/resources.html:193-464](templates/instructor/resources.html#L193) | `/courses/<id>/resources/`, `/resources/<id>/download/`, `/instructor/courses/…`, `…/resources/upload/`, `…/folders/`, `PATCH`/`DELETE /resources/<id>/` | The resources feature has no backend at all (only a `LessonResource` model). |
 | [search/browse.html:145](templates/search/browse.html#L145) | `/instructors/featured/` | Featured instructors section is empty. |
 | [certificates/list.html:184](templates/certificates/list.html#L184) | `/certificates/<id>/download/` built with `${API_BASE}` | Resolves only if `<id>` is the UUID PK. Verify it uses `cert.id`, not `certificate_id`. |
@@ -645,7 +779,15 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 **Fix approach:** Bump to `gunicorn>=23.0.0`, and add `pip-audit` to CI ([OPS-04](#ops-04)) so dependency CVEs fail the build.
 
 <a id="test-01"></a>
-### TEST-01: Payments tests don't run, and tests write into the real `media/`
+### TEST-01: Payments tests don't run, and tests write into the real `media/` — 🟡 PAYMENTS PART RESOLVED 2026-11-21
+
+> **Progress 2026-11-21:** `payments/tests.py` was rewritten for the D-01 architecture and runs **38 tests**. The full suite is now **263 tests, all passing**; before, it was 226 with the payments module failing to import.
+>
+> Two account CSRF tests used the removed wallet top-up as their sample mutation; they now use `PATCH /api/accounts/me/`.
+>
+> **Still open:** tests still write certificate PDFs into the real `media/certificates/<year>/<month>/` (override `MEDIA_ROOT`/`STORAGES` for tests).
+
+*Original finding:*
 
 **Evidence:**
 - [payments/tests.py:15](payments/tests.py#L15) imports `events`, so the whole money path runs **0** tests.
@@ -818,7 +960,11 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 - Switch to a pagination class with `page_size_query_param='page_size'` and `max_page_size`, then update the templates to send `page_size=3`.
 
 <a id="enr-01"></a>
-### ENR-01: `was_reactivated` is always `true`
+### ENR-01: `was_reactivated` is always `true` — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21** with [PAY-01](#pay-01). The enroll response carries `outcome` (`created`/`reactivated`/`already_enrolled`), a truthful `was_reactivated`, `charged_amount` and `payment_id`. It returns 201 only when a new enrollment was created. The course page shows a matching message.
+
+*Original finding:*
 
 **Evidence:** [enrollments/views.py:92](enrollments/views.py#L92) runs the `exists()` check *after* `serializer.save()`, so the row always exists.
 
@@ -1039,7 +1185,13 @@ The UI can show a lesson as unlocked that the server then refuses.
 ## 7. P3: Low
 
 <a id="repo-01"></a>
-### REPO-01: 5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git
+### REPO-01: 5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git — 🟡 PARTIALLY DONE 2026-11-21
+
+> **Progress 2026-11-21:** `venv/` (5,965 files) and all 136 tracked `*.pyc` were removed from the whole git history as part of the [SEC-03](#sec-03) scrub. The local `venv/` folder and `.pyc` files are still on disk, ignored. A pre-commit hook now blocks `.env*`. **Still open:**
+> - Delete the scratch scripts (`scripts/run_*.py`, `scripts/check_profile_columns.py`, `enrollments/verify_app.py`; see [OPS-05](#ops-05)).
+> - Extend the pre-commit hook to block `venv/` and `*.pyc`.
+
+*Original finding:*
 
 **Evidence:**
 - `git ls-files | cut -d/ -f1 | sort | uniq -c` shows **5,965** tracked files under `venv/` (a Windows virtualenv), plus `__pycache__/*.pyc` in every app.
@@ -1158,9 +1310,9 @@ Move aspirational features to a "Roadmap" section.
 
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
-| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01, PAY-01, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, FE-01, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; put `/api/payments/*` (except read-only history) behind a `PAYMENTS_ENABLED=False` flag | 1–2 days |
+| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, FE-01, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | LRN-01, LRN-02, LRN-03, ASM-01, ASM-02, EXM-01, EXM-03, API-02, API-03, CRS-01, ENR-03, TEST-02 (contract test first) | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | PAY-02 → PAY-03 → PAY-05 → PAY-04 → PAY-07 → PAY-06 → PAY-08 → PAY-09, SEC-07, SEC-09, ADM-01, TEST-01 | 1–2 weeks |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → PAY-07 🟡 → PAY-06 → PAY-08 → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, SEC-06, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |

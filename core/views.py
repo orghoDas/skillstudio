@@ -134,11 +134,6 @@ def learn_course(request, slug):
     return render(request, 'students/learn.html')
 
 @cookie_login_required
-def checkout(request):
-    """Payment checkout page"""
-    return render(request, 'payments/checkout.html')
-
-@cookie_login_required
 def certificates_list(request):
     """User certificates list page"""
     return render(request, 'certificates/list.html')

@@ -48,8 +48,8 @@ class AdminCourseStatsView(APIView):
 
         # Revenue stats
         total_revenue = Payment.objects.filter(
+            purpose=Payment.PURPOSE_COURSE_PURCHASE,
             status='completed',
-            course__isnull=False,
         ).aggregate(revenue=Sum('amount'))['revenue'] or 0
 
         # Top courses by enrollment

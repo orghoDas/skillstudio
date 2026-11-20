@@ -8,7 +8,7 @@ User = settings.AUTH_USER_MODEL
 
 
 class Payment(models.Model):
-    """Payment transaction model for course and event purchases"""
+    """A money movement: a wallet top-up or a course purchase paid from the wallet."""
     
     STATUS_CHOICES = [
         ("pending", "Pending"),
@@ -21,6 +21,16 @@ class Payment(models.Model):
         ("cancelled", "Cancelled"),
     ]
     
+    # Payments architecture (AUDIT_REPORT.md Decision D-01): money enters only
+    # through a wallet top-up (Stripe, test mode) and courses are bought from
+    # the wallet. Every Payment row is one of these two movements.
+    PURPOSE_COURSE_PURCHASE = "course_purchase"
+    PURPOSE_WALLET_TOPUP = "wallet_topup"
+    PURPOSE_CHOICES = [
+        (PURPOSE_COURSE_PURCHASE, "Course purchase (paid from wallet)"),
+        (PURPOSE_WALLET_TOPUP, "Wallet top-up"),
+    ]
+
     PAYMENT_METHOD_CHOICES = [
         ("stripe", "Stripe"),
         ("paypal", "PayPal"),
@@ -28,6 +38,13 @@ class Payment(models.Model):
         ("wallet", "Wallet"),
         ("manual", "Manual"),
     ]
+
+    purpose = models.CharField(
+        max_length=20,
+        choices=PURPOSE_CHOICES,
+        default=PURPOSE_COURSE_PURCHASE,
+        db_index=True,
+    )
 
     # User and instructor
     user = models.ForeignKey(
@@ -387,10 +404,9 @@ class Coupon(models.Model):
     ]
     
     APPLIES_TO_CHOICES = [
-        ("all", "All Items"),
+        ("all", "All Courses"),
         ("courses", "Courses Only"),
-        ("events", "Events Only"),
-        ("specific", "Specific Items"),
+        ("specific", "Specific Courses"),
     ]
 
     code = models.CharField(max_length=64, unique=True, db_index=True)
@@ -445,10 +461,13 @@ class Coupon(models.Model):
         help_text="Times each user can use this coupon"
     )
     current_usage = models.IntegerField(default=0)
-    
+
     # Status
     is_active = models.BooleanField(default=True)
-    
+    # Only public coupons are listed to students; private codes are shared
+    # out-of-band and can still be redeemed by anyone who knows them.
+    is_public = models.BooleanField(default=False)
+
     # Validity
     valid_from = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField(null=True, blank=True)

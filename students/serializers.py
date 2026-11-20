@@ -175,9 +175,3 @@ class WalletSerializer(serializers.ModelSerializer):
         """Get recent transactions (last 10)."""
         transactions = obj.transactions.all()[:10]
         return WalletTransactionSerializer(transactions, many=True).data
-
-
-class AddFundsSerializer(serializers.Serializer):
-    """Serializer for adding funds to wallet."""
-    
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1)

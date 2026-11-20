@@ -15,6 +15,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
+from decimal import Decimal
 from django.core.exceptions import ImproperlyConfigured
 
 SIMPLE_JWT = {
@@ -203,6 +204,14 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Money: the single platform fee applied to every course purchase (instructor
+# receives the rest). Payments architecture: Stripe (test mode) -> wallet top-up
+# -> wallet pays for courses. See AUDIT_REPORT.md "Decision D-01".
+PLATFORM_FEE_RATE = Decimal(os.getenv("PLATFORM_FEE_RATE", "0.10"))
+# Server-enforced bounds for a single wallet top-up (used by the Stripe flow).
+WALLET_TOPUP_MIN = Decimal("1.00")
+WALLET_TOPUP_MAX = Decimal("1000.00")
 
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8000')

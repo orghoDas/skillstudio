@@ -1,29 +1,35 @@
 """
 Payment Views
-API endpoints for payment processing, refunds, payouts, and coupons
+API endpoints for payment history, refunds, payouts, and coupons.
+
+There is deliberately no "pay for a course by card" endpoint: courses are
+bought from the wallet via POST /api/enrollments/enroll/ (payments.services.
+purchase_course), and money enters the wallet only through the Stripe
+test-mode top-up flow (AUDIT_REPORT.md Decision D-01).
 """
 
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from decimal import Decimal
 from django.utils import timezone
 
 from payments.models import Payment, Payout, Refund, Coupon
 from payments.serializers import (
-    PaymentSerializer, PaymentCreateSerializer,
+    PaymentSerializer,
     PayoutSerializer, PayoutRequestSerializer,
     RefundSerializer, RefundRequestSerializer,
     CouponSerializer, CouponCreateSerializer, CouponValidationSerializer,
+    PublicCouponSerializer,
     PaymentStatsSerializer, InstructorBalanceSerializer
 )
 from payments import services
 from accounts.permissions import IsInstructor, IsAdmin
 from accounts.utils import is_platform_admin
 from courses.models import Course
-# from events.models import Event  # Removed - events app disabled
 
 
 # ==========================================
@@ -31,72 +37,26 @@ from courses.models import Course
 # ==========================================
 
 class PaymentListView(APIView):
-    """List user's payments"""
+    """List the user's payments (top-ups and course purchases).
+
+    Optional filters: ?status=<status>&purpose=<course_purchase|wallet_topup>
+    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        payments = Payment.objects.filter(user=request.user).order_by('-created_at')
+        payments = (
+            Payment.objects.filter(user=request.user)
+            .select_related('course', 'instructor')
+            .order_by('-created_at')
+        )
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            payments = payments.filter(status=status_filter)
+        purpose = request.query_params.get('purpose')
+        if purpose:
+            payments = payments.filter(purpose=purpose)
         serializer = PaymentSerializer(payments, many=True)
         return Response(serializer.data)
-
-
-class PaymentCreateView(APIView):
-    """Create a new payment"""
-    permission_classes = [IsAuthenticated]
-    
-    @transaction.atomic
-    def post(self, request):
-        serializer = PaymentCreateSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        data = serializer.validated_data
-        
-        # Get course or event
-        course = None
-        event = None
-        
-        if data.get('course_id'):
-            try:
-                course = Course.objects.get(id=data['course_id'])
-            except Course.DoesNotExist:
-                return Response(
-                    {'error': 'Course not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        if data.get('event_id'):
-            try:
-                event = Event.objects.get(id=data['event_id'])
-            except Event.DoesNotExist:
-                return Response(
-                    {'error': 'Event not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        try:
-            payment = services.create_payment(
-                user=request.user,
-                amount=data['amount'],
-                course=course,
-                event=event,
-                payment_method=data.get('payment_method', 'stripe'),
-                coupon_code=data.get('coupon_code'),
-                billing_email=data.get('billing_email'),
-                billing_address=data.get('billing_address'),
-                ip_address=request.META.get('REMOTE_ADDR')
-            )
-            
-            return Response(
-                PaymentSerializer(payment).data,
-                status=status.HTTP_201_CREATED
-            )
-        
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 
 class PaymentDetailView(APIView):
@@ -116,13 +76,14 @@ class PaymentDetailView(APIView):
 
 
 class PaymentCancelView(APIView):
-    """Cancel a pending payment"""
+    """Cancel one of the user's own pending payments (e.g. an abandoned top-up)."""
     permission_classes = [IsAuthenticated]
-    
+
     @transaction.atomic
     def post(self, request, payment_id):
         try:
-            payment = Payment.objects.get(id=payment_id, user=request.user)
+            # Row lock so a cancel can't race the webhook that completes it.
+            payment = Payment.objects.select_for_update().get(id=payment_id, user=request.user)
             
             if payment.status != 'pending':
                 return Response(
@@ -341,18 +302,20 @@ class PayoutApproveView(APIView):
 # ==========================================
 
 class CouponListView(APIView):
-    """List coupons (admin) or active coupons (public)"""
-    
+    """Admins see every coupon; everyone else sees only public, active coupons.
+
+    Private coupon codes are never listed (PAY-09) — they are shared
+    out-of-band and still work at checkout for whoever has them.
+    """
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         if is_platform_admin(request.user):
-            # Admin sees all coupons
             coupons = Coupon.objects.all().order_by('-created_at')
-        else:
-            # Public sees only active coupons
-            coupons = services.get_active_coupons()
-        
-        serializer = CouponSerializer(coupons, many=True)
-        return Response(serializer.data)
+            return Response(CouponSerializer(coupons, many=True).data)
+
+        coupons = services.get_active_coupons().filter(is_public=True)
+        return Response(PublicCouponSerializer(coupons, many=True).data)
 
 
 class CouponCreateView(APIView):
@@ -367,16 +330,12 @@ class CouponCreateView(APIView):
         
         data = serializer.validated_data
         
+        specific_course_ids = data.pop('specific_course_ids', [])
+        code = data.pop('code')
+        discount_type = data.pop('discount_type')
+        discount_value = data.pop('discount_value')
+
         try:
-            # Handle specific courses/events
-            specific_course_ids = data.pop('specific_course_ids', [])
-            specific_event_ids = data.pop('specific_event_ids', [])
-            
-            # Extract required parameters
-            code = data.pop('code')
-            discount_type = data.pop('discount_type')
-            discount_value = data.pop('discount_value')
-            
             coupon = services.create_coupon(
                 code=code,
                 discount_type=discount_type,
@@ -384,77 +343,51 @@ class CouponCreateView(APIView):
                 created_by=request.user,
                 **data
             )
-            
-            # Add specific courses/events
-            if specific_course_ids:
-                coupon.specific_courses.set(specific_course_ids)
-            if specific_event_ids:
-                coupon.specific_events.set(specific_event_ids)
-            
-            return Response(
-                CouponSerializer(coupon).data,
-                status=status.HTTP_201_CREATED
-            )
-        
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except DjangoValidationError as exc:
+            return Response({'error': exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
+
+        if specific_course_ids:
+            coupon.specific_courses.set(specific_course_ids)
+
+        return Response(CouponSerializer(coupon).data, status=status.HTTP_201_CREATED)
 
 
 class CouponValidateView(APIView):
-    """Validate a coupon"""
+    """Preview a coupon for a course before buying it.
+
+    The price is always the server-side course price; the response is a
+    quote only — the real charge happens in POST /api/enrollments/enroll/.
+    """
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request):
         serializer = CouponValidationSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
         data = serializer.validated_data
-        
-        # Get course or event
-        course = None
-        event = None
-        
-        if data.get('course_id'):
-            try:
-                course = Course.objects.get(id=data['course_id'])
-            except Course.DoesNotExist:
-                pass
-        
-        if data.get('event_id'):
-            try:
-                event = Event.objects.get(id=data['event_id'])
-            except Event.DoesNotExist:
-                pass
-        
-        try:
-            coupon = services.validate_and_apply_coupon(
-                coupon_code=data['code'],
-                user=request.user,
-                amount=data['amount'],
-                course=course,
-                event=event
-            )
-            
-            discount = services.calculate_coupon_discount(coupon, data['amount'])
-            final_amount = data['amount'] - discount
-            
-            return Response({
-                'valid': True,
-                'coupon': CouponSerializer(coupon).data,
-                'original_amount': float(data['amount']),
-                'discount_amount': float(discount),
-                'final_amount': float(final_amount)
-            })
-        
-        except Exception as e:
+
+        course = Course.objects.filter(id=data['course_id'], status='published').first()
+        if course is None:
             return Response(
-                {'valid': False, 'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                {'valid': False, 'error': 'Course not found or not published.'},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        try:
+            quote = services.quote_course_price(request.user, course, data['code'])
+        except DjangoValidationError as exc:
+            return Response(
+                {'valid': False, 'error': exc.messages[0]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            'valid': True,
+            'coupon': PublicCouponSerializer(quote.coupon).data,
+            'original_amount': str(quote.original_amount),
+            'discount_amount': str(quote.discount_amount),
+            'final_amount': str(quote.final_amount),
+        })
 
 
 class CouponDeactivateView(APIView):

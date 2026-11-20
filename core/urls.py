@@ -37,7 +37,6 @@ urlpatterns = [
     path('learn/<slug:slug>/', views.learn_course, name='learn_course'),
     
     # Payments & Certificates
-    path('checkout/', views.checkout, name='checkout'),
     path('certificates/', views.certificates_list, name='certificates_list'),
     path('payments/history/', views.payment_history, name='payment_history'),
     path('wallet/', views.wallet_page, name='wallet_page'),

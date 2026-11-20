@@ -79,25 +79,44 @@ class EnrollmentDetailView(generics.RetrieveAPIView):
 
 
 class EnrollCourseView(generics.CreateAPIView):
-    """Enroll in a course."""
+    """Enroll in a course, paying from the wallet if it is a paid course.
+
+    Idempotent: re-enrolling in a course you already own returns 200 with
+    ``outcome = "already_enrolled"`` and charges nothing.
+    Responses: 201 created · 200 reactivated / already_enrolled ·
+    400 {"detail", "code"} (insufficient_balance, own_course, invalid_coupon,
+    course_unavailable).
+    """
     permission_classes = [IsAuthenticated]
     serializer_class = EnrollmentCreateSerializer
 
     def create(self, request, *args, **kwargs):
+        from payments.services import OUTCOME_CREATED, PurchaseError, purchase_course
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        enrollment = serializer.save()
-        
-        # Determine if it's a new enrollment or reactivation
-        was_reactivated = enrollment.status == 'active' and Enrollment.objects.filter(
-            user=request.user,
-            course_id=serializer.validated_data['course_id']
-        ).exists()
-        
-        response_data = EnrollmentDetailSerializer(enrollment).data
-        response_data['was_reactivated'] = was_reactivated
-        
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        try:
+            result = purchase_course(
+                request.user,
+                serializer.validated_data['course_id'],
+                coupon_code=serializer.validated_data.get('coupon_code') or None,
+            )
+        except PurchaseError as exc:
+            return Response(
+                {'detail': exc.message, 'code': exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_data = EnrollmentDetailSerializer(result.enrollment).data
+        response_data['outcome'] = result.outcome
+        response_data['was_reactivated'] = result.outcome == 'reactivated'
+        response_data['charged_amount'] = str(result.charged_amount)
+        response_data['payment_id'] = result.payment.id if result.payment else None
+
+        return Response(
+            response_data,
+            status=status.HTTP_201_CREATED if result.outcome == OUTCOME_CREATED else status.HTTP_200_OK,
+        )
 
 
 class CancelEnrollmentView(APIView):

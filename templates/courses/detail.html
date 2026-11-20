@@ -253,7 +253,13 @@ async function handleEnrollment() {
         });
         
         if (response) {
-            showAlert('Successfully enrolled in the course!', 'success');
+            // The API is idempotent: an already-owned course is never charged again.
+            const message = response.outcome === 'already_enrolled'
+                ? "You're already enrolled in this course."
+                : response.outcome === 'reactivated'
+                    ? 'Welcome back! Your enrollment has been reactivated.'
+                    : 'Successfully enrolled in the course!';
+            showAlert(message, 'success');
             setTimeout(() => {
                 window.location.href = '/dashboard/';
             }, 1500);
@@ -263,7 +269,8 @@ async function handleEnrollment() {
         // If error indicates insufficient balance, show friendly modal with Add Funds action
         const body = error && error.body;
         const detail = body && (body.detail || body.error || body.message) || error.message;
-        if (detail && detail.toString().toLowerCase().includes('insufficient')) {
+        if ((body && body.code === 'insufficient_balance') ||
+            (detail && detail.toString().toLowerCase().includes('insufficient'))) {
             showInsufficientFundsModal(detail);
         } else {
             showAlert(detail || 'Failed to enroll. Please try again.', 'error');
@@ -290,7 +297,7 @@ function showInsufficientFundsModal(message) {
             <p class="text-sm text-gray-300 mb-4">${escapeHtml(message || 'You do not have enough balance to enroll in this course.')}</p>
             <div class="flex space-x-3">
                 <button onclick="document.getElementById('insufficient-modal')?.remove()" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Cancel</button>
-                <button onclick="(function(){ window.location.href='/student/wallet/'; })()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Add Funds</button>
+                <button onclick="window.location.href='/wallet/'" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Go to Wallet</button>
             </div>
         </div>
     `;

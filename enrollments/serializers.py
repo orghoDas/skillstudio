@@ -185,84 +185,33 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
 
 
 class EnrollmentCreateSerializer(serializers.Serializer):
-    """Serializer for creating enrollments."""
+    """Input for enrolling in (buying) a course.
+
+    The purchase itself — pricing, wallet debit, instructor credit, Payment
+    record, coupon redemption and the enrollment — happens atomically in
+    ``payments.services.purchase_course``. Clients never send a price.
+    """
     course_id = serializers.IntegerField()
-    
+    coupon_code = serializers.CharField(max_length=64, required=False, allow_blank=True)
+
     def validate_course_id(self, value):
         if not Course.objects.filter(id=value, status='published').exists():
             raise serializers.ValidationError("Course not found or not published.")
         return value
-    
+
     def create(self, validated_data):
-        from decimal import Decimal
-        from payments.models import Payment
-        from students.models import Wallet
-        from django.db import transaction
-        import logging
-        logger = logging.getLogger("enrollments")
-        user = self.context['request'].user
-        course_id = validated_data['course_id']
-        course = Course.objects.get(id=course_id)
+        """Kept for callers that use ``serializer.save()``; returns the enrollment."""
+        from payments.services import PurchaseError, purchase_course
+
         try:
-            with transaction.atomic():
-                # Only process payment if course is not free
-                if not course.is_free and course.price > 0:
-                    course_price = Decimal(course.price)
-
-                    # Canonical wallet is the single source of truth for balances.
-                    student_wallet, _ = Wallet.objects.get_or_create(user=user)
-                    if student_wallet.balance < course_price:
-                        logger.info(
-                            f"Insufficient wallet: user={user.id}, "
-                            f"balance={student_wallet.balance}, price={course_price}"
-                        )
-                        raise serializers.ValidationError({"detail": "Insufficient balance"})
-
-                    # Atomic, row-locked debit that also writes a ledger row.
-                    student_wallet.deduct_money(
-                        course_price, description=f'Payment for course {course.id}'
-                    )
-
-                    # Platform fee (10%); credit instructor's canonical wallet.
-                    platform_fee = (Decimal('0.10') * course_price).quantize(Decimal('0.01'))
-                    instructor_earnings = course_price - platform_fee
-                    instructor_wallet, _ = Wallet.objects.get_or_create(user=course.instructor)
-                    instructor_wallet.add_money(
-                        instructor_earnings, description=f'Earnings from course {course.id}'
-                    )
-
-                    # Payment record (payment-domain rework is tracked separately).
-                    Payment.objects.create(
-                        user=user,
-                        instructor=course.instructor,
-                        course=course,
-                        amount=course_price,
-                        original_amount=course_price,
-                        discount_amount=0,
-                        payment_method="wallet",
-                        status="completed",
-                        platform_fee=platform_fee,
-                        instructor_earnings=instructor_earnings,
-                        currency="USD",
-                    )
-                enrollment, created = Enrollment.objects.get_or_create(
-                    user=user,
-                    course=course,
-                    defaults={'status': 'active'}
-                )
-                # Reactivate if canceled
-                if not created and enrollment.status == 'canceled':
-                    enrollment.status = 'active'
-                    enrollment.is_completed = False
-                    enrollment.completed_at = None
-                    enrollment.save()
-                return enrollment
-        except serializers.ValidationError:
-            # Preserve ValidationError messages (e.g., insufficient wallet) so API returns them directly
-            raise
-        except Exception as e:
-            logger.exception(f"Enrollment failed for user={user.id}, course={course_id}: {e}")
-            raise serializers.ValidationError(f"Enrollment failed: {str(e)}")
+            result = purchase_course(
+                self.context['request'].user,
+                validated_data['course_id'],
+                coupon_code=validated_data.get('coupon_code') or None,
+            )
+        except PurchaseError as exc:
+            raise serializers.ValidationError({"detail": exc.message, "code": exc.code})
+        return result.enrollment
 
 
 # ===========================

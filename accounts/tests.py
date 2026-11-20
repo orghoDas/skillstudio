@@ -536,7 +536,9 @@ class CookieJWTAuthTests(APITestCase):
             {'email': 'cookie@example.com', 'password': 'pw123456'},
             format='json',
         )
-        resp = strict.post('/api/students/wallet/', {'amount': '10.00'}, format='json')
+        # Any cookie-authenticated mutation works; the student wallet top-up
+        # used here before was removed (AUDIT_REPORT.md SEC-01).
+        resp = strict.patch('/api/accounts/me/', {'username': 'cookieuser'}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_cookie_mutation_with_csrf_succeeds(self):
@@ -548,8 +550,8 @@ class CookieJWTAuthTests(APITestCase):
         )
         strict.get('/')  # sets the csrftoken cookie
         csrf = strict.cookies['csrftoken'].value
-        resp = strict.post(
-            '/api/students/wallet/', {'amount': '10.00'}, format='json', HTTP_X_CSRFTOKEN=csrf
+        resp = strict.patch(
+            '/api/accounts/me/', {'username': 'cookieuser'}, format='json', HTTP_X_CSRFTOKEN=csrf
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 

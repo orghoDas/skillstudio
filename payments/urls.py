@@ -9,9 +9,9 @@ from payments import views, webhooks
 app_name = 'payments'
 
 urlpatterns = [
-    # Payment endpoints
+    # Payment history (courses are bought via POST /api/enrollments/enroll/;
+    # there is intentionally no card "create payment" route — Decision D-01)
     path('', views.PaymentListView.as_view(), name='payment-list'),
-    path('create/', views.PaymentCreateView.as_view(), name='payment-create'),
     path('<int:payment_id>/', views.PaymentDetailView.as_view(), name='payment-detail'),
     path('<int:payment_id>/cancel/', views.PaymentCancelView.as_view(), name='payment-cancel'),
     
@@ -37,7 +37,7 @@ urlpatterns = [
     path('stats/', views.PaymentStatsView.as_view(), name='payment-stats'),
     path('instructor/earnings/', views.InstructorEarningsView.as_view(), name='instructor-earnings'),
     
-    # Webhook endpoints
+    # Webhook endpoint (Stripe, test mode). Rejects everything until the
+    # verified top-up handler is implemented (AUDIT_REPORT.md PAY-04 / SEC-01).
     path('webhooks/stripe/', webhooks.StripeWebhookView.as_view(), name='webhook-stripe'),
-    path('webhooks/paypal/', webhooks.PayPalWebhookView.as_view(), name='webhook-paypal'),
 ]

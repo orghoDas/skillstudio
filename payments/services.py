@@ -1,14 +1,26 @@
 """
 Payment Services
-Comprehensive business logic for payment processing, refunds, payouts, and coupons
+
+Payments architecture (AUDIT_REPORT.md Decision D-01):
+
+    Stripe (test mode) --top-up--> student Wallet --pays for--> Course
+
+* Money only enters the platform through a wallet top-up (the Stripe flow is
+  not built yet; until then there is no way to add funds).
+* Courses are only bought from the wallet, through ``purchase_course``. The
+  price always comes from the course record; clients never send an amount.
+* Every money movement is recorded as a ``Payment`` with a ``purpose`` and as
+  ``WalletTransaction`` ledger rows.
 """
 
-from decimal import Decimal
+from collections import namedtuple
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Sum, Q, Count
+from django.db.models import Sum, Q, Count, F
 from django.core.exceptions import ValidationError
-from typing import Optional, Dict, Any
 import logging
 
 from payments.models import (
@@ -20,182 +32,220 @@ from accounts.models import User
 logger = logging.getLogger(__name__)
 
 # Constants
-PLATFORM_FEE_RATE = Decimal("0.20")  # 20%
+CENT = Decimal("0.01")
 MIN_PAYOUT_AMOUNT = Decimal("10.00")
 
 
+def to_money(value) -> Decimal:
+    """Normalise any numeric value to a 2-decimal Decimal (half-up)."""
+    return Decimal(str(value)).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def platform_fee_rate() -> Decimal:
+    """The single platform fee rate used by every purchase (settings)."""
+    return Decimal(str(settings.PLATFORM_FEE_RATE))
+
+
+def split_platform_fee(amount):
+    """Return (platform_fee, instructor_earnings) for a paid amount."""
+    amount = to_money(amount)
+    fee = to_money(amount * platform_fee_rate())
+    return fee, amount - fee
+
+
+# Kept for backwards compatibility with code that imported the old constant.
+PLATFORM_FEE_RATE = platform_fee_rate()
+
+
 # ==========================================
-# PAYMENT PROCESSING
+# PRICING & COUPONS
 # ==========================================
 
-@transaction.atomic
-def create_payment(
-    user,
-    amount,
-    course=None,
-    event=None,
-    payment_method="stripe",
-    coupon_code=None,
-    billing_email=None,
-    billing_address=None,
-    ip_address=None,
-    **kwargs
-):
-    """Create a new payment transaction"""
-    if not course and not event:
-        raise ValidationError("Payment must be for either a course or event")
-    
-    original_amount = amount
-    discount_amount = Decimal('0.00')
-    coupon = None
-    
-    # Apply coupon if provided
-    if coupon_code:
-        coupon = validate_and_apply_coupon(
-            coupon_code=coupon_code,
-            user=user,
-            amount=amount,
-            course=course,
-            event=event
-        )
-        if coupon:
-            discount_amount = calculate_coupon_discount(coupon, amount)
-            amount = amount - discount_amount
-    
-    # Create payment
-    payment = Payment.objects.create(
-        user=user,
-        course=course,
-        event=event,
-        amount=amount,
-        original_amount=original_amount,
-        discount_amount=discount_amount,
-        payment_method=payment_method,
-        coupon=coupon,
-        billing_email=billing_email or user.email,
-        billing_address=billing_address or {},
-        ip_address=ip_address,
-        status='pending',
-        **kwargs
-    )
-    
-    logger.info(f"Payment created: {payment.id} for {user.email} - Amount: {amount}")
-    return payment
+PriceQuote = namedtuple("PriceQuote", "original_amount discount_amount final_amount coupon")
 
 
 def calculate_coupon_discount(coupon, amount):
-    """Calculate discount amount from coupon"""
+    """Discount a coupon gives on ``amount``; never more than ``amount``."""
+    amount = to_money(amount)
     if coupon.discount_type == Coupon.PERCENT:
-        discount = (amount * coupon.discount_value / 100).quantize(Decimal('0.01'))
+        discount = to_money(amount * coupon.discount_value / 100)
         if coupon.max_discount_amount:
-            discount = min(discount, coupon.max_discount_amount)
+            discount = min(discount, to_money(coupon.max_discount_amount))
     else:  # FIXED
-        discount = min(coupon.discount_value, amount)
-    
-    return discount
+        discount = to_money(coupon.discount_value)
+    return max(Decimal("0.00"), min(discount, amount))
 
 
-def validate_and_apply_coupon(
-    coupon_code,
-    user,
-    amount,
-    course=None,
-    event=None
-):
-    """Validate coupon and check if it can be applied"""
+def validate_coupon_for_course(coupon_code, user, course, amount):
+    """Return the Coupon if it may be applied to ``course`` at ``amount``.
+
+    Raises ``ValidationError`` with a user-facing message otherwise.
+    """
+    code = (coupon_code or "").strip().upper()
     try:
-        coupon = Coupon.objects.get(code=coupon_code)
+        coupon = Coupon.objects.get(code=code)
     except Coupon.DoesNotExist:
-        raise ValidationError(f"Invalid coupon code: {coupon_code}")
-    
+        raise ValidationError("Invalid coupon code.")
+
     if not coupon.is_valid:
-        raise ValidationError("Coupon is expired or inactive")
-    
+        raise ValidationError("This coupon is expired or inactive.")
     if not coupon.can_be_used_by(user):
-        raise ValidationError("You have exceeded the usage limit for this coupon")
-    
+        raise ValidationError("You have reached the usage limit for this coupon.")
     if coupon.min_order_amount and amount < coupon.min_order_amount:
-        raise ValidationError(
-            f"Minimum order amount ${coupon.min_order_amount} required"
-        )
-    
-    if coupon.applies_to == 'courses' and not course:
-        raise ValidationError("This coupon is only valid for courses")
-    
-    if coupon.applies_to == 'events' and not event:
-        raise ValidationError("This coupon is only valid for events")
-    
-    if coupon.applies_to == 'specific':
-        if course and not coupon.specific_courses.filter(id=course.id).exists():
-            raise ValidationError("This coupon is not valid for this course")
-        if event and not coupon.specific_events.filter(id=event.id).exists():
-            raise ValidationError("This coupon is not valid for this event")
-    
+        raise ValidationError(f"A minimum order of ${coupon.min_order_amount} is required for this coupon.")
+    if coupon.applies_to == "specific" and not coupon.specific_courses.filter(id=course.id).exists():
+        raise ValidationError("This coupon is not valid for this course.")
+    if coupon.applies_to not in ("all", "courses", "specific"):
+        raise ValidationError("This coupon is not valid for courses.")
     return coupon
 
 
+def quote_course_price(user, course, coupon_code=None) -> PriceQuote:
+    """Server-side price for ``user`` buying ``course`` (optionally with a coupon)."""
+    original = Decimal("0.00") if course.is_free else to_money(course.price)
+    if not coupon_code:
+        return PriceQuote(original, Decimal("0.00"), original, None)
+    if original <= 0:
+        raise ValidationError("This course is free; no coupon is needed.")
+    coupon = validate_coupon_for_course(coupon_code, user, course, original)
+    discount = calculate_coupon_discount(coupon, original)
+    return PriceQuote(original, discount, original - discount, coupon)
+
+
+def record_coupon_redemption(coupon, user, discount_amount, payment=None):
+    """Record a redemption and bump usage atomically (no lost updates)."""
+    CouponRedemption.objects.create(
+        coupon=coupon, user=user, payment=payment, discount_amount=discount_amount
+    )
+    Coupon.objects.filter(pk=coupon.pk).update(current_usage=F("current_usage") + 1)
+
+
+# ==========================================
+# COURSE PURCHASE (wallet)
+# ==========================================
+
+class PurchaseError(Exception):
+    """A purchase was refused for a reason the user should see."""
+
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+PurchaseResult = namedtuple("PurchaseResult", "enrollment outcome payment charged_amount")
+
+OUTCOME_CREATED = "created"
+OUTCOME_REACTIVATED = "reactivated"
+OUTCOME_ALREADY_ENROLLED = "already_enrolled"
+
+
+def _lock_wallets(*users):
+    """Get-or-create and row-lock the users' wallets in a stable (pk) order.
+
+    Locking the buyer's wallet serialises all purchases by the same user, which
+    makes double-clicks and retries safe. A stable order avoids deadlocks when
+    two users buy each other's courses at the same moment.
+    """
+    from students.models import Wallet
+
+    wallet_ids = {}
+    for user in users:
+        wallet, _ = Wallet.objects.get_or_create(user=user)
+        wallet_ids[user.pk] = wallet.pk
+    locked = {
+        w.pk: w
+        for w in Wallet.objects.select_for_update().filter(pk__in=wallet_ids.values()).order_by("pk")
+    }
+    return [locked[wallet_ids[user.pk]] for user in users]
+
+
 @transaction.atomic
-def process_payment_success(
-    payment,
-    provider_id,
-    metadata=None
-):
-    """Mark payment as successful and calculate earnings"""
-    if payment.status != 'pending':
-        logger.warning(f"Attempting to complete non-pending payment {payment.id}")
-        return payment
-    
-    # Determine instructor
-    instructor = payment.course.instructor if payment.course else payment.event.instructor
-    
-    # Calculate fees
-    platform_fee = (payment.amount * PLATFORM_FEE_RATE).quantize(Decimal("0.01"))
-    instructor_earnings = payment.amount - platform_fee
-    
-    # Update payment
-    payment.instructor = instructor
-    payment.platform_fee = platform_fee
-    payment.instructor_earnings = instructor_earnings
-    payment.status = 'completed'
-    payment.provider_id = provider_id
-    payment.completed_at = timezone.now()
-    
-    if metadata:
-        payment.metadata.update(metadata)
-    
-    payment.save(update_fields=[
-        'instructor', 'platform_fee', 'instructor_earnings',
-        'status', 'provider_id', 'completed_at', 'metadata', 'updated_at'
-    ])
-    
-    # Record coupon redemption
-    if payment.coupon:
-        CouponRedemption.objects.create(
-            coupon=payment.coupon,
-            user=payment.user,
-            payment=payment,
-            discount_amount=payment.discount_amount
+def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
+    """Enroll ``user`` in a course, charging their wallet if the course is paid.
+
+    Idempotent per (user, course): if the user already owns the course
+    (active or completed enrollment) nothing is charged and the existing
+    enrollment is returned. A canceled enrollment that was paid for before is
+    reactivated for free.
+    """
+    from courses.models import Course
+    from enrollments.constants import ACCESS_STATUSES
+    from enrollments.models import Enrollment
+
+    try:
+        course = Course.objects.select_related("instructor").get(id=course_id, status="published")
+    except Course.DoesNotExist:
+        raise PurchaseError("Course not found or not published.", "course_unavailable")
+
+    if course.instructor_id == user.id:
+        raise PurchaseError("You can't enroll in your own course.", "own_course")
+
+    buyer_wallet, instructor_wallet = _lock_wallets(user, course.instructor)
+
+    enrollment = Enrollment.objects.select_for_update().filter(user=user, course=course).first()
+    if enrollment and enrollment.status in ACCESS_STATUSES:
+        return PurchaseResult(enrollment, OUTCOME_ALREADY_ENROLLED, None, Decimal("0.00"))
+
+    try:
+        quote = quote_course_price(user, course, coupon_code)
+    except ValidationError as exc:
+        raise PurchaseError(exc.messages[0], "invalid_coupon")
+
+    previously_paid = enrollment is not None and Payment.objects.filter(
+        user=user, course=course,
+        purpose=Payment.PURPOSE_COURSE_PURCHASE, status="completed",
+    ).exists()
+
+    payment = None
+    charged = Decimal("0.00")
+    if quote.final_amount > 0 and not previously_paid:
+        if buyer_wallet.balance < quote.final_amount:
+            raise PurchaseError("Insufficient balance", "insufficient_balance")
+
+        buyer_wallet.deduct_money(quote.final_amount, description=f"Course purchase: {course.title}")
+        fee, earnings = split_platform_fee(quote.final_amount)
+        if earnings > 0:
+            instructor_wallet.add_money(earnings, description=f"Course sale: {course.title}")
+
+        payment = Payment.objects.create(
+            purpose=Payment.PURPOSE_COURSE_PURCHASE,
+            user=user,
+            instructor=course.instructor,
+            course=course,
+            amount=quote.final_amount,
+            original_amount=quote.original_amount,
+            discount_amount=quote.discount_amount,
+            platform_fee=fee,
+            instructor_earnings=earnings,
+            currency="USD",
+            payment_method="wallet",
+            provider="wallet",
+            coupon=quote.coupon,
+            status="completed",
+            completed_at=timezone.now(),
+            billing_email=user.email,
         )
-        payment.coupon.current_usage += 1
-        payment.coupon.save(update_fields=['current_usage'])
-    
-    logger.info(f"Payment completed: {payment.id}")
-    return payment
+        charged = quote.final_amount
 
+    if quote.coupon and not previously_paid:
+        record_coupon_redemption(quote.coupon, user, quote.discount_amount, payment)
 
-@transaction.atomic
-def process_payment_failure(payment, reason, metadata=None):
-    """Mark payment as failed"""
-    payment.status = 'failed'
-    payment.failure_reason = reason
-    
-    if metadata:
-        payment.metadata.update(metadata)
-    
-    payment.save(update_fields=['status', 'failure_reason', 'metadata', 'updated_at'])
-    
-    logger.warning(f"Payment failed: {payment.id} - Reason: {reason}")
-    return payment
+    if enrollment is None:
+        enrollment = Enrollment.objects.create(user=user, course=course, status="active")
+        outcome = OUTCOME_CREATED
+    else:  # canceled -> reactivate
+        enrollment.status = "active"
+        enrollment.is_completed = False
+        enrollment.completed_at = None
+        enrollment.save(update_fields=["status", "is_completed", "completed_at"])
+        outcome = OUTCOME_REACTIVATED
+
+    logger.info(
+        "Course purchase: user=%s course=%s outcome=%s charged=%s payment=%s",
+        user.pk, course.pk, outcome, charged, getattr(payment, "pk", None),
+    )
+    return PurchaseResult(enrollment, outcome, payment, charged)
 
 
 def get_payment_by_provider_id(provider, provider_id):
@@ -317,7 +367,7 @@ def get_unpaid_payments_for_instructor(instructor):
         instructor=instructor,
         status='completed',
         payouts__isnull=True,
-    ).select_related('course', 'event')
+    ).select_related('course')
 
 
 def calculate_instructor_balance(instructor):
@@ -510,9 +560,13 @@ def get_coupon_usage_stats(coupon):
 # ==========================================
 
 def get_payment_stats(start_date=None, end_date=None):
-    """Get comprehensive payment statistics"""
-    queryset = Payment.objects.all()
-    
+    """Get comprehensive payment statistics.
+
+    Revenue figures cover course purchases only: a wallet top-up moves the
+    student's own money into their wallet and is not platform revenue.
+    """
+    queryset = Payment.objects.filter(purpose=Payment.PURPOSE_COURSE_PURCHASE)
+
     if start_date:
         queryset = queryset.filter(created_at__gte=start_date)
     if end_date:

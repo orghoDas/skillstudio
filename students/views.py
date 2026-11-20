@@ -22,7 +22,6 @@ from .serializers import (
     StudentActivityFeedSerializer,
     WalletSerializer,
     WalletTransactionSerializer,
-    AddFundsSerializer,
 )
 from .services import (
     get_student_activity_feed,
@@ -176,38 +175,19 @@ class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
             )
 
 class WalletView(APIView):
-    """Get or manage student wallet."""
+    """Read the student's wallet.
+
+    There is intentionally no POST: students must not be able to credit their
+    own wallet (AUDIT_REPORT.md SEC-01). Funds will only arrive through the
+    Stripe test-mode top-up, credited by the verified webhook.
+    """
     permission_classes = [IsAuthenticated, IsStudent]
-    
+
     def get(self, request):
         """Get wallet details and recent transactions."""
         wallet, created = Wallet.objects.get_or_create(user=request.user)
         serializer = WalletSerializer(wallet)
         return Response(serializer.data)
-    
-    def post(self, request):
-        """Add funds to wallet."""
-        wallet, created = Wallet.objects.get_or_create(user=request.user)
-        
-        serializer = AddFundsSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        amount = serializer.validated_data['amount']
-        
-        try:
-            txn = wallet.add_money(amount, description='Funds added to wallet')
-
-            return Response({
-                'success': True,
-                'balance': txn.balance_after,
-                'message': f'Successfully added ${amount} to wallet'
-            })
-        except ValueError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 
 class WalletTransactionsView(ListAPIView):
