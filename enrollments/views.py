@@ -11,6 +11,7 @@ from django.http import HttpResponse
 import csv
 
 from accounts.permissions import IsInstructor
+from enrollments.constants import ACCESS_STATUSES
 from courses.models import Course, Lesson
 from .models import Enrollment, LessonProgress, Wishlist
 from .serializers import (
@@ -177,7 +178,7 @@ class CourseProgressView(APIView):
             Enrollment,
             user=request.user,
             course_id=course_id,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         stats = get_lesson_completion_stats(enrollment)
@@ -212,7 +213,7 @@ class LessonProgressView(APIView):
             Enrollment,
             user=request.user,
             course=lesson.module.course,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         progress = LessonProgress.objects.filter(
@@ -253,7 +254,7 @@ class LessonWatchTimeView(APIView):
             Enrollment,
             user=request.user,
             course=lesson.module.course,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         if 'watch_time' in request.data and 'watch_time_delta' not in request.data:
@@ -310,7 +311,7 @@ class ResumeLessonView(APIView):
             Enrollment,
             user=request.user,
             course_id=course_id,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         lesson = get_resume_lesson(enrollment)
@@ -339,7 +340,7 @@ class NextLessonView(APIView):
             Enrollment,
             user=request.user,
             course_id=course_id,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         current_lesson = get_object_or_404(Lesson, id=lesson_id)
@@ -371,7 +372,7 @@ class CompleteLessonView(APIView):
             Enrollment,
             user=request.user,
             course=lesson.module.course,
-            status='active'
+            status__in=ACCESS_STATUSES
         )
 
         progress, _ = LessonProgress.objects.get_or_create(
@@ -380,9 +381,19 @@ class CompleteLessonView(APIView):
             lesson=lesson
         )
 
-        if lesson.duration_seconds > 0 and not auto_complete_lesson(progress):
+        # Watch time is required only for videos the learn page can actually
+        # play and observe (LRN-02); otherwise a lesson with a non-trackable
+        # link could never be completed.
+        from courses.video import parse_video_url
+        requires_watch_time = (
+            lesson.content_type == 'video'
+            and lesson.duration_seconds > 0
+            and parse_video_url(lesson.video_url) is not None
+        )
+        if requires_watch_time and not auto_complete_lesson(progress):
             return Response(
-                {'error': 'Lesson completion threshold has not been met.'},
+                {'error': 'Watch at least 80% of the video to complete this lesson.',
+                 'code': 'watch_threshold_not_met'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

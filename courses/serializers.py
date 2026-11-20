@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from accounts.utils import is_platform_admin
+from enrollments.constants import ACCESS_STATUSES
+from .video import parse_video_url
 from .models import (
     Course, Lesson, Module, Category, Tag, CourseTag,
     CourseVersion, LessonResource
@@ -67,23 +69,38 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
             'video_url', 'duration_seconds', 'metadata', 'position', 'is_free'
         ]
 
+    def validate_video_url(self, value):
+        # Only sources the learn page can play *and observe* are accepted, so
+        # watch time can be tracked and video lessons can be completed (LRN-02).
+        if value and parse_video_url(value) is None:
+            raise serializers.ValidationError(
+                "Use a YouTube or Vimeo link, or a direct link to a video file (.mp4, .webm, .ogg)."
+            )
+        return value
+
     def validate(self, attrs):
-        # Allow all content types - validation is optional
-        # Instructors can add video URLs and content later
+        # Content is otherwise optional: instructors can fill lessons in later.
         return attrs
 
 
 class LessonDataSerializer(serializers.ModelSerializer):
+    """Full lesson content for someone allowed to study it (LessonDetailView)."""
     resources = LessonResourceSerializer(many=True, read_only=True)
     module_title = serializers.CharField(source='module.title', read_only=True)
+    video = serializers.SerializerMethodField(
+        help_text="Player descriptor parsed from video_url: {provider: youtube|vimeo|file, id|url} or null."
+    )
 
     class Meta:
         model = Lesson
         fields = [
-            'id', 'title', 'content_type', 'content_text', 'video_url',
+            'id', 'title', 'content_type', 'content_text', 'video_url', 'video',
             'metadata', 'position', 'created_at', 'duration_seconds',
             'is_free', 'resources', 'module_title'
         ]
+
+    def get_video(self, obj):
+        return parse_video_url(obj.video_url)
 
 
 class LessonListSerializer(serializers.ModelSerializer):
@@ -180,7 +197,7 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
         if is_platform_admin(user) or course.instructor_id == user.id:
             return False
 
-        return not course.enrollments.filter(user=user, status='active').exists()
+        return not course.enrollments.filter(user=user, status__in=ACCESS_STATUSES).exists()
 
 
 class CatalogLessonSummarySerializer(CourseDetailLessonSerializer):
@@ -292,7 +309,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     def get_is_enrolled(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return obj.enrollments.filter(user=request.user, status='active').exists()
+            return obj.enrollments.filter(user=request.user, status__in=ACCESS_STATUSES).exists()
         return False
     
     def get_total_duration(self, obj):

@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *9 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01; all 2026-11-21); 58 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, TEST-01 are partially done* |
+| *Resolved so far* | *13 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01; all 2026-11-21); 54 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -61,8 +61,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 3. ~~[SEC-02](#sec-02) Fix the login `next` open redirect / `javascript:` XSS.~~ ✅ Done 2026-11-21.
 4. [SEC-03](#sec-03) Rotate and untrack the committed secrets. 🟡 Untracking, `.env.example`, key guard, secret scanning and the git-history scrub are done (2026-11-21); **DB password + production key rotation are still owner actions.**
 5. [PAY-02](#pay-02)–[PAY-05](#pay-05) Put the payments API behind a kill switch until it is rebuilt. 🟡 Superseded by [D-01](#d-01): card route deleted, PAY-02/03 done, webhook rejects all, course fulfilment done (2026-11-21); the Stripe top-up remains.
-6. [LRN-01](#lrn-01)–[LRN-03](#lrn-03) Make the learn → complete → certificate journey work.
-7. [FE-01](#fe-01) Unbreak the exam pages (a one-line fix in each of 4 files).
+6. ~~[LRN-01](#lrn-01)–[LRN-03](#lrn-03) Make the learn → complete → certificate journey work.~~ ✅ Done 2026-11-21.
+7. ~~[FE-01](#fe-01) Unbreak the exam pages (a one-line fix in each of 4 files).~~ ✅ Done 2026-11-21.
 8. [SEC-04](#sec-04), [SEC-05](#sec-05) Fix the ordering injection and the cross-course content injection.
 
 ### Decisions
@@ -112,10 +112,10 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [PAY-03](#pay-03) | P0 | ~~Payment amount is client-controlled~~ ✅ resolved 2026-11-21 (server-side pricing, D-01) |
 | [PAY-04](#pay-04) | P0 | Webhooks are unsigned and not idempotent — 🟡 contained 2026-11-21 (webhook rejects all); verified Stripe handler pending |
 | [PAY-05](#pay-05) | P0 | A successful payment never grants an enrollment — 🟡 course side resolved 2026-11-21; top-up side pending (Stripe) |
-| [LRN-01](#lrn-01) | P0 | Learn page never receives lesson content |
-| [LRN-02](#lrn-02) | P0 | Video lessons can never be completed from the UI |
-| [LRN-03](#lrn-03) | P0 | Completing a course locks the student out of it |
-| [FE-01](#fe-01) | P0 | All 4 exam pages crash on load (duplicate `const API_BASE`) |
+| [LRN-01](#lrn-01) | P0 | ~~Learn page never receives lesson content~~ ✅ resolved 2026-11-21 |
+| [LRN-02](#lrn-02) | P0 | ~~Video lessons can never be completed from the UI~~ ✅ resolved 2026-11-21 |
+| [LRN-03](#lrn-03) | P0 | ~~Completing a course locks the student out of it~~ ✅ resolved 2026-11-21 |
+| [FE-01](#fe-01) | P0 | ~~All 4 exam pages crash on load (duplicate `const API_BASE`)~~ ✅ resolved 2026-11-21 |
 | [SEC-04](#sec-04) | P1 | `?ordering=` is passed raw to `order_by()` |
 | [SEC-05](#sec-05) | P1 | Instructors can move modules/lessons into other instructors' courses |
 | [SEC-06](#sec-06) | P1 | Token endpoints return JWTs in the JSON body, undoing httpOnly cookies |
@@ -128,11 +128,11 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [ASM-02](#asm-02) | P1 | Quiz time limit can be bypassed |
 | [EXM-01](#exm-01) | P1 | Exam questions are visible before the exam window opens |
 | [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist — 🟡 checkout + payment history fixed 2026-11-21 |
-| [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs |
+| [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 lesson content fixed 2026-11-21 |
 | [API-03](#api-03) | P1 | Section and lesson delete buttons return 405 |
 | [BUG-01](#bug-01) | P1 | Instructor lesson-analytics CSV export always 500s |
 | [BUG-02](#bug-02) | P1 | `InstructorCoursesView` error path raises `NameError` |
-| [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent |
+| [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent — 🟡 partial 2026-11-21 |
 | [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 |
 | [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production |
 | [OPS-03](#ops-03) | P1 | `gunicorn==21.2.0` has known request-smuggling CVEs |
@@ -151,7 +151,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [CRS-07](#crs-07) | P2 | Fake or stub features in the course API |
 | [ENR-01](#enr-01) | P2 | ~~`was_reactivated` is always `true`~~ ✅ resolved 2026-11-21 |
 | [ENR-02](#enr-02) | P2 | Serializer fields silently dropped (`thumbnail_url`, `get_full_name`) |
-| [ENR-03](#enr-03) | P2 | Three different lesson-unlock algorithms |
+| [ENR-03](#enr-03) | P2 | Three different lesson-unlock algorithms — 🟡 locking unified 2026-11-21 |
 | [ERR-01](#err-01) | P2 | Broad `except Exception` leaks internals and hides bugs |
 | [STU-01](#stu-01) | P2 | Bookmarks leak unpublished content; instructors can't see their wallet |
 | [EXM-02](#exm-02) | P2 | Exam settings that do nothing; analytics disagree with grading |
@@ -433,7 +433,20 @@ The serializer becomes validation only; the view calls the service.
 - Both the webhook and the wallet purchase ([PAY-01](#pay-01)) call it.
 
 <a id="lrn-01"></a>
-### LRN-01: Learn page never receives lesson content
+### LRN-01: Learn page never receives lesson content — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **New endpoint.** Student lesson content has its own route, `GET /api/courses/lessons/<id>/content/` (`LessonDetailView`). The shadowed duplicate in `urls_extras.py` was removed.
+> - **Access rules.** The course must be visible to you (published, or you own or administer it). Free lessons and free courses are open to anyone who can see the course. Otherwise you need to be the owner, an admin, or a student who owns the course (enrollment `active` or `completed`) and has unlocked the lesson. Refusals return 403 with a code: `not_enrolled`, `lesson_locked` or `login_required`. A draft course returns 404 to anyone else.
+> - **View counts.** `view_count` is only incremented when the content is actually served.
+> - **One lock rule** (the core of [ENR-03](#enr-03)). The new `enrollments.services.lesson_lock_state` is now used by both the content endpoint and `CourseCurriculumView`, so the sidebar and the server always agree (a test checks every lesson). The rule: free lessons never lock and never gate later lessons; a required lesson unlocks once every earlier required lesson is done. Order is fixed: module position, module id, lesson position, lesson id.
+> - **Learn page rewritten** ([templates/students/learn.html](templates/students/learn.html)). The sidebar comes from the curriculum endpoint (shows completed and locked lessons; locked lessons can't be opened), and lesson content comes from the new endpoint. Progress is re-read from the server after each completion.
+> - **Bug found and fixed while doing this:**
+>   - The earlier XSS pass had wrapped already-built HTML in `escapeHtml` (the sidebar, each section's lessons, and the quiz questions), so they rendered as raw markup.
+>   - The stale `localStorage` login check, durations read from a non-existent field, and quiz pass/fail hard-coded at 50% were also fixed. Pass/fail now comes from the server.
+> - **Tests** are in `courses/test_learning_flow.py`.
+
+*Original finding:*
 
 **Evidence:**
 - [templates/students/learn.html:53](templates/students/learn.html#L53) loads `GET /api/courses/<slug>/sections/`, served by `CatalogModuleSerializer` → `CatalogLessonSummarySerializer` ([courses/serializers.py:186](courses/serializers.py#L186)). That serializer has **no** `video_url` or `content_text`.
@@ -448,7 +461,21 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** an enrolled student's learn page renders video or text for a paid lesson, an unenrolled user gets 403, and a test covers the URL→view mapping.
 
 <a id="lrn-02"></a>
-### LRN-02: Video lessons can never be completed from the UI
+### LRN-02: Video lessons can never be completed from the UI — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **Server-side URL parsing.** The new `courses/video.py` turns lesson video links into a player descriptor: YouTube (`watch`, `youtu.be`, `embed`, `shorts`), Vimeo, or a direct `.mp4/.webm/.ogg/.m4v/.mov` file. The content endpoint returns it as `video`, and saving a lesson with an unplayable link is rejected (`validate_video_url`).
+> - **Real players.** The learn page uses the official YouTube and Vimeo player APIs, or a plain `<video>` element for files.
+> - **Watch tracking.** A tracker counts only seconds the video is **actually playing while the page is visible**; seeking ahead doesn't count. It reports bounded deltas to `PATCH /api/enrollments/lessons/<id>/watch-time/` every 30 s, on pause, and when the page is hidden or closed (`keepalive`). A live "Watched N%" bar is shown.
+> - **Automatic completion.** At 80% the server completes the lesson, and the course when everything's done. The page then refreshes progress and moves on. The manual **Mark as Complete** button is disabled for trackable videos.
+> - **Untrackable links don't trap students.** `CompleteLessonView` requires watch time only for videos the page can actually play and observe. A lesson whose link can't be tracked shows an "open in a new tab" link and can be completed manually.
+> - **Tests.** End-to-end, two watch-time reports complete the lesson and the course.
+> - **Known limits:**
+>   - Watch time is real elapsed time, so watching at 2× speed only counts half.
+>   - `duration_seconds` is still typed in by the instructor.
+>   - The YouTube and Vimeo scripts load from their own domains (relevant for a future CSP, [SEC-08](#sec-08)).
+
+*Original finding:*
 
 **Evidence:**
 - `CompleteLessonView` ([enrollments/views.py](enrollments/views.py)) rejects lessons with `duration_seconds > 0` until watch time reaches 80%.
@@ -470,7 +497,21 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** an end-to-end test (Playwright, or a JS-less API test that simulates the PATCH sequence) shows video → complete → certificate.
 
 <a id="lrn-03"></a>
-### LRN-03: Completing a course locks the student out of it
+### LRN-03: Completing a course locks the student out of it — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Every *access* check now uses `enrollments.constants.ACCESS_STATUSES = ('active', 'completed')`:
+> - `courses.policies.can_access_course_content`
+> - `require_active_enrollment` and the new `get_access_enrollment`
+> - curriculum and lesson content
+> - course, lesson, resume and next progress; watch time; lesson completion
+> - student notes
+> - exam access, list and detail
+> - quiz access (through `require_active_enrollment`)
+> - `CourseDetailSerializer.is_enrolled` and the lesson `is_locked` flag
+>
+> `CanAccessLesson` no longer grants access to **canceled** enrollments. Counts of in-progress learners (My Learning, dashboard stats, cancel) deliberately keep `active`. The learn page treats a completed course as open and shows a "Course completed" note. Tests cover a completed enrollment keeping access everywhere, and a canceled one being refused.
+
+*Original finding:*
 
 **Evidence:**
 - [enrollments/services.py:88](enrollments/services.py#L88) sets `enrollment.status = 'completed'`.
@@ -493,7 +534,11 @@ The serializer becomes validation only; the view calls the service.
 **Done when:** a test completes a course, then asserts that curriculum, lesson content, notes and exam access still return 200.
 
 <a id="fe-01"></a>
-### FE-01: All 4 exam pages crash on load (duplicate `const API_BASE`)
+### FE-01: All 4 exam pages crash on load (duplicate `const API_BASE`) — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** The four `const API_BASE = '/api';` lines were removed from `exams/list.html`, `take.html`, `results.html` and `create.html`; they only use `apiRequest`, so the base global is enough. A regression test (`core/tests.py`) fails if any template extending `base.html` re-declares one of its top-level `const`/`let`/`class` globals. I checked that it flags the old `exams/list.html`.
+
+*Original finding:*
 
 **Evidence (✔ verified with Node `vm`):**
 - [templates/base.html:146](templates/base.html#L146) declares a top-level `const API_BASE`.
@@ -714,7 +759,11 @@ Document the choice either way.
 Then add the contract test from [TEST-02](#test-02) so this can't regress.
 
 <a id="api-02"></a>
-### API-02: Route shadowing: `tags/`, `search/`, lesson content, numeric slugs
+### API-02: Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 LESSON CONTENT FIXED 2026-11-21
+
+> **Progress 2026-11-21:** lesson content has its own route, `lessons/<id>/content/` ([LRN-01](#lrn-01)), and the dead duplicate was removed. **Still open:** `tags/`, `search/` and numeric slugs.
+
+*Original finding:*
 
 **Evidence (✔ verified with `resolve()`):** `courses/urls.py` (which ends in a `<slug:slug>/` catch-all) is included before `courses/urls_extras.py` on the same `api/courses/` prefix ([skillstudio/urls.py:27](skillstudio/urls.py#L27)). As a result:
 - `/api/courses/tags/` resolves to `CourseDetailView(slug='tags')` (404), so `TagListCreateView` is unreachable.
@@ -757,7 +806,16 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 **Fix approach:** Import `logging` at module level with a module `logger`, and delete the try/except wrappers entirely. DRF's exception handler already returns a 500 and logs it.
 
 <a id="crs-01"></a>
-### CRS-01: Access policy is fragmented and inconsistent
+### CRS-01: Access policy is fragmented and inconsistent — 🟡 PARTIAL 2026-11-21
+
+> **Progress 2026-11-21:**
+> - `CourseCurriculumView` now enforces catalog visibility; a draft course's curriculum returns 404 to non-owners.
+> - `CanAccessLesson` ignores canceled enrollments.
+> - All access checks use `ACCESS_STATUSES`.
+>
+> **Still open:** fold `courses/permissions.py` into `policies.py`, and add the role × course-status × enrollment-status test matrix.
+
+*Original finding:*
 
 **Evidence:**
 - [courses/permissions.py](courses/permissions.py): `CanAccessLesson` grants access for **any** enrollment status (including `canceled`).
@@ -1008,7 +1066,11 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 - Add a serializer test asserting that these keys are present.
 
 <a id="enr-03"></a>
-### ENR-03: Three different lesson-unlock algorithms
+### ENR-03: Three different lesson-unlock algorithms — 🟡 LOCKING UNIFIED 2026-11-21
+
+> **Progress 2026-11-21 (with [LRN-01](#lrn-01)):** the content endpoint and the curriculum now share `lesson_lock_state` / `ordered_course_lessons`. **Still open:** the two "next lesson" helpers (`courses/progression.get_next_lesson`, `enrollments.services.get_next_lesson`) and the course-detail `is_locked` flag (enrollment-based, not progression-based) should be moved onto the same helpers. A `UniqueConstraint(module, position)` is also still missing.
+
+*Original finding:*
 
 **Evidence:**
 - `LessonDetailView` counts **free** lessons as required predecessors and compares `module__position` (so ties break across modules).
@@ -1333,8 +1395,8 @@ Move aspirational features to a "Roadmap" section.
 
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
-| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, FE-01, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | LRN-01, LRN-02, LRN-03, ASM-01, ASM-02, EXM-01, EXM-03, API-02, API-03, CRS-01, ENR-03, TEST-02 (contract test first) | 3–5 days |
+| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ASM-01, ASM-02, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, SEC-06, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |

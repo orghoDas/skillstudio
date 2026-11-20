@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from certificates.models import Certificate
 from courses.models import Lesson, Course
 from enrollments.models import Enrollment, LessonProgress
+from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import get_resume_lesson
 from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .constants import (
@@ -375,7 +376,7 @@ def create_student_note(user, lesson_id, content, timestamp=0, tags=None):
     
     # Verify user is enrolled in the course
     course = lesson.module.course
-    if not Enrollment.objects.filter(user=user, course=course, status='active').exists():
+    if not Enrollment.objects.filter(user=user, course=course, status__in=ACCESS_STATUSES).exists():
         raise ValidationError("You must be enrolled in this course to take notes.")
     
     note = StudentNote.objects.create(

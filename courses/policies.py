@@ -1,5 +1,6 @@
 from enrollments.models import Enrollment
 from accounts.utils import is_platform_admin
+from enrollments.constants import ACCESS_STATUSES
 
 
 def can_manage_course(user, course):
@@ -26,7 +27,7 @@ def can_access_course_content(user, course):
     return Enrollment.objects.filter(
         user=user,
         course=course,
-        status='active',
+        status__in=ACCESS_STATUSES,
     ).exists()
 
 

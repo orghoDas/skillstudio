@@ -16,7 +16,7 @@ urlpatterns = [
     
     # Lesson management
     path('modules/<int:module_id>/lessons/', LessonListView.as_view(), name='lesson-list'),
-    path('lessons/<int:lesson_id>/', LessonDetailView.as_view(), name='lesson-detail'),
+    # (lesson content lives at lessons/<id>/content/ in courses/urls.py)
     path('lessons/create/', LessonCreateView.as_view(), name='lesson-create'),
     path('lessons/<int:id>/update/', LessonUpdateView.as_view(), name='lesson-update'),
     path('lessons/<int:id>/delete/', LessonDeleteView.as_view(), name='lesson-delete'),

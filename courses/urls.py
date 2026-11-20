@@ -49,6 +49,9 @@ urlpatterns = [
     
     # ===== LESSON ENDPOINTS =====
     path('lessons/<int:id>/', LessonRetrieveUpdateView.as_view(), name='lesson-retrieve-update'),
+    # Student-facing lesson content (learn page). LRN-01: this used to be
+    # shadowed by the editor route above and was unreachable.
+    path('lessons/<int:lesson_id>/content/', LessonDetailView.as_view(), name='lesson-content'),
     
     # ===== ANALYTICS ENDPOINTS ===== (removed)
     # path('<int:course_id>/analytics/', CourseAnalyticsView.as_view(), name='course-analytics'),

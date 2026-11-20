@@ -477,122 +477,83 @@ class LessonDeleteView(generics.DestroyAPIView):
 
 
 class LessonDetailView(APIView):
-    """Get detailed lesson content (with enrollment check)"""
+    """Full lesson content for studying it (the learn page).
+
+    Mounted at /api/courses/lessons/<id>/content/ (LRN-01). Access:
+    * the course must be visible (published, or you own/administer it);
+    * free lessons and free courses: anyone who can see the course;
+    * otherwise: the owner, an admin, or a student who owns the course
+      (active or completed enrollment) and has unlocked the lesson
+      (enrollments.services.lesson_lock_state).
+    """
+    permission_classes = [AllowAny]
 
     def get(self, request, lesson_id):
-        lesson = get_object_or_404(Lesson.objects.select_related('module__course').prefetch_related('resources'), id=lesson_id)
+        from courses.policies import can_manage_course
+        from enrollments.services import get_access_enrollment, lesson_lock_state
+
+        lesson = get_object_or_404(
+            Lesson.objects.select_related('module__course').prefetch_related('resources'), id=lesson_id
+        )
         course = lesson.module.course
         user = request.user
 
         if not can_view_course_catalog(user, course):
-            raise PermissionDenied("You don't have permission to view this lesson.")
+            return Response({'error': 'Lesson not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Increment view count
+        if not (lesson.is_free or course.is_free or can_manage_course(user, course)):
+            if not user.is_authenticated:
+                return Response({'error': 'Login required.', 'code': 'login_required'},
+                                status=status.HTTP_403_FORBIDDEN)
+            enrollment = get_access_enrollment(user, course)
+            if enrollment is None:
+                return Response({'error': 'Enroll in this course to access this lesson.', 'code': 'not_enrolled'},
+                                status=status.HTTP_403_FORBIDDEN)
+            if lesson_lock_state(enrollment).get(lesson.id):
+                return Response({'error': 'Lesson is locked. Complete the previous lessons first.',
+                                 'code': 'lesson_locked'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Count only views that actually got the content.
         Lesson.objects.filter(id=lesson.id).update(view_count=F('view_count') + 1)
-
-        # Free lessons and free courses are public after catalog visibility passes.
-        if lesson.is_free or course.is_free:
-            return Response(LessonDataSerializer(lesson).data)
-
-        # Protected lesson requires authentication
-        if not user.is_authenticated:
-            return Response({'error': 'Login required'}, status=status.HTTP_403_FORBIDDEN)
-
-        # Check enrollment
-        enrollment = require_active_enrollment(user, course)
-
-        # Check if lesson is unlocked (progression system)
-        previous_lessons = Lesson.objects.filter(
-            module__course=course,
-            module__position__lt=lesson.module.position
-        ) | Lesson.objects.filter(
-            module=lesson.module,
-            position__lt=lesson.position
-        )
-
-        total_previous = previous_lessons.count()
-        if total_previous > 0:
-            completed_previous = LessonProgress.objects.filter(
-                enrollment=enrollment,
-                lesson__in=previous_lessons,
-                is_completed=True
-            ).count()
-            is_unlocked = completed_previous == total_previous
-        else:
-            is_unlocked = True
-
-        if not is_unlocked and not lesson.is_free:
-            return Response({'error': 'Lesson is locked. Complete previous lessons first.'}, status=status.HTTP_403_FORBIDDEN)
-
         return Response(LessonDataSerializer(lesson).data)
 
 
 class CourseCurriculumView(APIView):
-    """Get course curriculum with progression tracking"""
+    """Course outline with per-lesson ``is_completed`` / ``is_locked``.
+
+    Uses the same progression rule as LessonDetailView, so what the learn
+    page shows as unlocked is exactly what the content endpoint serves.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request, course_id):
-        user = request.user
-        course = get_object_or_404(
-            Course.objects.prefetch_related('modules__lessons'),
-            id=course_id
+        from courses.policies import can_manage_course
+        from enrollments.services import (
+            completed_lesson_ids, get_access_enrollment, lesson_lock_state, ordered_course_lessons,
         )
 
-        enrollment = None
+        user = request.user
+        course = get_object_or_404(Course.objects.prefetch_related('modules__lessons'), id=course_id)
+        if not can_view_course_catalog(user, course):
+            return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Check access for non-free courses
-        if not course.is_free:
+        enrollment = get_access_enrollment(user, course)
+        if not (course.is_free or enrollment or can_manage_course(user, course)):
             if not user.is_authenticated:
                 return Response({'error': 'Login required'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Active enrollment required'}, status=status.HTTP_403_FORBIDDEN)
 
-            enrollment = Enrollment.objects.filter(
-                user=user,
-                course=course,
-                status='active'
-            ).first()
+        lessons = ordered_course_lessons(course)
+        completed_ids = completed_lesson_ids(enrollment)
+        locked = lesson_lock_state(enrollment, lessons, completed_ids)
 
-            if not enrollment and course.instructor != user and not is_platform_admin(user):
-                return Response({'error': 'Active enrollment required'}, status=status.HTTP_403_FORBIDDEN)
-
-        # Get all lessons
-        lessons = Lesson.objects.filter(
-            module__course=course
-        ).order_by('module__position', 'position')
-
-        lesson_ids = list(lessons.values_list('id', flat=True))
-
-        # Get completed lessons
-        completed_ids = set()
-        if enrollment:
-            completed_ids = set(
-                LessonProgress.objects.filter(
-                    enrollment=enrollment,
-                    is_completed=True
-                ).values_list('lesson_id', flat=True)
-            )
-
-        # Calculate locked lessons
-        locked_ids = set()
-        unlock_next = True
-
-        for lesson in lessons:
-            if lesson.is_free:
-                continue
-
-            if unlock_next:
-                unlock_next = lesson.id in completed_ids
-            else:
-                locked_ids.add(lesson.id)
-
-        # Return curriculum with context
         serializer = CourseCurriculumSerializer(
             course,
             context={
                 'completed_ids': completed_ids,
-                'locked_ids': locked_ids,
+                'locked_ids': {lesson_id for lesson_id, is_locked in locked.items() if is_locked},
             }
         )
-
         return Response(serializer.data)
 
 

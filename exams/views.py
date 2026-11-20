@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
+from enrollments.constants import ACCESS_STATUSES
 from .serializers import (
     QuestionBankSerializer, QuestionBankListSerializer,
     ExamSerializer, ExamListSerializer, ExamDetailSerializer,
@@ -38,7 +39,7 @@ def has_active_course_enrollment(user, course):
     return Enrollment.objects.filter(
         user=user,
         course=course,
-        status='active'
+        status__in=ACCESS_STATUSES
     ).exists()
 
 
@@ -130,7 +131,7 @@ class ExamListCreateView(generics.ListCreateAPIView):
             # Students see published exams for their enrolled courses
             enrolled_courses = Enrollment.objects.filter(
                 user=self.request.user,
-                status='active'
+                status__in=ACCESS_STATUSES
             ).values_list('course_id', flat=True)
             
             return Exam.objects.select_related('course', 'created_by').filter(
@@ -168,7 +169,7 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         enrolled_courses = Enrollment.objects.filter(
             user=user,
-            status='active'
+            status__in=ACCESS_STATUSES
         ).values_list('course_id', flat=True)
 
         return queryset.filter(course_id__in=enrolled_courses, status='published')

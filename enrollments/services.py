@@ -6,6 +6,7 @@ from certificates.services import issue_certificate
 from accounts.utils import is_platform_admin
 from courses.models import Lesson
 from enrollments.constants import LESSON_COMPLETION_THRESHOLD
+from enrollments.constants import ACCESS_STATUSES
 from .models import Enrollment, LessonProgress
 
 MAX_WATCH_PROGRESS_DELTA_SECONDS = 120
@@ -222,6 +223,56 @@ def get_next_lesson(enrollment, current_lesson):
     return None
 
 
+def ordered_course_lessons(course):
+    """All lessons of a course in one deterministic study order."""
+    return list(
+        Lesson.objects.filter(module__course=course)
+        .select_related('module')
+        .order_by('module__position', 'module__id', 'position', 'id')
+    )
+
+
+def completed_lesson_ids(enrollment):
+    if enrollment is None:
+        return set()
+    return set(
+        enrollment.lesson_progress.filter(is_completed=True).values_list('lesson_id', flat=True)
+    )
+
+
+def lesson_lock_state(enrollment, lessons=None, completed_ids=None):
+    """The single progression rule (ENR-03): ``{lesson_id: is_locked}``.
+
+    * Free lessons are never locked and never gate later lessons.
+    * A required lesson is unlocked iff every earlier required lesson in study
+      order is completed (so exactly the first incomplete one is open).
+    * Without an enrollment (owner, admin, free-course visitor) nothing is locked.
+    """
+    if lessons is None:
+        lessons = ordered_course_lessons(enrollment.course) if enrollment else []
+    if enrollment is None:
+        return {lesson.id: False for lesson in lessons}
+    if completed_ids is None:
+        completed_ids = completed_lesson_ids(enrollment)
+
+    state, gate_open = {}, True
+    for lesson in lessons:
+        if lesson.is_free:
+            state[lesson.id] = False
+            continue
+        state[lesson.id] = not gate_open
+        if lesson.id not in completed_ids:
+            gate_open = False
+    return state
+
+
+def get_access_enrollment(user, course):
+    """The user's enrollment that grants access (active or completed), or None."""
+    if not getattr(user, 'is_authenticated', False):
+        return None
+    return Enrollment.objects.filter(user=user, course=course, status__in=ACCESS_STATUSES).first()
+
+
 def require_active_enrollment(user, course):
     """Validate that user has active enrollment for course."""
     if is_platform_admin(user):
@@ -233,7 +284,7 @@ def require_active_enrollment(user, course):
     enrollment = Enrollment.objects.filter(
         user=user,
         course=course,
-        status='active'
+        status__in=ACCESS_STATUSES
     ).first()
 
     if not enrollment:

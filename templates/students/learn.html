@@ -13,54 +13,66 @@
 
 {% block extra_js %}
 <script>
+/*
+ * Learn page.
+ *  - Sidebar: GET /api/courses/<id>/curriculum/ (is_completed / is_locked per lesson,
+ *    same progression rule the server enforces).
+ *  - Lesson content: GET /api/courses/lessons/<id>/content/ (LRN-01).
+ *  - Video lessons report real playing time to
+ *    PATCH /api/enrollments/lessons/<id>/watch-time/ and complete automatically
+ *    at 80% watched (LRN-02).
+ * Page access itself is gated server-side (@cookie_login_required).
+ */
 let courseSlug;
+let courseId;
 let enrollmentData;
-let currentLesson = null;
-let sections = [];
+let currentLesson = null;      // curriculum summary of the open lesson
+let currentLessonData = null;  // full content of the open lesson
+let sections = [];             // curriculum modules
+let watchTracker = null;
+
+const WATCH_FLUSH_MS = 30000;      // report watch time every 30s while playing
+const MAX_WATCH_DELTA = 120;       // server accepts at most 120s per report
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication
-    const accessToken = localStorage.getItem('user');
-    if (!accessToken) {
-        const currentPath = window.location.pathname;
-        window.location.href = `/auth/login/?next=${currentPath}`;
-        return;
-    }
-
-    // Get course slug from URL
-    const pathParts = window.location.pathname.split('/');
-    courseSlug = pathParts[2];
-    
+    courseSlug = window.location.pathname.split('/')[2];
     loadCourse();
 });
 
+window.addEventListener('pagehide', () => {
+    if (watchTracker) watchTracker.flush(true);
+});
+
+// ------------------------------------------------------------------
+// Data loading
+// ------------------------------------------------------------------
+
+async function fetchOwnedEnrollment() {
+    const response = await apiRequest(`/enrollments/?course_slug=${encodeURIComponent(courseSlug)}`);
+    const enrollments = response?.results || response || [];
+    // Completed courses stay accessible (LRN-03); canceled ones don't.
+    return enrollments.find(e => e.status === 'active' || e.status === 'completed') || null;
+}
+
+async function loadCurriculum() {
+    const curriculum = await apiRequest(`/courses/${courseId}/curriculum/`);
+    sections = curriculum.modules || [];
+}
+
 async function loadCourse() {
     try {
-        // Get enrollment data
-        const enrollmentResponse = await apiRequest(`/enrollments/?course_slug=${courseSlug}`);
-        
-        // Handle both paginated and non-paginated responses
-        const enrollments = enrollmentResponse?.results || enrollmentResponse || [];
-        
-        if (enrollments.length === 0) {
-            // Not enrolled - redirect to course detail
-            window.location.href = `/courses/${courseSlug}/`;
+        enrollmentData = await fetchOwnedEnrollment();
+        if (!enrollmentData) {
+            window.location.href = `/courses/${encodeURIComponent(courseSlug)}/`;
             return;
         }
-        enrollmentData = enrollments[0];
+        courseId = enrollmentData.course.id;
+        await loadCurriculum();
 
-        // Load course sections and lessons
-        const sectionsResponse = await apiRequest(`/courses/${courseSlug}/sections/`);
-        sections = sectionsResponse.results || sectionsResponse;
-
-        // Find first incomplete lesson or first lesson
         currentLesson = findNextLesson();
-
         renderLearningInterface();
         if (currentLesson) {
             loadLesson(currentLesson.id);
-        } else {
-            console.error('No lesson found to load');
         }
     } catch (error) {
         console.error('Error loading course:', error);
@@ -71,7 +83,7 @@ async function loadCourse() {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                     </svg>
                     <p class="text-xl font-semibold mb-2">Error Loading Course</p>
-                    <p class="text-gray-400 mb-6">Failed to load course content</p>
+                    <p class="text-gray-400 mb-6">${escapeHtml(error.message || 'Failed to load course content')}</p>
                     <a href="/my-courses/" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
                         Back to My Courses
                     </a>
@@ -81,75 +93,72 @@ async function loadCourse() {
     }
 }
 
-function findNextLesson() {
-    const completedLessonIds = enrollmentData.completed_lessons || [];
-    
-    for (const section of sections) {
-        for (const lesson of section.lessons || []) {
-            if (!completedLessonIds.includes(lesson.id)) {
-                return lesson;
-            }
-        }
+/** Re-read progress from the server after a lesson is completed. */
+async function refreshProgress() {
+    try {
+        const fresh = await fetchOwnedEnrollment();
+        if (fresh) enrollmentData = fresh;
+        await loadCurriculum();
+        const summary = findLessonSummary(currentLesson && currentLesson.id);
+        if (summary) currentLesson = summary;
+        renderSidebar();
+        updateNavigationButtons();
+    } catch (error) {
+        console.error('Error refreshing progress:', error);
     }
-    
-    // All lessons completed, return first lesson
-    return sections[0]?.lessons?.[0] || null;
 }
+
+function allLessons() {
+    const lessons = [];
+    sections.forEach(section => (section.lessons || []).forEach(lesson => lessons.push(lesson)));
+    return lessons;
+}
+
+function findLessonSummary(lessonId) {
+    return allLessons().find(l => l.id === lessonId) || null;
+}
+
+function findNextLesson() {
+    const lessons = allLessons();
+    return lessons.find(l => !l.is_completed && !l.is_locked) || lessons[0] || null;
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return '';
+    const minutes = Math.max(1, Math.round(seconds / 60));
+    return `${minutes} min`;
+}
+
+// ------------------------------------------------------------------
+// Layout
+// ------------------------------------------------------------------
 
 function renderLearningInterface() {
     const container = document.getElementById('learning-container');
-    const course = enrollmentData.course;
-
     container.innerHTML = `
         <div class="flex h-screen overflow-hidden">
             <!-- Sidebar - Course Content -->
-            <div id="course-sidebar" class="w-96 bg-dark-surface border-r border-dark-border overflow-y-auto">
-                <!-- Course Header -->
-                <div class="p-6 border-b border-dark-border">
-                    <a href="/my-courses/" class="text-sm text-gray-400 hover:text-white mb-3 inline-block">
-                        ← Back to My Courses
-                    </a>
-                    <h2 class="text-xl font-semibold mb-2">${escapeHtml(course.title)}</h2>
-                    <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
-                        <span>${escapeHtml(enrollmentData.completed_lessons_count || 0)} / ${escapeHtml(enrollmentData.total_lessons_count || 0)} lessons</span>
-                        <span>${escapeHtml(Math.round(enrollmentData.progress_percentage || 0))}% complete</span>
-                    </div>
-                    <div class="w-full bg-dark-bg rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${escapeHtml(enrollmentData.progress_percentage || 0)}%"></div>
-                    </div>
-                </div>
-
-                <!-- Sections & Lessons -->
-                <div class="p-4">
-                    ${escapeHtml(sections.map((section, sectionIndex) => renderSection(section, sectionIndex)).join(''))}
-                </div>
-            </div>
+            <div id="course-sidebar" class="w-96 bg-dark-surface border-r border-dark-border overflow-y-auto"></div>
 
             <!-- Main Content Area -->
             <div class="flex-1 flex flex-col overflow-hidden">
-                <!-- Lesson Header -->
                 <div class="bg-dark-surface border-b border-dark-border p-6">
                     <h1 id="lesson-title" class="text-2xl font-bold mb-2">Select a lesson to start</h1>
                     <p id="lesson-type" class="text-gray-400"></p>
                 </div>
 
-                <!-- Lesson Content -->
                 <div id="lesson-content" class="flex-1 overflow-y-auto p-8 bg-dark-bg">
                     <div class="max-w-4xl mx-auto text-center text-gray-400">
-                        <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
                         <p>Select a lesson from the sidebar to begin learning</p>
                     </div>
                 </div>
 
-                <!-- Lesson Navigation -->
                 <div id="lesson-navigation" class="hidden bg-dark-surface border-t border-dark-border p-6">
                     <div class="flex items-center justify-between max-w-4xl mx-auto">
                         <button id="prev-lesson" onclick="navigateLesson('prev')" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             ← Previous Lesson
                         </button>
-                        <button id="mark-complete" onclick="markLessonComplete()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                        <button id="mark-complete" onclick="markLessonComplete()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:cursor-not-allowed">
                             Mark as Complete
                         </button>
                         <button id="next-lesson" onclick="navigateLesson('next')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -160,265 +169,499 @@ function renderLearningInterface() {
             </div>
         </div>
     `;
+    renderSidebar();
+}
+
+function renderSidebar() {
+    const sidebar = document.getElementById('course-sidebar');
+    if (!sidebar) return;
+    const course = enrollmentData.course;
+    const progress = Math.round(enrollmentData.progress_percentage || 0);
+
+    // Note: renderSection/renderLesson escape every API value themselves; the
+    // HTML they return is trusted and must NOT be passed through escapeHtml.
+    sidebar.innerHTML = `
+        <div class="p-6 border-b border-dark-border">
+            <a href="/my-courses/" class="text-sm text-gray-400 hover:text-white mb-3 inline-block">← Back to My Courses</a>
+            <h2 class="text-xl font-semibold mb-2">${escapeHtml(course.title)}</h2>
+            <div class="flex items-center justify-between text-sm text-gray-400 mb-3">
+                <span>${escapeHtml(enrollmentData.completed_lessons_count || 0)} / ${escapeHtml(enrollmentData.total_lessons_count || 0)} lessons</span>
+                <span>${escapeHtml(progress)}% complete</span>
+            </div>
+            <div class="w-full bg-dark-bg rounded-full h-2">
+                <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${escapeHtml(progress)}%"></div>
+            </div>
+            ${enrollmentData.status === 'completed' ? `
+                <p class="mt-3 text-sm text-green-400">✓ Course completed — you can keep reviewing it any time.</p>
+            ` : ''}
+        </div>
+        <div class="p-4">
+            ${sections.map((section, index) => renderSection(section, index)).join('')}
+        </div>
+    `;
+    updateSidebarHighlight();
 }
 
 function renderSection(section, sectionIndex) {
-    const completedLessonIds = enrollmentData.completed_lessons || [];
     const lessons = section.lessons || [];
-
     return `
         <div class="mb-4">
-            <button onclick="toggleSection(${escapeHtml(sectionIndex)})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
-                <span class="font-semibold">Section ${escapeHtml(sectionIndex + 1)}: ${escapeHtml(section.title)}</span>
+            <button onclick="toggleSection(${Number(sectionIndex)})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
+                <span class="font-semibold">Section ${Number(sectionIndex) + 1}: ${escapeHtml(section.title)}</span>
                 <svg class="section-chevron w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
             </button>
             <div class="section-content space-y-1 mt-2">
-                ${escapeHtml(lessons.map(lesson => renderLesson(lesson, completedLessonIds)).join(''))}
+                ${lessons.map(lesson => renderLesson(lesson)).join('')}
             </div>
         </div>
     `;
 }
 
-function renderLesson(lesson, completedLessonIds) {
-    const isCompleted = completedLessonIds.includes(lesson.id);
-    const isCurrent = currentLesson && currentLesson.id === lesson.id;
+const TYPE_ICONS = {
+    video: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    text: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+    quiz: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+    locked: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
+};
 
-    const typeIcons = {
-        video: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-        article: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-        quiz: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'
-    };
-
+function renderLesson(lesson) {
+    const id = Number(lesson.id);
+    const meta = [lesson.content_type, formatDuration(lesson.duration_seconds), lesson.is_free ? 'free preview' : '']
+        .filter(Boolean).join(' • ');
+    let icon;
+    if (lesson.is_completed) {
+        icon = `<svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+    } else {
+        const path = lesson.is_locked ? TYPE_ICONS.locked : (TYPE_ICONS[lesson.content_type] || TYPE_ICONS.text);
+        icon = `<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${path}"/></svg>`;
+    }
     return `
-        <button onclick="loadLesson(${escapeHtml(lesson.id)})" class="w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 ${escapeHtml(isCurrent ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'hover:bg-dark-hover')}">
-            <div class="w-8 h-8 flex-shrink-0 ${escapeHtml(isCompleted ? 'bg-green-900/50' : 'bg-dark-bg')} rounded-lg flex items-center justify-center">
-                ${isCompleted ? `
-                    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                ` : `
-                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${escapeHtml(typeIcons[lesson.content_type] || typeIcons.article)}"/>
-                    </svg>
-                `}
-            </div>
+        <button data-lesson-id="${id}" onclick="loadLesson(${id})" ${lesson.is_locked ? 'disabled title="Complete the previous lessons to unlock"' : ''}
+                class="lesson-item w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 hover:bg-dark-hover disabled:opacity-50 disabled:cursor-not-allowed">
+            <div class="w-8 h-8 flex-shrink-0 ${lesson.is_completed ? 'bg-green-900/50' : 'bg-dark-bg'} rounded-lg flex items-center justify-center">${icon}</div>
             <div class="flex-1 min-w-0">
-                <p class="font-medium text-sm truncate ${escapeHtml(isCompleted ? 'text-green-400' : '')}">${escapeHtml(lesson.title)}</p>
-                <p class="text-xs text-gray-500 capitalize">${escapeHtml(lesson.content_type)}${lesson.duration ? ` • ${lesson.duration} min` : ''}</p>
+                <p class="font-medium text-sm truncate ${lesson.is_completed ? 'text-green-400' : ''}">${escapeHtml(lesson.title)}</p>
+                <p class="text-xs text-gray-500 capitalize">${escapeHtml(meta)}</p>
             </div>
         </button>
     `;
 }
 
 function toggleSection(index) {
-    const sections = document.querySelectorAll('.section-content');
+    const contents = document.querySelectorAll('.section-content');
     const chevrons = document.querySelectorAll('.section-chevron');
-    sections[index].classList.toggle('hidden');
-    chevrons[index].classList.toggle('rotate-180');
+    if (contents[index]) contents[index].classList.toggle('hidden');
+    if (chevrons[index]) chevrons[index].classList.toggle('rotate-180');
 }
 
 function updateSidebarHighlight() {
-    // Remove all current highlights
-    document.querySelectorAll('#course-sidebar button[onclick^="loadLesson"]').forEach(btn => {
-        btn.classList.remove('bg-blue-900/30', 'border-l-4', 'border-blue-500');
-        btn.classList.add('hover:bg-dark-hover');
+    document.querySelectorAll('#course-sidebar .lesson-item').forEach(btn => {
+        const isCurrent = currentLesson && Number(btn.dataset.lessonId) === currentLesson.id;
+        btn.classList.toggle('bg-blue-900/30', isCurrent);
+        btn.classList.toggle('border-l-4', isCurrent);
+        btn.classList.toggle('border-blue-500', isCurrent);
     });
-    
-    // Add highlight to current lesson
-    if (currentLesson) {
-        const currentBtn = document.querySelector(`#course-sidebar button[onclick="loadLesson(${currentLesson.id})"]`);
-        if (currentBtn) {
-            currentBtn.classList.remove('hover:bg-dark-hover');
-            currentBtn.classList.add('bg-blue-900/30', 'border-l-4', 'border-blue-500');
-        }
-    }
+}
+
+// ------------------------------------------------------------------
+// Lesson loading
+// ------------------------------------------------------------------
+
+function renderMessage(title, message, tone = 'gray') {
+    const colors = { gray: 'text-gray-600', yellow: 'text-yellow-500', red: 'text-red-500' };
+    document.getElementById('lesson-content').innerHTML = `
+        <div class="max-w-4xl mx-auto text-center py-12">
+            <svg class="w-20 h-20 mx-auto mb-4 ${colors[tone] || colors.gray}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${TYPE_ICONS.locked}"/>
+            </svg>
+            <p class="text-xl font-semibold mb-2">${escapeHtml(title)}</p>
+            <p class="text-gray-400">${escapeHtml(message)}</p>
+        </div>
+    `;
 }
 
 async function loadLesson(lessonId) {
-    try {
-        // Find lesson in sections
-        let foundLesson = null;
-        for (const section of sections) {
-            foundLesson = section.lessons?.find(l => l.id === lessonId);
-            if (foundLesson) break;
-        }
+    const summary = findLessonSummary(lessonId);
+    if (!summary) return;
 
-        if (!foundLesson) return;
+    stopWatchTracking();
+    currentLesson = summary;
+    currentLessonData = null;
+    document.getElementById('lesson-title').textContent = summary.title;
+    const typeLabel = summary.content_type.charAt(0).toUpperCase() + summary.content_type.slice(1);
+    const duration = formatDuration(summary.duration_seconds);
+    document.getElementById('lesson-type').textContent = duration ? `${typeLabel} • ${duration}` : typeLabel;
+    document.getElementById('lesson-navigation').classList.remove('hidden');
+    updateSidebarHighlight();
+    updateNavigationButtons();
 
-        currentLesson = foundLesson;
-
-        // Update lesson header
-        document.getElementById('lesson-title').textContent = currentLesson.title;
-        document.getElementById('lesson-type').textContent = `${currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1)}${currentLesson.duration ? ` • ${currentLesson.duration} minutes` : ''}`;
-
-        // Render lesson content based on type
-        const contentArea = document.getElementById('lesson-content');
-        if (currentLesson.content_type === 'video') {
-            const videoUrl = currentLesson.video_url;
-            let videoEmbed = '';
-            
-            if (videoUrl && videoUrl.includes('youtube.com')) {
-                // Extract YouTube video ID
-                const videoId = videoUrl.match(/[?&]v=([^&]+)/)?.[1] || videoUrl.split('/').pop();
-                videoEmbed = `
-                    <iframe 
-                        class="w-full h-full rounded-lg" 
-                        src="https://www.youtube.com/embed/${escapeHtml(videoId)}" 
-                        frameborder="0" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen>
-                    </iframe>
-                `;
-            } else if (videoUrl && videoUrl.includes('vimeo.com')) {
-                const videoId = videoUrl.split('/').pop();
-                videoEmbed = `
-                    <iframe 
-                        class="w-full h-full rounded-lg" 
-                        src="https://player.vimeo.com/video/${escapeHtml(videoId)}" 
-                        frameborder="0" 
-                        allow="autoplay; fullscreen; picture-in-picture" 
-                        allowfullscreen>
-                    </iframe>
-                `;
-            } else {
-                videoEmbed = `
-                    <div class="text-center text-white">
-                        <svg class="w-20 h-20 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <p class="text-gray-400">No video URL provided</p>
-                        <p class="text-sm text-gray-500 mt-2">Add a YouTube or Vimeo URL to this lesson</p>
-                    </div>
-                `;
-            }
-            
-            contentArea.innerHTML = `
-                <div class="max-w-4xl mx-auto">
-                    <div class="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
-                        ${videoEmbed}
-                    </div>
-                    ${currentLesson.content_text ? `
-                        <div class="prose prose-invert max-w-none">
-                            <h3>Description</h3>
-                            <p class="text-gray-300">${escapeHtml(currentLesson.content_text)}</p>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        } else if (currentLesson.content_type === 'article' || currentLesson.content_type === 'text') {
-            contentArea.innerHTML = `
-                <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
-                    <div class="text-gray-300 whitespace-pre-wrap">${escapeHtml(currentLesson.content_text || 'No content available')}</div>
-                </div>
-            `;
-        } else if (currentLesson.content_type === 'quiz') {
-            // Load quiz data
-            loadQuizInterface();
-        } else {
-            // Fallback for any other content type
-            contentArea.innerHTML = `
-                <div class="max-w-4xl mx-auto text-center">
-                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <p class="text-xl font-semibold mb-2">${escapeHtml(currentLesson.content_type.charAt(0).toUpperCase() + currentLesson.content_type.slice(1))}</p>
-                    <p class="text-gray-400">This lesson type is not yet supported</p>
-                </div>
-            `;
-        }
-
-        // Show navigation
-        document.getElementById('lesson-navigation').classList.remove('hidden');
-        updateNavigationButtons();
-
-        // Update sidebar highlighting (without re-rendering entire interface)
-        updateSidebarHighlight();
-
-        // Lesson is now loaded - tracking happens when marked complete
-    } catch (error) {
-        console.error('Error loading lesson:', error);
-        showAlert('Failed to load lesson', 'error');
+    if (summary.is_locked) {
+        renderMessage('Lesson locked', 'Complete the previous lessons to unlock this one.', 'yellow');
+        return;
     }
+
+    const contentArea = document.getElementById('lesson-content');
+    contentArea.innerHTML = `
+        <div class="flex justify-center py-16">
+            <div class="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>`;
+
+    try {
+        currentLessonData = await apiRequest(`/courses/lessons/${Number(lessonId)}/content/`);
+    } catch (error) {
+        const code = error.body && error.body.code;
+        if (code === 'lesson_locked') {
+            renderMessage('Lesson locked', 'Complete the previous lessons to unlock this one.', 'yellow');
+        } else {
+            renderMessage('Could not load this lesson', error.message || 'Please try again.', 'red');
+        }
+        return;
+    }
+    if (!currentLesson || currentLesson.id !== lessonId) return;  // user moved on meanwhile
+
+    const data = currentLessonData;
+    if (data.content_type === 'video') {
+        renderVideoLesson(data);
+    } else if (data.content_type === 'quiz') {
+        loadQuizInterface();
+    } else if (data.content_type === 'text' || data.content_type === 'article') {
+        contentArea.innerHTML = `
+            <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
+                <div class="text-gray-300 whitespace-pre-wrap">${escapeHtml(data.content_text || 'No content available')}</div>
+                ${renderResources(data)}
+            </div>
+        `;
+    } else {
+        contentArea.innerHTML = `
+            <div class="max-w-4xl mx-auto">
+                ${data.content_text ? `<div class="text-gray-300 whitespace-pre-wrap mb-6">${escapeHtml(data.content_text)}</div>` : ''}
+                ${renderResources(data)}
+                ${!data.content_text && !(data.resources || []).length ? `<p class="text-gray-400 text-center">This lesson has no content yet.</p>` : ''}
+            </div>
+        `;
+    }
+    updateNavigationButtons();
+}
+
+function renderResources(data) {
+    const resources = data.resources || [];
+    if (!resources.length) return '';
+    return `
+        <div class="mt-8 not-prose">
+            <h3 class="text-lg font-semibold mb-3">Resources</h3>
+            <ul class="space-y-2">
+                ${resources.map(r => `
+                    <li><a href="${safeUrl(r.file_url)}" target="_blank" rel="noopener noreferrer"
+                           class="text-blue-400 hover:underline">${escapeHtml(r.resource_type || 'Resource')}</a></li>
+                `).join('')}
+            </ul>
+        </div>
+    `;
 }
 
 function updateNavigationButtons() {
-    const allLessons = [];
-    sections.forEach(section => {
-        (section.lessons || []).forEach(lesson => allLessons.push(lesson));
-    });
+    if (!currentLesson) return;
+    const lessons = allLessons();
+    const index = lessons.findIndex(l => l.id === currentLesson.id);
+    document.getElementById('prev-lesson').disabled = index <= 0;
+    const next = lessons[index + 1];
+    document.getElementById('next-lesson').disabled = !next || next.is_locked;
 
-    const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
-    
-    document.getElementById('prev-lesson').disabled = currentIndex === 0;
-    document.getElementById('next-lesson').disabled = currentIndex === allLessons.length - 1;
-
-    // Update mark complete button
-    const completedLessonIds = enrollmentData.completed_lessons || [];
-    const isCompleted = completedLessonIds.includes(currentLesson.id);
     const markBtn = document.getElementById('mark-complete');
-    if (isCompleted) {
+    const data = currentLessonData;
+    const tracked = data && data.content_type === 'video' && data.video && data.duration_seconds > 0;
+    markBtn.classList.remove('bg-gray-700', 'bg-green-600', 'hover:bg-green-700');
+    if (currentLesson.is_completed) {
         markBtn.textContent = '✓ Completed';
-        markBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        markBtn.classList.add('bg-gray-700');
+        markBtn.disabled = true;
+    } else if (currentLesson.is_locked) {
+        markBtn.textContent = 'Locked';
+        markBtn.classList.add('bg-gray-700');
+        markBtn.disabled = true;
+    } else if (tracked) {
+        // Video lessons complete automatically once 80% has been watched.
+        markBtn.textContent = 'Completes at 80% watched';
         markBtn.classList.add('bg-gray-700');
         markBtn.disabled = true;
     } else {
         markBtn.textContent = 'Mark as Complete';
         markBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-        markBtn.classList.remove('bg-gray-700');
         markBtn.disabled = false;
     }
 }
 
 function navigateLesson(direction) {
-    const allLessons = [];
-    sections.forEach(section => {
-        (section.lessons || []).forEach(lesson => allLessons.push(lesson));
-    });
-
-    const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
-    const nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-
-    if (nextIndex >= 0 && nextIndex < allLessons.length) {
-        loadLesson(allLessons[nextIndex].id);
-    }
+    const lessons = allLessons();
+    const index = lessons.findIndex(l => l.id === currentLesson.id);
+    const target = lessons[direction === 'next' ? index + 1 : index - 1];
+    if (target && !target.is_locked) loadLesson(target.id);
 }
 
 async function markLessonComplete() {
+    if (!currentLesson) return;
+    const lessonId = currentLesson.id;
     try {
-        await apiRequest(`/enrollments/lessons/${currentLesson.id}/complete/`, {
-            method: 'POST'
-        });
-
-        // Update local enrollment data
-        if (!enrollmentData.completed_lessons) {
-            enrollmentData.completed_lessons = [];
-        }
-        enrollmentData.completed_lessons.push(currentLesson.id);
-        enrollmentData.completed_lessons_count = (enrollmentData.completed_lessons_count || 0) + 1;
-        enrollmentData.progress_percentage = (enrollmentData.completed_lessons_count / enrollmentData.total_lessons_count) * 100;
-
+        await apiRequest(`/enrollments/lessons/${Number(lessonId)}/complete/`, { method: 'POST' });
         showAlert('Lesson marked as complete!', 'success');
-        renderLearningInterface();
-        loadLesson(currentLesson.id);
-        
-        // Automatically navigate to next lesson
-        setTimeout(() => {
-            const allLessons = [];
-            sections.forEach(section => {
-                (section.lessons || []).forEach(lesson => allLessons.push(lesson));
-            });
-            const currentIndex = allLessons.findIndex(l => l.id === currentLesson.id);
-            if (currentIndex < allLessons.length - 1) {
-                loadLesson(allLessons[currentIndex + 1].id);
-            }
-        }, 1000);
+        await onLessonCompleted(lessonId, true);
     } catch (error) {
         console.error('Error marking lesson complete:', error);
-        showAlert('Failed to mark lesson as complete', 'error');
+        showAlert(error.message || 'Failed to mark lesson as complete', 'error');
     }
+}
+
+async function onLessonCompleted(lessonId, advance) {
+    await refreshProgress();
+    if (!advance || !currentLesson || currentLesson.id !== lessonId) return;
+    const lessons = allLessons();
+    const next = lessons[lessons.findIndex(l => l.id === lessonId) + 1];
+    if (next && !next.is_locked) setTimeout(() => loadLesson(next.id), 800);
+}
+
+// ------------------------------------------------------------------
+// Video playback + watch-time tracking (LRN-02)
+// ------------------------------------------------------------------
+
+function renderVideoLesson(data) {
+    const contentArea = document.getElementById('lesson-content');
+    contentArea.innerHTML = `
+        <div class="max-w-4xl mx-auto">
+            <div id="video-host" class="aspect-video bg-black rounded-lg mb-4 flex items-center justify-center overflow-hidden"></div>
+            <div id="watch-progress" class="mb-6 ${data.video && data.duration_seconds > 0 ? '' : 'hidden'}">
+                <div class="flex justify-between text-sm text-gray-400 mb-1">
+                    <span>Watched</span><span id="watch-progress-label">0%</span>
+                </div>
+                <div class="w-full bg-dark-surface rounded-full h-2">
+                    <div id="watch-progress-bar" class="bg-green-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">This lesson completes automatically once you've watched 80% of it.</p>
+            </div>
+            ${data.content_text ? `
+                <div class="prose prose-invert max-w-none">
+                    <h3>Description</h3>
+                    <p class="text-gray-300 whitespace-pre-wrap">${escapeHtml(data.content_text)}</p>
+                </div>
+            ` : ''}
+            ${renderResources(data)}
+        </div>
+    `;
+
+    const host = document.getElementById('video-host');
+    const video = data.video;
+    if (!video) {
+        host.innerHTML = `
+            <div class="text-center text-white p-6">
+                <p class="text-gray-300">This video can't be played here.</p>
+                ${data.video_url ? `<a href="${safeUrl(data.video_url)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline text-sm">Open the video in a new tab</a>` : '<p class="text-sm text-gray-500 mt-2">No video has been added to this lesson yet.</p>'}
+            </div>`;
+        return;
+    }
+
+    const tracking = data.duration_seconds > 0 && !currentLesson.is_completed;
+    const tracker = tracking ? new WatchTracker(data.id, onWatchProgress) : null;
+    watchTracker = tracker;
+    const onPlaying = playing => { if (tracker) tracker.setPlaying(playing); };
+
+    if (video.provider === 'youtube') mountYouTube(host, video.id, onPlaying, tracker);
+    else if (video.provider === 'vimeo') mountVimeo(host, video.id, onPlaying, tracker);
+    else if (video.provider === 'file') mountFile(host, video.url, onPlaying);
+
+    if (data.duration_seconds > 0) {
+        apiRequest(`/enrollments/lessons/${Number(data.id)}/progress/`)
+            .then(progress => setWatchProgress(progress.progress_percentage || 0))
+            .catch(() => {});
+    }
+}
+
+function setWatchProgress(percentage) {
+    const pct = Math.max(0, Math.min(100, Math.round(Number(percentage) || 0)));
+    const bar = document.getElementById('watch-progress-bar');
+    const label = document.getElementById('watch-progress-label');
+    if (bar) bar.style.width = `${pct}%`;
+    if (label) label.textContent = `${pct}%`;
+}
+
+function onWatchProgress(result, lessonId) {
+    if (currentLesson && currentLesson.id === lessonId) setWatchProgress(result.progress_percentage);
+    if (result.completed) {
+        if (watchTracker && watchTracker.lessonId === lessonId) stopWatchTracking();
+        showAlert('Lesson completed!', 'success');
+        onLessonCompleted(lessonId, false);
+    }
+}
+
+function stopWatchTracking() {
+    if (watchTracker) {
+        watchTracker.stop();
+        watchTracker = null;
+    }
+}
+
+/**
+ * Counts seconds the video is actually playing while the page is visible
+ * (seeking ahead does not count) and reports them as bounded deltas.
+ */
+class WatchTracker {
+    constructor(lessonId, onProgress) {
+        this.lessonId = lessonId;
+        this.onProgress = onProgress;
+        this.playing = false;
+        this.pending = 0;
+        this.inflight = false;
+        this.stopped = false;
+        this.last = performance.now();
+        this.tickTimer = setInterval(() => this.tick(), 1000);
+        this.flushTimer = setInterval(() => this.flush(), WATCH_FLUSH_MS);
+        this.onVisibility = () => {
+            this.tick();
+            if (document.visibilityState === 'hidden') this.flush(true);
+        };
+        document.addEventListener('visibilitychange', this.onVisibility);
+    }
+
+    tick() {
+        const now = performance.now();
+        if (this.playing && document.visibilityState === 'visible') {
+            this.pending += Math.min((now - this.last) / 1000, 2);  // ignore long timer stalls
+        }
+        this.last = now;
+        this.pending = Math.min(this.pending, MAX_WATCH_DELTA);
+    }
+
+    setPlaying(playing) {
+        if (this.stopped) return;
+        this.tick();
+        this.playing = playing;
+        if (!playing) this.flush();
+    }
+
+    async flush(keepalive = false) {
+        this.tick();
+        const delta = Math.floor(this.pending);
+        if (delta < 1 || this.inflight) return;
+        this.inflight = true;
+        this.pending -= delta;
+        try {
+            const result = await sendWatchDelta(this.lessonId, delta, keepalive);
+            if (result && this.onProgress) this.onProgress(result, this.lessonId);
+        } catch (error) {
+            // 400 = the server judged the delta implausible: drop it. Otherwise retry later.
+            if (error.status !== 400) this.pending = Math.min(this.pending + delta, MAX_WATCH_DELTA);
+        } finally {
+            this.inflight = false;
+        }
+    }
+
+    stop() {
+        if (this.stopped) return;
+        this.flush(true);
+        this.stopped = true;
+        this.playing = false;
+        clearInterval(this.tickTimer);
+        clearInterval(this.flushTimer);
+        document.removeEventListener('visibilitychange', this.onVisibility);
+    }
+}
+
+async function sendWatchDelta(lessonId, delta, keepalive) {
+    const url = `/enrollments/lessons/${Number(lessonId)}/watch-time/`;
+    const body = JSON.stringify({ watch_time_delta: Math.min(delta, MAX_WATCH_DELTA) });
+    if (!keepalive) {
+        return apiRequest(url, { method: 'PATCH', body });
+    }
+    // keepalive lets the request finish while the page is being hidden/closed.
+    const response = await fetch(`${API_BASE}${url}`, {
+        method: 'PATCH',
+        body,
+        keepalive: true,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') || '' },
+    });
+    if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+    }
+    return response.json();
+}
+
+const scriptPromises = {};
+function loadScriptOnce(src) {
+    if (!scriptPromises[src]) {
+        scriptPromises[src] = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error(`Failed to load ${src}`));
+            document.head.appendChild(script);
+        });
+    }
+    return scriptPromises[src];
+}
+
+let youTubeApiPromise = null;
+function loadYouTubeApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+    if (!youTubeApiPromise) {
+        youTubeApiPromise = new Promise((resolve, reject) => {
+            const previous = window.onYouTubeIframeAPIReady;
+            window.onYouTubeIframeAPIReady = () => {
+                if (typeof previous === 'function') previous();
+                resolve(window.YT);
+            };
+            loadScriptOnce('https://www.youtube.com/iframe_api').catch(reject);
+        });
+    }
+    return youTubeApiPromise;
+}
+
+function playerError(host, message) {
+    host.innerHTML = `<p class="text-gray-300 p-6 text-center">${escapeHtml(message)}</p>`;
+}
+
+async function mountYouTube(host, videoId, onPlaying, tracker) {
+    host.innerHTML = '<div id="yt-player" class="w-full h-full"></div>';
+    try {
+        const YT = await loadYouTubeApi();
+        if (tracker !== watchTracker) return;  // lesson changed while loading
+        new YT.Player('yt-player', {
+            videoId: videoId,
+            width: '100%',
+            height: '100%',
+            playerVars: { rel: 0, modestbranding: 1, origin: window.location.origin },
+            events: {
+                onStateChange: event => onPlaying(event.data === YT.PlayerState.PLAYING),
+                onError: () => playerError(host, 'This YouTube video could not be played.'),
+            },
+        });
+    } catch (error) {
+        playerError(host, 'The YouTube player could not be loaded.');
+    }
+}
+
+async function mountVimeo(host, videoId, onPlaying, tracker) {
+    host.innerHTML = '<div id="vimeo-player" class="w-full h-full"></div>';
+    try {
+        await loadScriptOnce('https://player.vimeo.com/api/player.js');
+        if (tracker !== watchTracker) return;
+        const player = new window.Vimeo.Player('vimeo-player', { id: Number(videoId), responsive: true });
+        player.on('play', () => onPlaying(true));
+        player.on('pause', () => onPlaying(false));
+        player.on('ended', () => onPlaying(false));
+    } catch (error) {
+        playerError(host, 'The Vimeo player could not be loaded.');
+    }
+}
+
+function mountFile(host, url, onPlaying) {
+    host.innerHTML = `<video id="lesson-video" class="w-full h-full rounded-lg" controls preload="metadata" src="${safeUrl(url)}"></video>`;
+    const video = document.getElementById('lesson-video');
+    ['play', 'playing'].forEach(evt => video.addEventListener(evt, () => onPlaying(true)));
+    ['pause', 'ended', 'waiting', 'stalled', 'error'].forEach(evt => video.addEventListener(evt, () => onPlaying(false)));
 }
 
 // ======================================================
@@ -428,56 +671,24 @@ async function markLessonComplete() {
 let quizData = null;
 let quizAttempt = null;
 let quizAnswers = {};
+let quizTimerInterval = null;
 
 async function loadQuizInterface() {
     const contentArea = document.getElementById('lesson-content');
-    
     try {
-        // Fetch quiz data
-        const response = await apiRequest(`/assessments/quiz/lesson/${currentLesson.id}/`);
-        
-        quizData = response;
-        
+        quizData = await apiRequest(`/assessments/quiz/lesson/${Number(currentLesson.id)}/`);
         if (!quizData.questions || quizData.questions.length === 0) {
-            contentArea.innerHTML = `
-                <div class="max-w-4xl mx-auto text-center py-12">
-                    <svg class="w-20 h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <p class="text-xl font-semibold mb-2">No Questions Available</p>
-                    <p class="text-gray-400">This quiz doesn't have any questions yet</p>
-                    <p class="text-sm text-gray-500 mt-4">Contact your instructor to add questions to this quiz</p>
-                </div>
-            `;
+            renderMessage('No Questions Available', "This quiz doesn't have any questions yet.");
             return;
         }
-        
-        console.log('Quiz has', quizData.questions.length, 'questions');
-        
-        // Show quiz start screen
         renderQuizStartScreen();
-        
     } catch (error) {
         console.error('Error loading quiz:', error);
-        console.error('Error details:', error.message);
-        
-        // Check if it's a 404 (quiz doesn't exist)
-        const isNotFound = error.message && error.message.includes('404');
-        
+        const isNotFound = error.status === 404;
         contentArea.innerHTML = `
             <div class="max-w-4xl mx-auto text-center py-12">
-                <svg class="w-20 h-20 mx-auto mb-4 ${escapeHtml(isNotFound ? 'text-yellow-500' : 'text-red-500')}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
                 <p class="text-xl font-semibold mb-2">${escapeHtml(isNotFound ? 'Quiz Not Created Yet' : 'Error Loading Quiz')}</p>
                 <p class="text-gray-400 mb-4">${escapeHtml(isNotFound ? 'This lesson is set up as a quiz, but no questions have been added yet.' : (error.message || 'An error occurred while loading the quiz'))}</p>
-                ${isNotFound ? `
-                    <div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 max-w-md mx-auto mb-4">
-                        <p class="text-sm text-blue-300">
-                            <strong>For Instructors:</strong> Go to your course content management page to add quiz questions for this lesson.
-                        </p>
-                    </div>
-                ` : ''}
             </div>
         `;
     }
@@ -487,22 +698,13 @@ function renderQuizStartScreen() {
     const contentArea = document.getElementById('lesson-content');
     const questionCount = quizData.questions.length;
     const totalMarks = quizData.total_marks || quizData.questions.reduce((sum, q) => sum + (q.marks || 1), 0);
-    
+    const instructions = currentLessonData && currentLessonData.content_text;
+
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-8 border border-dark-border">
-                <div class="flex items-center space-x-3 mb-6">
-                    <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <h3 class="text-xl font-semibold">${escapeHtml(quizData.title || currentLesson.title)}</h3>
-                        <p class="text-sm text-gray-400">Test your knowledge</p>
-                    </div>
-                </div>
-                
+                <h3 class="text-xl font-semibold mb-1">${escapeHtml(quizData.title || currentLesson.title)}</h3>
+                <p class="text-sm text-gray-400 mb-6">Test your knowledge</p>
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Questions</p>
@@ -519,18 +721,13 @@ function renderQuizStartScreen() {
                         </div>
                     ` : ''}
                 </div>
-                
-                ${currentLesson.content_text ? `
+                ${instructions ? `
                     <div class="prose prose-invert mb-6">
                         <h4>Instructions</h4>
-                        <p class="text-gray-300">${escapeHtml(currentLesson.content_text)}</p>
+                        <p class="text-gray-300 whitespace-pre-wrap">${escapeHtml(instructions)}</p>
                     </div>
                 ` : ''}
-                
-                <button 
-                    onclick="startQuiz()"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors"
-                >
+                <button onclick="startQuiz()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
                     Start Quiz
                 </button>
             </div>
@@ -540,25 +737,18 @@ function renderQuizStartScreen() {
 
 async function startQuiz() {
     try {
-        // Start quiz attempt
-        const response = await apiRequest(`/assessments/quiz/${quizData.id}/start/`, {
-            method: 'POST'
-        });
-        quizAttempt = response;
+        quizAttempt = await apiRequest(`/assessments/quiz/${Number(quizData.id)}/start/`, { method: 'POST' });
         quizAnswers = {};
-        
-        // Render quiz questions
         renderQuizQuestions();
-        
     } catch (error) {
         console.error('Error starting quiz:', error);
-        showAlert('Failed to start quiz', 'error');
+        showAlert(error.message || 'Failed to start quiz', 'error');
     }
 }
 
 function renderQuizQuestions() {
     const contentArea = document.getElementById('lesson-content');
-    
+    // renderQuestion escapes API values itself; its HTML must not be escaped again.
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-6 border border-dark-border mb-6">
@@ -571,51 +761,38 @@ function renderQuizQuestions() {
                     ` : ''}
                 </div>
             </div>
-            
             <div class="space-y-6">
-                ${escapeHtml(quizData.questions.map((question, index) => renderQuestion(question, index)).join(''))}
+                ${quizData.questions.map((question, index) => renderQuestion(question, index)).join('')}
             </div>
-            
             <div class="mt-8 bg-dark-surface rounded-lg p-6 border border-dark-border">
-                <button 
-                    onclick="submitQuiz()"
-                    class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors"
-                >
+                <button onclick="submitQuiz()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
                     Submit Quiz
                 </button>
             </div>
         </div>
     `;
-    
-    // Start timer if applicable
-    if (quizData.time_limit_minutes && quizAttempt) {
-        startQuizTimer();
-    }
+    if (quizData.time_limit_minutes && quizAttempt) startQuizTimer();
 }
 
 function renderQuestion(question, index) {
+    const qid = Number(question.id);
     return `
         <div class="bg-dark-surface rounded-lg p-6 border border-dark-border">
             <div class="flex items-start space-x-3 mb-4">
                 <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-semibold">${escapeHtml(index + 1)}</span>
+                    <span class="text-white font-semibold">${Number(index) + 1}</span>
                 </div>
                 <div class="flex-1">
                     <p class="text-lg font-medium mb-1">${escapeHtml(question.question_text)}</p>
-                    <p class="text-sm text-gray-400">${escapeHtml(question.marks)} mark${escapeHtml(question.marks > 1 ? 's' : '')}</p>
+                    <p class="text-sm text-gray-400">${escapeHtml(question.marks)} mark${question.marks > 1 ? 's' : ''}</p>
                 </div>
             </div>
-            
             <div class="space-y-2 ml-11">
                 ${question.options.map(option => `
                     <label class="flex items-center p-4 bg-dark-bg hover:bg-dark-hover border border-dark-border rounded-lg cursor-pointer transition-colors">
-                        <input 
-                            type="radio" 
-                            name="question_${escapeHtml(question.id)}" 
-                            value="${escapeHtml(option.id)}"
-                            onchange="selectAnswer(${escapeHtml(question.id)}, ${escapeHtml(option.id)})"
-                            class="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                        />
+                        <input type="radio" name="question_${qid}" value="${Number(option.id)}"
+                               onchange="selectAnswer(${qid}, ${Number(option.id)})"
+                               class="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500" />
                         <span class="ml-3 text-gray-300">${escapeHtml(option.option_text)}</span>
                     </label>
                 `).join('')}
@@ -631,120 +808,71 @@ function selectAnswer(questionId, optionId) {
 function startQuizTimer() {
     const timerElement = document.getElementById('quiz-timer');
     if (!timerElement) return;
-    
+    clearInterval(quizTimerInterval);
+
+    const startTime = new Date(quizAttempt.started_at);
+    const limit = quizData.time_limit_minutes * 60;
+    quizAttempt.time_remaining_seconds = Math.max(0, limit - Math.floor((Date.now() - startTime) / 1000));
+
     const updateTimer = () => {
-        const timeRemaining = quizAttempt.time_remaining_seconds;
-        if (timeRemaining === null || timeRemaining === undefined) return;
-        
-        const minutes = Math.floor(timeRemaining / 60);
-        const seconds = timeRemaining % 60;
-        
-        timerElement.querySelector('span').textContent = 
+        const remaining = quizAttempt.time_remaining_seconds;
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        timerElement.querySelector('span').textContent =
             `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        
-        if (timeRemaining <= 0) {
-            clearInterval(timerInterval);
+        if (remaining <= 0) {
+            clearInterval(quizTimerInterval);
             showAlert('Time is up! Submitting quiz...', 'warning');
-            submitQuiz();
+            submitQuiz(true);
         } else {
             quizAttempt.time_remaining_seconds--;
         }
     };
-    
-    // Calculate initial time remaining
-    const startTime = new Date(quizAttempt.started_at);
-    const now = new Date();
-    const elapsed = Math.floor((now - startTime) / 1000);
-    const limit = quizData.time_limit_minutes * 60;
-    quizAttempt.time_remaining_seconds = Math.max(0, limit - elapsed);
-    
     updateTimer();
-    const timerInterval = setInterval(updateTimer, 1000);
+    quizTimerInterval = setInterval(updateTimer, 1000);
 }
 
-async function submitQuiz() {
+async function submitQuiz(force = false) {
     try {
-        // Confirm submission
         const answeredCount = Object.keys(quizAnswers).length;
         const totalCount = quizData.questions.length;
-        
-        if (answeredCount < totalCount) {
-            if (!confirm(`You have answered ${answeredCount} out of ${totalCount} questions. Submit anyway?`)) {
-                return;
-            }
+        if (!force && answeredCount < totalCount &&
+            !confirm(`You have answered ${answeredCount} out of ${totalCount} questions. Submit anyway?`)) {
+            return;
         }
-        
-        // Submit quiz
-        const response = await apiRequest(`/assessments/quiz/attempt/${quizAttempt.id}/submit/`, {
+        clearInterval(quizTimerInterval);
+        const result = await apiRequest(`/assessments/quiz/attempt/${Number(quizAttempt.id)}/submit/`, {
             method: 'POST',
-            body: JSON.stringify({ answers: quizAnswers })
+            body: JSON.stringify({ answers: quizAnswers }),
         });
-        
         showAlert('Quiz submitted successfully!', 'success');
-        
-        // Show results
-        renderQuizResults(response);
-        
-        // Mark lesson as complete
-        setTimeout(() => {
-            markLessonComplete();
-        }, 2000);
-        
+        renderQuizResults(result);
+        if (result.passed) {
+            setTimeout(() => markLessonComplete(), 1500);
+        }
     } catch (error) {
         console.error('Error submitting quiz:', error);
-        showAlert('Failed to submit quiz', 'error');
+        showAlert(error.message || 'Failed to submit quiz', 'error');
     }
 }
 
 function renderQuizResults(result) {
     const contentArea = document.getElementById('lesson-content');
     const totalMarks = quizData.total_marks || quizData.questions.reduce((sum, q) => sum + (q.marks || 1), 0);
-    const score = result.score || 0;
+    const score = Number(result.score) || 0;
     const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
-    const passed = percentage >= 50; // Assuming 50% pass mark
-    
+    const passed = Boolean(result.passed);  // decided by the server's passing percentage
+
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-8 border border-dark-border text-center">
-                <div class="w-20 h-20 mx-auto mb-4 ${escapeHtml(passed ? 'bg-green-600' : 'bg-red-600')} rounded-full flex items-center justify-center">
-                    ${passed ? `
-                        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                        </svg>
-                    ` : `
-                        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    `}
-                </div>
-                
-                <h3 class="text-2xl font-bold mb-2">${escapeHtml(passed ? 'Quiz Passed!' : 'Quiz Complete')}</h3>
+                <h3 class="text-2xl font-bold mb-2">${passed ? 'Quiz Passed!' : 'Quiz Not Passed'}</h3>
                 <p class="text-gray-400 mb-8">You scored ${escapeHtml(score)} out of ${escapeHtml(totalMarks)} marks</p>
-                
                 <div class="bg-dark-bg rounded-lg p-6 mb-6">
-                    <div class="text-6xl font-bold ${escapeHtml(passed ? 'text-green-400' : 'text-red-400')} mb-2">
-                        ${escapeHtml(percentage)}%
-                    </div>
+                    <div class="text-6xl font-bold ${passed ? 'text-green-400' : 'text-red-400'} mb-2">${escapeHtml(percentage)}%</div>
                     <p class="text-gray-400">Your Score</p>
                 </div>
-                
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="bg-dark-bg p-4 rounded-lg">
-                        <p class="text-sm text-gray-400 mb-1">Correct</p>
-                        <p class="text-xl font-bold text-green-400">${escapeHtml(score)}</p>
-                    </div>
-                    <div class="bg-dark-bg p-4 rounded-lg">
-                        <p class="text-sm text-gray-400 mb-1">Total</p>
-                        <p class="text-xl font-bold">${escapeHtml(totalMarks)}</p>
-                    </div>
-                </div>
-                
-                <button 
-                    onclick="loadLesson(currentLesson.id)"
-                    class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                >
-                    Review Quiz
-                </button>
+                ${passed ? '' : '<p class="text-sm text-gray-400">This lesson needs a passing quiz score to be completed.</p>'}
             </div>
         </div>
     `;

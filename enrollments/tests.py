@@ -602,6 +602,9 @@ class EnrollmentAPITest(APITestCase):
         self.assertFalse(progress.is_completed)
 
     def test_manual_complete_requires_watch_threshold_for_video(self):
+        # A trackable (YouTube) video must actually be watched to 80%.
+        self.lesson1.video_url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+        self.lesson1.save(update_fields=['video_url'])
         enrollment = Enrollment.objects.create(user=self.user, course=self.course)
         LessonProgress.objects.create(
             enrollment=enrollment,
@@ -613,8 +616,16 @@ class EnrollmentAPITest(APITestCase):
         response = self.client.post(f'/api/enrollments/lessons/{self.lesson1.id}/complete/')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['code'], 'watch_threshold_not_met')
         progress = LessonProgress.objects.get(enrollment=enrollment, lesson=self.lesson1)
         self.assertFalse(progress.is_completed)
+
+    def test_manual_complete_allowed_when_video_cannot_be_tracked(self):
+        # No (or an unplayable) video link: the page can't measure watch time,
+        # so the student must be able to mark it complete instead of being stuck.
+        Enrollment.objects.create(user=self.user, course=self.course)
+        response = self.client.post(f'/api/enrollments/lessons/{self.lesson1.id}/complete/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class WishlistAPITest(APITestCase):
