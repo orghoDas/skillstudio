@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 import csv
 
@@ -587,46 +587,55 @@ class LearningProgressDashboardView(APIView):
 # 👨‍🏫 Instructor Analytics (CSV Export)
 # ===========================
 
+# Characters that make spreadsheet apps treat a cell as a formula (CSV/formula
+# injection). Lesson titles are instructor-authored, so neutralise them.
+_CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+
+
+def _csv_safe(value):
+    text = '' if value is None else str(value)
+    return "'" + text if text.startswith(_CSV_FORMULA_PREFIXES) else text
+
+
 class InstructorLessonAnalyticsCSVView(APIView):
-    """Export lesson analytics as CSV for instructors."""
+    """Export per-lesson started/completed/drop-off counts as CSV (course owner or admin).
+
+    BUG-01: this used to annotate Count('lessonprogress') (the relation is
+    `lesson_progress`, so every request raised FieldError) and divided by the
+    started count in SQL (division by zero on Postgres for unstarted lessons).
+    """
     permission_classes = [IsAuthenticated, IsInstructor]
 
     def get(self, request, course_id):
-        instructor = request.user
-        course = get_object_or_404(Course, id=course_id, instructor=instructor)
-        
-        lessons = Lesson.objects.filter(module__course=course).annotate(
-            started_count=Count('lessonprogress', distinct=True),
-            completed_count=Count(
-                'lessonprogress',
-                filter=Q(lessonprogress__is_completed=True),
-                distinct=True
+        from courses.policies import can_manage_course
+
+        course = get_object_or_404(Course, id=course_id)
+        if not can_manage_course(request.user, course):
+            return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        lessons = (
+            Lesson.objects.filter(module__course=course)
+            .annotate(
+                started_count=Count('lesson_progress', distinct=True),
+                completed_count=Count(
+                    'lesson_progress', filter=Q(lesson_progress__is_completed=True), distinct=True
+                ),
             )
-        ).annotate(
-            drop_off_count=F('started_count') - F('completed_count'),
-            drop_off_rate=ExpressionWrapper(
-                (F('drop_off_count') * 100.0) / F('started_count'),
-                output_field=FloatField()
-            )
+            .order_by('module__position', 'module__id', 'position', 'id')
         )
 
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="lesson_analytics_course_{course_id}.csv"'
+        response['Content-Disposition'] = f'attachment; filename="lesson_analytics_course_{int(course.id)}.csv"'
 
         writer = csv.writer(response)
         writer.writerow([
             'Lesson ID', 'Lesson Title', 'Started Enrollments',
             'Completed Enrollments', 'Drop-off Count', 'Drop-off Rate (%)'
         ])
-
         for lesson in lessons:
-            writer.writerow([
-                lesson.id,
-                lesson.title,
-                lesson.started_count,
-                lesson.completed_count,
-                lesson.drop_off_count,
-                round(lesson.drop_off_rate or 0, 2),
-            ])
+            started, completed = lesson.started_count, lesson.completed_count
+            drop_off = started - completed
+            rate = round(drop_off * 100.0 / started, 2) if started else 0.0
+            writer.writerow([lesson.id, _csv_safe(lesson.title), started, completed, drop_off, rate])
 
         return response

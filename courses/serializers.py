@@ -69,6 +69,17 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
             'video_url', 'duration_seconds', 'metadata', 'position', 'is_free'
         ]
 
+    def validate_module(self, value):
+        # SEC-05: on update a lesson may only move between modules of its own
+        # course (ownership was checked on that course); never into another one.
+        if (
+            self.instance is not None
+            and value is not None
+            and value.course_id != self.instance.module.course_id
+        ):
+            raise serializers.ValidationError("A lesson can't be moved to another course.")
+        return value
+
     def validate_video_url(self, value):
         # Only sources the learn page can play *and observe* are accepted, so
         # watch time can be tracked and video lessons can be completed (LRN-02).
@@ -151,11 +162,23 @@ class ModuleSerializer(serializers.ModelSerializer):
 
 
 class ModuleCreateUpdateSerializer(serializers.ModelSerializer):
+    """Create/update a module.
+
+    ``course`` is only meaningful on create; the views check that the caller
+    owns it. On update it can never change (SEC-05): ownership is checked on
+    the module's *current* course, so allowing a new course would let an
+    instructor inject their module into someone else's course.
+    """
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), required=False)
-    
+
     class Meta:
         model = Module
         fields = ['course', 'title', 'position']
+
+    def validate_course(self, value):
+        if self.instance is not None and value is not None and value.pk != self.instance.course_id:
+            raise serializers.ValidationError("A module can't be moved to another course.")
+        return value
 
 
 class CurriculumModuleSerializer(serializers.ModelSerializer):

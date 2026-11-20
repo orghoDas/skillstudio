@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *13 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01; all 2026-11-21); 54 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
+| *Resolved so far* | *17 (SEC-02, SEC-04, SEC-05, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 50 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -63,7 +63,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 5. [PAY-02](#pay-02)–[PAY-05](#pay-05) Put the payments API behind a kill switch until it is rebuilt. 🟡 Superseded by [D-01](#d-01): card route deleted, PAY-02/03 done, webhook rejects all, course fulfilment done (2026-11-21); the Stripe top-up remains.
 6. ~~[LRN-01](#lrn-01)–[LRN-03](#lrn-03) Make the learn → complete → certificate journey work.~~ ✅ Done 2026-11-21.
 7. ~~[FE-01](#fe-01) Unbreak the exam pages (a one-line fix in each of 4 files).~~ ✅ Done 2026-11-21.
-8. [SEC-04](#sec-04), [SEC-05](#sec-05) Fix the ordering injection and the cross-course content injection.
+8. ~~[SEC-04](#sec-04), [SEC-05](#sec-05) Fix the ordering injection and the cross-course content injection.~~ ✅ Done 2026-11-21.
 
 ### Decisions
 
@@ -116,8 +116,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [LRN-02](#lrn-02) | P0 | ~~Video lessons can never be completed from the UI~~ ✅ resolved 2026-11-21 |
 | [LRN-03](#lrn-03) | P0 | ~~Completing a course locks the student out of it~~ ✅ resolved 2026-11-21 |
 | [FE-01](#fe-01) | P0 | ~~All 4 exam pages crash on load (duplicate `const API_BASE`)~~ ✅ resolved 2026-11-21 |
-| [SEC-04](#sec-04) | P1 | `?ordering=` is passed raw to `order_by()` |
-| [SEC-05](#sec-05) | P1 | Instructors can move modules/lessons into other instructors' courses |
+| [SEC-04](#sec-04) | P1 | ~~`?ordering=` is passed raw to `order_by()`~~ ✅ resolved 2026-11-21 |
+| [SEC-05](#sec-05) | P1 | ~~Instructors can move modules/lessons into other instructors' courses~~ ✅ resolved 2026-11-21 |
 | [SEC-06](#sec-06) | P1 | Token endpoints return JWTs in the JSON body, undoing httpOnly cookies |
 | [SEC-07](#sec-07) | P1 | Anyone can self-register as an instructor *(carried over; mislabelled resolved)* |
 | [PAY-06](#pay-06) | P1 | ~~Instructor payout requests are not reserved or locked~~ ✅ resolved 2026-11-21 |
@@ -130,8 +130,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist — 🟡 checkout + payment history fixed 2026-11-21 |
 | [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 lesson content fixed 2026-11-21 |
 | [API-03](#api-03) | P1 | Section and lesson delete buttons return 405 |
-| [BUG-01](#bug-01) | P1 | Instructor lesson-analytics CSV export always 500s |
-| [BUG-02](#bug-02) | P1 | `InstructorCoursesView` error path raises `NameError` |
+| [BUG-01](#bug-01) | P1 | ~~Instructor lesson-analytics CSV export always 500s~~ ✅ resolved 2026-11-21 |
+| [BUG-02](#bug-02) | P1 | ~~`InstructorCoursesView` error path raises `NameError`~~ ✅ resolved 2026-11-21 |
 | [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent — 🟡 partial 2026-11-21 |
 | [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 |
 | [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production |
@@ -552,7 +552,15 @@ The serializer becomes validation only; the view calls the service.
 ## 5. P1: High
 
 <a id="sec-04"></a>
-### SEC-04: `?ordering=` is passed raw to `order_by()`
+### SEC-04: `?ordering=` is passed raw to `order_by()` — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - `CourseListView` now accepts only an allow-list: `created_at`, `published_at`, `price`, `title`, `level` (each optionally prefixed `-`), plus `popular`. Anything else falls back to `-created_at`; that includes `instructor__password`, unknown fields, and the never-implemented `rating`.
+> - Every ordering adds a stable `-id` tie-breaker for pagination.
+> - It was the only user-controlled `order_by()` in the codebase.
+> - Tests in `courses/test_security_fixes.py` confirm sensitive and unknown fields are ignored and no request 500s. They fail on the old code.
+
+*Original finding:*
 
 **Evidence:** [courses/views.py:114-122](courses/views.py#L114) does `queryset.order_by(sort_by)` with `sort_by = request.query_params.get('ordering')`. The endpoint is `AllowAny`.
 
@@ -563,7 +571,15 @@ The serializer becomes validation only; the view calls the service.
 **Fix approach:** Use an allow-list, e.g. `{'created_at','-created_at','published_at','-published_at','price','-price','title','-title','popular'}`, or DRF `OrderingFilter` with explicit `ordering_fields`. Unknown values fall back to the default.
 
 <a id="sec-05"></a>
-### SEC-05: Instructors can move modules/lessons into other instructors' courses
+### SEC-05: Instructors can move modules/lessons into other instructors' courses — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Enforced in the serializers, so it covers every view that uses them (`sections/<id>/`, `modules/<id>/update/`, `lessons/<id>/`, `lessons/<id>/update/`):
+> - `ModuleCreateUpdateSerializer` refuses to change a module's `course` on update.
+> - `LessonCreateUpdateSerializer` only lets a lesson move to a module of the **same** course.
+>
+> `ModuleCreateView` / `LessonCreateView` return 400 instead of a `KeyError` 500 when the parent is missing; ownership of the parent was already checked on create. Tests cover cross-course moves, a same-course move (still allowed), missing parents, and creating inside someone else's course. They fail on the old code.
+
+*Original finding:*
 
 **Evidence:**
 - `ModuleCreateUpdateSerializer.course` ([courses/serializers.py:136](courses/serializers.py#L136)) and `LessonCreateUpdateSerializer.module` ([courses/serializers.py:55](courses/serializers.py#L55)) are writable on **update**.
@@ -785,7 +801,18 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 **Fix approach:** Use `RetrieveUpdateDestroyAPIView` for both, with the same ownership and draft checks as the existing delete views. Then delete the redundant `…/delete/` routes or keep them as aliases.
 
 <a id="bug-01"></a>
-### BUG-01: Instructor lesson-analytics CSV export always 500s
+### BUG-01: Instructor lesson-analytics CSV export always 500s — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** `InstructorLessonAnalyticsCSVView` now:
+> - counts the correct relation (`lesson_progress`);
+> - computes the drop-off rate in Python, so an unstarted lesson is 0% instead of a SQL division by zero;
+> - prefixes cells that start with `= + - @ TAB CR` with `'` (CSV formula injection);
+> - lists lessons in study order;
+> - uses `can_manage_course`, so the owner or an admin can export and others get 404.
+>
+> A test parses the CSV, including a formula-like title and an unstarted lesson.
+
+*Original finding:*
 
 **Evidence (✔ verified):**
 - [enrollments/views.py:569](enrollments/views.py#L569): `Count('lessonprogress')` raises `FieldError` because the reverse name is `lesson_progress`.
@@ -799,7 +826,11 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 - Add a route test.
 
 <a id="bug-02"></a>
-### BUG-02: `InstructorCoursesView` error path raises `NameError`
+### BUG-02: `InstructorCoursesView` error path raises `NameError` — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** The try/except wrappers (with the un-imported `logging` that caused the `NameError`) were removed, so errors now go through DRF's normal handler. The queryset gained a stable `-id` tie-breaker. A route test covers the list.
+
+*Original finding:*
 
 **Evidence:** [courses/views.py:259](courses/views.py#L259): `list()` calls `logging.getLogger` inside `except`, but `logging` is only imported locally inside `get_queryset`. Any error becomes `NameError`.
 
@@ -1395,7 +1426,7 @@ Move aspirational features to a "Roadmap" section.
 
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
-| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
+| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ASM-01, ASM-02, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |

@@ -13,6 +13,7 @@ from courses.policies import can_view_course_catalog
 from courses.permissions import CanEditCourse
 from courses.services import validate_course_for_submission
 from courses.progression import get_next_lesson
+from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import require_active_enrollment
 
 from .models import Course, Lesson, Module, Category, Tag, LessonResource
@@ -54,6 +55,9 @@ class TagListCreateView(generics.ListCreateAPIView):
 
 
 # ===== COURSE VIEWS =====
+
+COURSE_ORDERING_FIELDS = {'created_at', 'published_at', 'price', 'title', 'level'}
+
 
 class CourseListView(generics.ListAPIView):
     """List all published courses with search and filtering"""
@@ -110,17 +114,19 @@ class CourseListView(generics.ListAPIView):
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
         
-        # Sorting
+        # Sorting. Only allow-listed fields (SEC-04): passing the raw value to
+        # order_by() let anyone sort by e.g. instructor__password (a hash
+        # side-channel) or crash the endpoint with an unknown field.
         sort_by = self.request.query_params.get('ordering', '-created_at')
         if sort_by == 'popular':
             queryset = queryset.annotate(
-                enrollment_count=Count('enrollments', filter=Q(enrollments__status='active'))
-            ).order_by('-enrollment_count')
-        elif sort_by == 'rating':
-            queryset = queryset.order_by('-created_at')
+                enrollment_count=Count('enrollments', filter=Q(enrollments__status__in=ACCESS_STATUSES))
+            ).order_by('-enrollment_count', '-id')
         else:
-            queryset = queryset.order_by(sort_by)
-        
+            if sort_by.lstrip('-') not in COURSE_ORDERING_FIELDS:
+                sort_by = '-created_at'  # includes the old, never-implemented "rating"
+            queryset = queryset.order_by(sort_by, '-id')
+
         return queryset
 
 
@@ -237,28 +243,12 @@ class InstructorCoursesView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsInstructor]
     
     def get_queryset(self):
-        import logging
-        logger = logging.getLogger(__name__)
-        try:
-            logger.debug("InstructorCoursesView.get_queryset called", extra={
-                'user': getattr(self.request, 'user', None),
-                'is_authenticated': getattr(self.request.user, 'is_authenticated', False)
-            })
-            return Course.objects.filter(instructor=self.request.user).select_related(
-                'category', 'instructor__profile'
-            ).order_by('-created_at')
-        except Exception as e:
-            logger.exception("Error building instructor courses queryset")
-            raise
-
-    def list(self, request, *args, **kwargs):
-        from rest_framework import status as _status
-        try:
-            return super().list(request, *args, **kwargs)
-        except Exception:
-            logger = logging.getLogger(__name__)
-            logger.exception("Failed to list instructor courses")
-            return Response({'error': 'Failed to load instructor courses'}, status=_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # BUG-02: the old try/except wrappers referenced an un-imported
+        # `logging` (NameError) and turned every error into a vague 500.
+        # DRF's exception handler already logs and reports real errors.
+        return Course.objects.filter(instructor=self.request.user).select_related(
+            'category', 'instructor__profile'
+        ).order_by('-created_at', '-id')
 
 
 # ===== MODULE VIEWS =====
@@ -312,7 +302,9 @@ class ModuleCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
-        course = serializer.validated_data['course']
+        course = serializer.validated_data.get('course')
+        if course is None:  # SEC-05: used to be a KeyError -> 500
+            raise ValidationError({'course': 'This field is required.'})
         
         if course.instructor != self.request.user:
             raise ValidationError("You don't have permission to add modules to this course.")
@@ -409,7 +401,9 @@ class LessonCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
-        module = serializer.validated_data['module']
+        module = serializer.validated_data.get('module')
+        if module is None:  # SEC-05: used to be a KeyError -> 500
+            raise ValidationError({'module': 'This field is required.'})
         
         if module.course.instructor != self.request.user:
             raise ValidationError("You don't have permission to add lessons.")
