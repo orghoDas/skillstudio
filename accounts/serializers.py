@@ -3,19 +3,19 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 
 from accounts.models import Profile, APIKey
+from accounts.utils import signup_role_for_email
 
 User = get_user_model()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    """Self-registration. The role is NOT chosen by the client: it is derived
+    from the email domain (accounts.utils.signup_role_for_email, Decision D-02).
+    Any ``role`` sent by the client is ignored."""
+
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
-    role = serializers.ChoiceField(
-        choices=[User.Role.STUDENT, User.Role.INSTRUCTOR],
-        required=False,
-        default=User.Role.STUDENT,
-        help_text="User role: 'student' or 'instructor'. Defaults to 'student'."
-    )
+    role = serializers.CharField(read_only=True)
 
     class Meta:
         model = User
@@ -24,32 +24,26 @@ class RegisterSerializer(serializers.ModelSerializer):
             'password': {'write_only': True},
         }
 
+    def validate_email(self, value):
+        try:
+            signup_role_for_email(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
     def validate(self, attrs):
-        # Validate passwords match
         if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError({"password": "Passwords do not match."})
-        
-        # Validate role - only allow student or instructor during registration
-        role = attrs.get('role', User.Role.STUDENT)
-        if role not in [User.Role.STUDENT, User.Role.INSTRUCTOR]:
-            raise serializers.ValidationError({
-                "role": "Only 'student' or 'instructor' roles are allowed during registration."
-            })
-        
         return attrs
 
     def create(self, validated_data):
         validated_data.pop("password2")
-        # Use provided role or default to STUDENT
-        role = validated_data.pop('role', User.Role.STUDENT)
-        user = User.objects.create_user(
+        return User.objects.create_user(
             email=validated_data["email"],
             username=validated_data.get("username"),
             password=validated_data["password"],
-            role=role
+            role=signup_role_for_email(validated_data["email"]),
         )
-
-        return user
 
 
 class AccountProfileSerializer(serializers.ModelSerializer):

@@ -172,35 +172,37 @@ class RegistrationAPITest(APITestCase):
         self.assertEqual(user.role, User.Role.STUDENT)
         self.assertEqual(response.data['user']['role'], 'student')
 
-    def test_register_as_instructor(self):
-        """Test user can register as instructor"""
-        data = {
-            'email': 'instructor@example.com',
-            'username': 'instructor',
-            'password': 'TestPass123!',
-            'password2': 'TestPass123!',
-            'role': 'instructor'
-        }
-        response = self.client.post('/api/accounts/register/', data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
-        # Verify role is instructor
-        user = User.objects.get(email='instructor@example.com')
-        self.assertEqual(user.role, User.Role.INSTRUCTOR)
-        self.assertEqual(response.data['user']['role'], 'instructor')
+    def _register(self, email, **extra):
+        data = {'email': email, 'password': 'TestPass123!', 'password2': 'TestPass123!', **extra}
+        return self.client.post('/api/accounts/register/', data)
 
-    def test_register_with_invalid_role(self):
-        """Test registration fails with admin role"""
-        data = {
-            'email': 'admin@example.com',
-            'username': 'admin',
-            'password': 'TestPass123!',
-            'password2': 'TestPass123!',
-            'role': 'admin'
-        }
-        response = self.client.post('/api/accounts/register/', data)
+    def test_register_instructor_domain_creates_instructor(self):
+        response = self._register('Teacher@Instructor.COM')  # case-insensitive
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['user']['role'], User.Role.INSTRUCTOR)
+        self.assertEqual(User.objects.get(email__iexact='teacher@instructor.com').role, User.Role.INSTRUCTOR)
+
+    def test_register_student_and_other_domains_create_students(self):
+        for email in ('learner@student.com', 'someone@gmail.com', 'x@evil.instructor.com', 'x@instructor.com.evil.io'):
+            with self.subTest(email=email):
+                response = self._register(email)
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+                self.assertEqual(User.objects.get(email=email).role, User.Role.STUDENT)
+
+    def test_client_supplied_role_is_ignored(self):
+        for role in ('instructor', 'admin'):
+            with self.subTest(role=role):
+                email = f'{role}-wannabe@gmail.com'
+                response = self._register(email, role=role)
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                user = User.objects.get(email=email)
+                self.assertEqual((user.role, user.is_staff), (User.Role.STUDENT, False))
+
+    def test_admin_domain_cannot_self_register(self):
+        response = self._register('boss@admin.com')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('role', response.data)
+        self.assertIn('email', response.data)
+        self.assertFalse(User.objects.filter(email='boss@admin.com').exists())
 
     def test_register_with_mismatched_passwords(self):
         """Test registration fails with mismatched passwords"""
@@ -228,8 +230,21 @@ class AuthenticationAPITest(APITestCase):
         }
         response = self.client.post('/api/accounts/token/', data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Cookie mode (browsers): tokens only in httpOnly cookies, never in the body.
+        self.assertNotIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
+        self.assertIn('access_token', response.cookies)
+
+    def test_obtain_token_in_body_for_api_clients(self):
+        response = self.client.post('/api/accounts/token/', {
+            'email': 'test@example.com', 'password': 'testpass123', 'token_in_body': True,
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
+        # Token mode creates no ambient (cookie) credential.
+        self.assertNotIn('access_token', response.cookies)
+        self.assertNotIn('refresh_token', response.cookies)
 
 
 class ProfileAPITest(APITestCase):
@@ -362,7 +377,7 @@ class PasswordManagementTest(APITestCase):
         """After a password change, previously issued refresh tokens stop working."""
         token_resp = self.client.post(
             '/api/accounts/token/',
-            {'email': 'test@example.com', 'password': 'oldpass123'},
+            {'email': 'test@example.com', 'password': 'oldpass123', 'token_in_body': True},
         )
         refresh = token_resp.data['refresh']
 
@@ -379,7 +394,7 @@ class PasswordManagementTest(APITestCase):
         """Logout blacklists the supplied refresh token so it can't be reused."""
         token_resp = self.client.post(
             '/api/accounts/token/',
-            {'email': 'test@example.com', 'password': 'oldpass123'},
+            {'email': 'test@example.com', 'password': 'oldpass123', 'token_in_body': True},
         )
         refresh = token_resp.data['refresh']
 
@@ -528,28 +543,29 @@ class CookieJWTAuthTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data['email'], 'cookie@example.com')
 
-    def test_cookie_mutation_without_csrf_is_forbidden(self):
-        # A CSRF-enforcing client (browser-like) must be rejected without a token.
+    def _strict_login(self):
+        """Browser-like client: CSRF enforced, logs in with a valid CSRF token."""
         strict = APIClient(enforce_csrf_checks=True)
-        strict.post(
+        strict.get('/')  # sets the csrftoken cookie
+        csrf = strict.cookies['csrftoken'].value
+        resp = strict.post(
             '/api/accounts/token/',
             {'email': 'cookie@example.com', 'password': 'pw123456'},
-            format='json',
+            format='json', HTTP_X_CSRFTOKEN=csrf,
         )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        return strict, csrf
+
+    def test_cookie_mutation_without_csrf_is_forbidden(self):
+        # A CSRF-enforcing client (browser-like) must be rejected without a token.
+        strict, _ = self._strict_login()
         # Any cookie-authenticated mutation works; the student wallet top-up
         # used here before was removed (AUDIT_REPORT.md SEC-01).
         resp = strict.patch('/api/accounts/me/', {'username': 'cookieuser'}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_cookie_mutation_with_csrf_succeeds(self):
-        strict = APIClient(enforce_csrf_checks=True)
-        strict.post(
-            '/api/accounts/token/',
-            {'email': 'cookie@example.com', 'password': 'pw123456'},
-            format='json',
-        )
-        strict.get('/')  # sets the csrftoken cookie
-        csrf = strict.cookies['csrftoken'].value
+        strict, csrf = self._strict_login()
         resp = strict.patch(
             '/api/accounts/me/', {'username': 'cookieuser'}, format='json', HTTP_X_CSRFTOKEN=csrf
         )
@@ -572,6 +588,50 @@ class CookieJWTAuthTests(APITestCase):
         self.assertEqual(out.status_code, status.HTTP_205_RESET_CONTENT)
         self.assertEqual(out.cookies['access_token'].value, '')
         self.assertEqual(out.cookies['refresh_token'].value, '')
+
+    # ----- SEC-06 -----------------------------------------------------------
+
+    def test_login_without_csrf_is_rejected_in_cookie_mode(self):
+        """Login CSRF: a cross-site form can't log the victim into another account."""
+        strict = APIClient(enforce_csrf_checks=True)
+        strict.get('/')
+        resp = strict.post('/api/accounts/token/',
+                           {'email': 'cookie@example.com', 'password': 'pw123456'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('access_token', resp.cookies)
+
+    def test_token_mode_login_needs_no_csrf_and_sets_no_cookies(self):
+        strict = APIClient(enforce_csrf_checks=True)
+        resp = strict.post('/api/accounts/token/', {
+            'email': 'cookie@example.com', 'password': 'pw123456', 'token_in_body': True,
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('access', resp.data)
+        self.assertNotIn('access_token', resp.cookies)
+
+    def test_cookie_refresh_never_returns_tokens_in_body(self):
+        """XSS can trigger a cookie refresh but must not be able to read new tokens."""
+        strict, csrf = self._strict_login()
+        resp = strict.post('/api/accounts/token/refresh/', {}, format='json', HTTP_X_CSRFTOKEN=csrf)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertNotIn('access', resp.data)
+        self.assertNotIn('refresh', resp.data)
+        self.assertIn('access_token', resp.cookies)
+
+    def test_cookie_refresh_without_csrf_is_rejected(self):
+        strict, _ = self._strict_login()
+        resp = strict.post('/api/accounts/token/refresh/', {}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_body_refresh_returns_tokens_and_sets_no_cookies(self):
+        login = self.client.post('/api/accounts/token/', {
+            'email': 'cookie@example.com', 'password': 'pw123456', 'token_in_body': True,
+        }, format='json')
+        api = APIClient(enforce_csrf_checks=True)  # fresh client, no cookies
+        resp = api.post('/api/accounts/token/refresh/', {'refresh': login.data['refresh']}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('access', resp.data)
+        self.assertNotIn('access_token', resp.cookies)
 
 
 class PageGatingTests(TestCase):

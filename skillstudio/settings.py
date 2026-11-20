@@ -28,6 +28,18 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+# Signup roles are decided by the email domain (Decision D-02, SEC-07):
+#   @instructor.com -> instructor, @student.com -> student, anything else -> student.
+# Admin accounts can never be created by signing up (emails are not verified,
+# so anyone could type an @admin.com address); create them with
+# `manage.py createsuperuser` or promote an existing user.
+SIGNUP_ROLE_BY_EMAIL_DOMAIN = {
+    "student.com": "student",
+    "instructor.com": "instructor",
+}
+SIGNUP_DEFAULT_ROLE = "student"
+SIGNUP_FORBIDDEN_EMAIL_DOMAINS = {"admin.com"}
+
 # JWTs are delivered to browsers as httpOnly cookies (not readable by JS), so
 # XSS cannot exfiltrate them. API clients may still use the Authorization header.
 JWT_AUTH_COOKIE = "access_token"

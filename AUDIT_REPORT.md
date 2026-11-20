@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *17 (SEC-02, SEC-04, SEC-05, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 50 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
+| *Resolved so far* | *19 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 48 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -98,6 +98,24 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [PAY-08](#pay-08) | Refunds of course purchases credit the wallet. Refunding a top-up itself to a card is out of scope for the demo. |
 | [PAY-06](#pay-06) / [PAY-07](#pay-07) | Unchanged in substance (payouts are internal). PAY-07's "where do earnings live" becomes: **in the instructor wallet ledger**. |
 
+<a id="d-02"></a>
+#### D-02 (2026-11-21): Signup role comes from the email domain
+
+**Decision (owner).** The client no longer picks a role at signup. It is derived from the email address, matching the domain exactly and case-insensitively:
+
+| Email domain | Account created |
+|---|---|
+| `@instructor.com` | instructor |
+| `@student.com` | student |
+| any other domain (e.g. `@gmail.com`, `@evil.instructor.com`) | student |
+| `@admin.com` | **refused** |
+
+**Admins are never created by signing up.** Emails aren't verified, so anyone could type an `@admin.com` address. Admins come from `manage.py createsuperuser` or an existing admin's promotion.
+
+**Where it lives:** `settings.SIGNUP_ROLE_BY_EMAIL_DOMAIN`, `SIGNUP_DEFAULT_ROLE` and `SIGNUP_FORBIDDEN_EMAIL_DOMAINS`, applied by `accounts.utils.signup_role_for_email`.
+
+**Accepted trade-off:** because emails aren't verified, anyone who types an `@instructor.com` address becomes an instructor. That's mitigated by courses still needing admin review before they're published.
+
 ---
 
 ## 3. Findings index
@@ -118,8 +136,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [FE-01](#fe-01) | P0 | ~~All 4 exam pages crash on load (duplicate `const API_BASE`)~~ ✅ resolved 2026-11-21 |
 | [SEC-04](#sec-04) | P1 | ~~`?ordering=` is passed raw to `order_by()`~~ ✅ resolved 2026-11-21 |
 | [SEC-05](#sec-05) | P1 | ~~Instructors can move modules/lessons into other instructors' courses~~ ✅ resolved 2026-11-21 |
-| [SEC-06](#sec-06) | P1 | Token endpoints return JWTs in the JSON body, undoing httpOnly cookies |
-| [SEC-07](#sec-07) | P1 | Anyone can self-register as an instructor *(carried over; mislabelled resolved)* |
+| [SEC-06](#sec-06) | P1 | ~~Token endpoints return JWTs in the JSON body, undoing httpOnly cookies~~ ✅ resolved 2026-11-21 |
+| [SEC-07](#sec-07) | P1 | ~~Anyone can self-register as an instructor~~ ✅ resolved 2026-11-21 (role from email domain, D-02) |
 | [PAY-06](#pay-06) | P1 | ~~Instructor payout requests are not reserved or locked~~ ✅ resolved 2026-11-21 |
 | [PAY-07](#pay-07) | P1 | ~~Two payout systems, two fee rates, and earnings counted twice~~ ✅ resolved 2026-11-21 (payouts on the wallet ledger) |
 | [PAY-08](#pay-08) | P1 | ~~Refunds can exceed the payment and have no financial effect~~ ✅ resolved 2026-11-21 (refunds to wallet) |
@@ -593,7 +611,23 @@ The serializer becomes validation only; the view calls the service.
 - Return 400 if the parent is missing.
 
 <a id="sec-06"></a>
-### SEC-06: Token endpoints return JWTs in the JSON body, undoing httpOnly cookies
+### SEC-06: Token endpoints return JWTs in the JSON body, undoing httpOnly cookies — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** [accounts/custom_token.py](accounts/custom_token.py) now has two explicit modes.
+>
+> **Cookie mode (the default, browsers):**
+> - Login and refresh are **CSRF-checked**, which closes login CSRF.
+> - JWTs are set only as httpOnly cookies, and the body contains **no tokens** (`{"detail": "Logged in."}` / `"Token refreshed."`). Injected JS can trigger a refresh but can't read a token.
+>
+> **Token mode (header-based API clients):**
+> - Login with `{"token_in_body": true}`, or refresh by sending `{"refresh": …}` in the body. Tokens are returned in the body and **no cookies are set**, so no ambient credential exists and CSRF doesn't apply.
+> - Login still needs the password; refresh needs a refresh token the client already holds.
+>
+> The login page already sent `X-CSRFToken` and never read body tokens, so the browser flow is unchanged. There are 7 new tests, covering login CSRF, the cookie-refresh body, refresh CSRF and both token-mode paths; they fail on the old code. Existing tests that read tokens from the login body now use token mode.
+>
+> **Deliberately not done:** scoping the refresh cookie's `path` to `/api/accounts/`. The server-side page gate (`core/auth.py`) reads the refresh cookie on page loads so users with an expired 30-minute access token aren't bounced to the login page. The cookie is httpOnly, `SameSite=Lax` and `Secure` in production, so narrowing its path gains little. Revisit if the page gate changes.
+
+*Original finding:*
 
 **Evidence:** [accounts/custom_token.py:53](accounts/custom_token.py#L53): `CookieTokenRefreshView` responds with `serializer.validated_data` (`access` and `refresh`) as well as setting cookies. Login does the same.
 
@@ -606,7 +640,16 @@ The serializer becomes validation only; the view calls the service.
 - Add CSRF protection to login and refresh (they are currently CSRF-exempt, which allows login CSRF).
 
 <a id="sec-07"></a>
-### SEC-07: Anyone can self-register as an instructor *(carried over; mislabelled resolved)*
+### SEC-07: Anyone can self-register as an instructor *(carried over; mislabelled resolved)* — ✅ RESOLVED 2026-11-21 (Decision D-02)
+
+> **Resolved 2026-11-21 by owner decision [D-02](#d-02).**
+> - `RegisterSerializer` no longer accepts a client `role`; any `role` sent is ignored. The role is derived from the email domain: `@instructor.com` → instructor, everything else → student.
+> - `@admin.com` signups are refused, so no account can register as admin.
+> - The signup page's role picker was replaced by a short explanation of the rule, and the success message names the account type that was created.
+> - Tests cover each domain, case-insensitivity, look-alike domains (`@evil.instructor.com`, `@instructor.com.evil.io`), an ignored client `role`, and the admin refusal.
+> - The remaining exposure (no email verification) is the accepted trade-off recorded in D-02.
+
+*Original finding:*
 
 **Evidence:** [accounts/serializers.py:14](accounts/serializers.py#L14) accepts `role='instructor'` at signup. In the old remediation plan, P1-01 is titled after this issue, but its "Resolved" note describes email and refresh-token work. This issue was never fixed.
 
@@ -1428,9 +1471,9 @@ Move aspirational features to a "Roadmap" section.
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ASM-01, ASM-02, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
-| **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, SEC-06, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
+| **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |
 
 ### Definition of done for release
