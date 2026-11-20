@@ -47,6 +47,8 @@ class QuizDetailSerializer(serializers.ModelSerializer):
             "title",
             "time_limit_minutes",
             "total_marks",
+            "passing_percentage",
+            "max_attempts",
             "questions"
         ]
 
@@ -75,6 +77,7 @@ class ManageQuizDetailSerializer(serializers.ModelSerializer):
             "title",
             "time_limit_minutes",
             "passing_percentage",
+            "max_attempts",
             "is_published",
             "total_marks",
             "questions",
@@ -86,8 +89,10 @@ class QuizAttemptSerializer(serializers.ModelSerializer):
         model = QuizAttempt
         fields = [
             "id",
+            "attempt_number",
             "started_at",
             "completed_at",
             "score",
-            "passed"
+            "passed",
+            "is_auto_submitted",
         ]

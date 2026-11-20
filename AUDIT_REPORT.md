@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *19 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 48 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
+| *Resolved so far* | *21 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 46 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -142,8 +142,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [PAY-07](#pay-07) | P1 | ~~Two payout systems, two fee rates, and earnings counted twice~~ ✅ resolved 2026-11-21 (payouts on the wallet ledger) |
 | [PAY-08](#pay-08) | P1 | ~~Refunds can exceed the payment and have no financial effect~~ ✅ resolved 2026-11-21 (refunds to wallet) |
 | [PAY-09](#pay-09) | P1 | ~~Every active coupon code is listed to every logged-in user~~ ✅ resolved 2026-11-21 |
-| [ASM-01](#asm-01) | P1 | Unpublished or failed quizzes permanently block course completion |
-| [ASM-02](#asm-02) | P1 | Quiz time limit can be bypassed |
+| [ASM-01](#asm-01) | P1 | ~~Unpublished or failed quizzes permanently block course completion~~ ✅ resolved 2026-11-21 |
+| [ASM-02](#asm-02) | P1 | ~~Quiz time limit can be bypassed~~ ✅ resolved 2026-11-21 |
 | [EXM-01](#exm-01) | P1 | Exam questions are visible before the exam window opens |
 | [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist — 🟡 checkout + payment history fixed 2026-11-21 |
 | [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 lesson content fixed 2026-11-21 |
@@ -756,7 +756,17 @@ Document the choice either way.
 **Fix approach:** Make the list admin-only and add `Coupon.is_public` for codes meant to be advertised. Increment with `F('current_usage') + 1` and check `usage_limit` under the lock.
 
 <a id="asm-01"></a>
-### ASM-01: Unpublished or failed quizzes permanently block course completion
+### ASM-01: Unpublished or failed quizzes permanently block course completion — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **What counts:** `is_lesson_assessment_completed` only counts a quiz that is **published and has questions** (`Quiz.counts_for_completion`). Drafts and empty quizzes never block a lesson.
+> - **Retakes:** new `Quiz.max_attempts` (default **3**; null = unlimited; instructors set it through the quiz-management API, where 0 or empty means unlimited). `QuizAttempt.attempt_number` and a `(quiz, user, attempt_number)` unique constraint replace the old one-attempt-per-student constraint, and a partial unique constraint allows only **one open attempt** per student. Migration `assessments/0006` backfills existing rows as attempt 1.
+> - **Passing:** passing any attempt is enough. Starting again after passing is refused, and so is starting when no attempts are left. An open attempt is resumed; one whose time ran out is graded first.
+> - **Student status:** `GET /api/assessments/quiz/lesson/<id>/` returns the student's `attempt_status` (attempts used and remaining, passed, can start, last result) and returns 404 to students for unpublished quizzes.
+> - **Learn page:** shows the attempt count and a **Try again** button after a failed attempt, a "passed" state, and "No attempts left".
+> - **Tests:** `assessments/test_quiz_rules.py`.
+
+*Original finding:*
 
 **Evidence:**
 - [assessments/services.py:255](assessments/services.py#L255): `is_lesson_assessment_completed` requires a passed attempt whenever `hasattr(lesson, 'quiz')`, **including unpublished quizzes**, which `start_quiz_attempt` refuses to start.
@@ -772,7 +782,16 @@ Document the choice either way.
 - Alternatively, make passing optional per quiz with `Quiz.required_to_complete`.
 
 <a id="asm-02"></a>
-### ASM-02: Quiz time limit can be bypassed
+### ASM-02: Quiz time limit can be bypassed — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** The deadline is enforced in the grading service itself (`submit_quiz_attempt`), so every route obeys it.
+> - **After the deadline:** once the time limit plus a `QUIZ_SUBMIT_GRACE_SECONDS = 10` network allowance has passed, posted answers are **ignored**. Only answers saved in time through the per-answer endpoint are graded, and the attempt is marked `is_auto_submitted`.
+> - **Saving answers:** `save_quiz_answer` refuses saves after the deadline, and the answer endpoint uses the same rule, auto-grading at that point.
+> - **One grading path:** the timer's `auto_submit_attempt` now uses the same function, and the unrouted duplicate `SubmitQuizAttemptView` was deleted.
+> - **Learn page:** saves each selected answer immediately, so a timed quiz keeps everything answered before time ran out, and explains when an attempt was auto-submitted.
+> - **Tests** cover late answers being ignored, saved answers still graded, the grace window, a late answer-save auto-submitting, and an expired open attempt graded on the next start.
+
+*Original finding:*
 
 **Evidence:**
 - [assessments/views.py:49](assessments/views.py#L49): `SubmitQuizView` (the endpoint `learn.html` uses) grades whatever is sent, with no `is_expired()` check.
@@ -1470,7 +1489,7 @@ Move aspirational features to a "Roadmap" section.
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ASM-01, ASM-02, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |

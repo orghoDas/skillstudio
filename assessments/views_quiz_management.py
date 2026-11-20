@@ -74,6 +74,16 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
             min_value=1
         )
 
+    # ASM-01: attempts allowed per student; empty/0/null = unlimited.
+    if 'max_attempts' in data:
+        max_attempts = data.get('max_attempts')
+        if max_attempts in (None, '', 0, '0'):
+            max_attempts = None
+        else:
+            max_attempts = _coerce_int(max_attempts, 'max_attempts', errors, min_value=1, max_value=100)
+    else:
+        max_attempts = quiz.max_attempts if quiz else Quiz._meta.get_field('max_attempts').default
+
     validated_questions = None
     if replacing_questions:
         questions_data = data.get('questions', [])
@@ -143,6 +153,7 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
         'title': title,
         'passing_percentage': passing_percentage,
         'time_limit_minutes': time_limit_minutes,
+        'max_attempts': max_attempts,
         'questions': validated_questions,
     }, errors
 
@@ -205,13 +216,15 @@ class ManageQuizView(APIView):
                 lesson=lesson,
                 title=validated_data['title'],
                 passing_percentage=validated_data['passing_percentage'],
-                time_limit_minutes=validated_data['time_limit_minutes']
+                time_limit_minutes=validated_data['time_limit_minutes'],
+                max_attempts=validated_data['max_attempts'],
             )
 
         # Update quiz settings
         quiz.title = validated_data['title']
         quiz.passing_percentage = validated_data['passing_percentage']
         quiz.time_limit_minutes = validated_data['time_limit_minutes']
+        quiz.max_attempts = validated_data['max_attempts']
 
         if replacing_questions:
             # Replace questions only while there is no attempt history to preserve.

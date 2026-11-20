@@ -121,6 +121,8 @@ def save_quiz_answer(attempt: QuizAttempt, question_id, option_id) -> QuizAttemp
 
     if locked_attempt.completed_at:
         raise ValidationError("Attempt already completed.")
+    if locked_attempt.is_past_submission_deadline(QUIZ_SUBMIT_GRACE_SECONDS):
+        raise ValidationError("Time is up for this attempt.")
 
     normalized_question_id, normalized_option_id = validate_quiz_answer(
         locked_attempt,
@@ -134,51 +136,100 @@ def save_quiz_answer(attempt: QuizAttempt, question_id, option_id) -> QuizAttemp
     return locked_attempt
 
 
+# Network latency allowance between the client timer hitting zero and the
+# submission reaching the server (ASM-02). Answers arriving later are ignored.
+QUIZ_SUBMIT_GRACE_SECONDS = 10
+
+
+def _next_attempt_number(quiz, user) -> int:
+    last = (
+        QuizAttempt.objects.filter(quiz=quiz, user=user)
+        .order_by("-attempt_number")
+        .values_list("attempt_number", flat=True)
+        .first()
+    )
+    return (last or 0) + 1
+
+
+def get_quiz_attempt_status(user, quiz: Quiz) -> dict:
+    """What a student may do next with a quiz (used by the quiz detail API)."""
+    attempts = QuizAttempt.objects.filter(quiz=quiz, user=user)
+    completed = attempts.filter(completed_at__isnull=False)
+    used = completed.count()
+    last = completed.order_by("-attempt_number").first()
+    has_passed = completed.filter(passed=True).exists()
+    remaining = None if quiz.max_attempts is None else max(0, quiz.max_attempts - used)
+    return {
+        "attempts_used": used,
+        "max_attempts": quiz.max_attempts,
+        "attempts_remaining": remaining,
+        "has_passed": has_passed,
+        "has_open_attempt": attempts.filter(completed_at__isnull=True).exists(),
+        "can_start": not has_passed and (remaining is None or remaining > 0),
+        "last_attempt": (
+            {"attempt_number": last.attempt_number, "score": last.score, "passed": last.passed,
+             "is_auto_submitted": last.is_auto_submitted}
+            if last else None
+        ),
+    }
+
+
 def start_quiz_attempt(user, quiz: Quiz) -> QuizAttempt:
-    """
-    Starts a quiz attempt (1 per user per quiz).
+    """Start (or resume) an attempt.
+
+    ASM-01: retakes are allowed up to ``quiz.max_attempts`` (null = unlimited).
+    An open attempt is resumed; one whose time ran out is first graded from its
+    saved answers. Starting again after passing is refused.
     """
     with transaction.atomic():
         locked_quiz = Quiz.objects.select_for_update().get(pk=quiz.pk)
         if not locked_quiz.is_published:
             raise PermissionDenied("Quiz is not published.")
 
-        attempt = (
-            QuizAttempt.objects
-            .select_for_update()
-            .filter(quiz=locked_quiz, user=user)
+        open_attempt = (
+            QuizAttempt.objects.select_for_update()
+            .filter(quiz=locked_quiz, user=user, completed_at__isnull=True)
             .first()
         )
+        if open_attempt:
+            if not open_attempt.is_past_submission_deadline(QUIZ_SUBMIT_GRACE_SECONDS):
+                return ensure_attempt_snapshot(open_attempt)
+            submit_quiz_attempt(open_attempt, None, auto_submitted=True)
 
-        if attempt:
-            if attempt.completed_at:
-                raise ValidationError("Quiz already completed.")
-            return ensure_attempt_snapshot(attempt)
+        status = get_quiz_attempt_status(user, locked_quiz)
+        if status["has_passed"]:
+            raise ValidationError("You have already passed this quiz.")
+        if not status["can_start"]:
+            raise ValidationError("You have no attempts left for this quiz.")
 
         question_snapshot = build_quiz_attempt_snapshot(locked_quiz)
-
         try:
-            return QuizAttempt.objects.create(
-                quiz=locked_quiz,
-                user=user,
-                started_at=timezone.now(),
-                question_snapshot=question_snapshot,
-                total_marks_snapshot=get_snapshot_total_marks(question_snapshot),
-            )
+            with transaction.atomic():
+                return QuizAttempt.objects.create(
+                    quiz=locked_quiz,
+                    user=user,
+                    attempt_number=_next_attempt_number(locked_quiz, user),
+                    started_at=timezone.now(),
+                    question_snapshot=question_snapshot,
+                    total_marks_snapshot=get_snapshot_total_marks(question_snapshot),
+                )
         except IntegrityError:
+            # A concurrent request created the open attempt first: resume it.
             attempt = QuizAttempt.objects.select_for_update().get(
-                quiz=locked_quiz,
-                user=user
+                quiz=locked_quiz, user=user, completed_at__isnull=True
             )
-            if attempt.completed_at:
-                raise ValidationError("Quiz already completed.")
             return ensure_attempt_snapshot(attempt)
 
+
 @transaction.atomic
-def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None) -> QuizAttempt:
+def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None, auto_submitted: bool = False) -> QuizAttempt:
     """
     Submit quiz answers and auto-grade.
     answers = {question_id: option_id}
+
+    ASM-02: if the time limit (plus a short network grace) has passed, the
+    posted ``answers`` are ignored and only answers saved in time (via the
+    per-answer endpoint) are graded; the attempt is marked auto-submitted.
     """
     attempt = (
         QuizAttempt.objects
@@ -191,6 +242,9 @@ def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None) -> Qu
         raise ValidationError("Quiz already submitted.")
 
     quiz = attempt.quiz
+    if attempt.is_past_submission_deadline(QUIZ_SUBMIT_GRACE_SECONDS):
+        answers = None
+        auto_submitted = True
     if answers is None:
         answers = attempt.answers or {}
 
@@ -222,6 +276,7 @@ def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None) -> Qu
     attempt.score = earned_marks
     attempt.passed = percentage >= quiz.passing_percentage
     attempt.completed_at = timezone.now()
+    attempt.is_auto_submitted = auto_submitted
 
     attempt.save(update_fields=[
         "answers",
@@ -229,13 +284,15 @@ def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None) -> Qu
         "total_marks_snapshot",
         "score",
         "passed",
-        "completed_at"
+        "completed_at",
+        "is_auto_submitted",
     ])
 
     return attempt
 
 
 def is_quiz_passed(user, quiz: Quiz) -> bool:
+    """Passing any attempt is enough."""
     return QuizAttempt.objects.filter(
         quiz=quiz,
         user=user,
@@ -249,14 +306,14 @@ def is_quiz_passed(user, quiz: Quiz) -> bool:
 def is_lesson_assessment_completed(user, lesson) -> bool:
     """
     Determines whether lesson assessment requirements are satisfied.
+
+    ASM-01: an unpublished quiz (which students can't even start) or a quiz
+    with no questions never blocks completion.
     """
-
-    # Quiz logic
-    if hasattr(lesson, "quiz"):
-        if not is_quiz_passed(user, lesson.quiz):
-            return False
-
-    return True
+    quiz = Quiz.objects.filter(lesson=lesson).first()
+    if quiz is None or not quiz.counts_for_completion():
+        return True
+    return is_quiz_passed(user, quiz)
 
 
 # ======================================================

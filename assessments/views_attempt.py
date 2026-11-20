@@ -4,13 +4,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-# from certificates.services import issue_certificate_if_eligible
 from enrollments.services import require_active_enrollment
 
 from .models import Quiz, QuizAttempt
-from .services import save_quiz_answer, start_quiz_attempt
+from .services import QUIZ_SUBMIT_GRACE_SECONDS, save_quiz_answer, start_quiz_attempt
 from .services_timer import auto_submit_attempt
-from .services_scoring import calculate_quiz_score
 
 
 class StartQuizAttemptView(APIView):
@@ -48,7 +46,7 @@ class SubmitQuizAnswerView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        if attempt.quiz.has_time_limit() and attempt.is_expired():
+        if attempt.is_past_submission_deadline(QUIZ_SUBMIT_GRACE_SECONDS):
             auto_submit_attempt(attempt)
             return Response(
                 {"error": "Time expired. Auto-submitted."},
@@ -75,38 +73,4 @@ class SubmitQuizAnswerView(APIView):
         return Response({
             "status": "answer_saved",
             "time_remaining_seconds": attempt.time_remaining_seconds()
-        })
-
-
-class SubmitQuizAttemptView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, attempt_id):
-        attempt = get_object_or_404(
-            QuizAttempt,
-            id=attempt_id,
-            user=request.user
-        )
-
-        if attempt.completed_at:
-            return Response({
-                "score": attempt.score,
-                "auto_submitted": attempt.is_auto_submitted
-            })
-
-        if attempt.quiz.has_time_limit() and attempt.is_expired():
-            auto_submit_attempt(attempt)
-        else:
-            calculate_quiz_score(attempt)
-
-        # certificate = issue_certificate_if_eligible(attempt)
-
-        return Response({
-            "score": attempt.score,
-            "auto_submitted": attempt.is_auto_submitted,
-            # "certificate_issued": bool(certificate),
-            # "certificate_code": (
-            #     str(certificate.certificate_code)
-            #     if certificate else None
-            # )
         })

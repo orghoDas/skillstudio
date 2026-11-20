@@ -1,19 +1,13 @@
-from django.utils import timezone
-
 from .models import QuizAttempt
-from .services_scoring import calculate_quiz_score
+from .services import submit_quiz_attempt
 
 
 def auto_submit_attempt(attempt):
+    """Grade an attempt whose time ran out from its saved answers (ASM-02).
+
+    Uses the single grading path (submit_quiz_attempt), which marks the
+    attempt as auto-submitted and ignores anything posted after the deadline.
+    """
     if attempt.completed_at:
         return attempt
-
-    calculate_quiz_score(attempt)
-    attempt.is_auto_submitted = True
-    attempt.completed_at = timezone.now()
-    attempt.save(update_fields=[
-        "is_auto_submitted",
-        "completed_at"
-    ])
-
-    return attempt
+    return submit_quiz_attempt(attempt, None, auto_submitted=True)

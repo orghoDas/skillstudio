@@ -20,9 +20,16 @@ class Quiz(models.Model):
     time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
     passing_percentage = models.PositiveIntegerField(default=50)
     is_published = models.BooleanField(default=True)
+    # ASM-01: how many graded attempts a student gets; null = unlimited.
+    # Passing once is enough; a student who passed can't start again.
+    max_attempts = models.PositiveIntegerField(default=3, null=True, blank=True)
 
     def has_time_limit(self):
         return bool(self.time_limit_minutes)
+
+    def counts_for_completion(self):
+        """Only a published quiz with questions can gate lesson completion (ASM-01)."""
+        return self.is_published and self.questions.exists()
 
 # PostgreSQL equivalent:
 # CREATE TABLE IF NOT EXISTS assessments_quiz (
@@ -59,12 +66,20 @@ class QuizAttempt(models.Model):
     passed = models.BooleanField(default=False)
 
     is_auto_submitted = models.BooleanField(default=False)
+    attempt_number = models.PositiveIntegerField(default=1)
 
     class Meta:
         constraints = [
+            # ASM-01: retakes are allowed (Quiz.max_attempts), numbered per user...
+            models.UniqueConstraint(
+                fields=["quiz", "user", "attempt_number"],
+                name="uniq_quiz_attempt_number_per_user",
+            ),
+            # ...but a student can only have one attempt in progress at a time.
             models.UniqueConstraint(
                 fields=["quiz", "user"],
-                name="uniq_quiz_attempt_per_user",
+                condition=models.Q(completed_at__isnull=True),
+                name="uniq_open_quiz_attempt_per_user",
             ),
         ]
         indexes = [
@@ -83,6 +98,13 @@ class QuizAttempt(models.Model):
     def is_expired(self):
         remaining = self.time_remaining_seconds()
         return remaining == 0
+
+    def is_past_submission_deadline(self, grace_seconds=0):
+        """True once the time limit (plus a small network grace) has passed (ASM-02)."""
+        if not self.quiz.time_limit_minutes:
+            return False
+        elapsed = (timezone.now() - self.started_at).total_seconds()
+        return elapsed > self.quiz.time_limit_minutes * 60 + grace_seconds
 
 # PostgreSQL equivalent for attempts:
 # CREATE TABLE IF NOT EXISTS assessments_quizattempt (

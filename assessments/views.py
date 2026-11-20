@@ -12,7 +12,9 @@ from .serializers import (
     QuizDetailSerializer,
     QuizAttemptSerializer,
 )
+from courses.policies import can_manage_course
 from .services import (
+    get_quiz_attempt_status,
     start_quiz_attempt,
     submit_quiz_attempt,
 )
@@ -27,8 +29,16 @@ class QuizDetailView(APIView):
 
     def get(self, request, lesson_id):
         quiz = get_object_or_404(Quiz, lesson_id=lesson_id)
-        require_active_enrollment(request.user, quiz.lesson.module.course)
-        return Response(QuizDetailSerializer(quiz).data)
+        course = quiz.lesson.module.course
+        require_active_enrollment(request.user, course)
+        if not quiz.is_published and not can_manage_course(request.user, course):
+            # Students can't start an unpublished quiz, so don't show it (ASM-01).
+            return Response({"error": "Quiz not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = QuizDetailSerializer(quiz).data
+        # The student's retake status (ASM-01): attempts used/remaining, passed, last result.
+        data["attempt_status"] = get_quiz_attempt_status(request.user, quiz)
+        return Response(data)
 
 
 class StartQuizView(APIView):

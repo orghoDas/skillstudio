@@ -474,11 +474,9 @@ class QuizAPITest(APITestCase):
             1
         )
 
-    def test_quiz_start_routes_reject_retakes_after_completion(self):
+    def test_quiz_start_routes_refuse_after_passing(self):
         attempt = QuizAttempt.objects.create(
-            quiz=self.quiz,
-            user=self.student,
-            completed_at=timezone.now()
+            quiz=self.quiz, user=self.student, completed_at=timezone.now(), passed=True
         )
 
         canonical_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
@@ -486,12 +484,20 @@ class QuizAPITest(APITestCase):
 
         self.assertEqual(canonical_response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(alternate_response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(canonical_response.data['error'], 'Quiz already completed.')
-        self.assertEqual(alternate_response.data['error'], 'Quiz already completed.')
+        self.assertEqual(canonical_response.data['error'], 'You have already passed this quiz.')
         self.assertEqual(
             list(QuizAttempt.objects.filter(quiz=self.quiz, user=self.student)),
             [attempt]
         )
+
+    def test_quiz_start_allows_retake_after_failing(self):
+        """ASM-01: a failed attempt no longer locks the student out forever."""
+        QuizAttempt.objects.create(quiz=self.quiz, user=self.student, completed_at=timezone.now(), passed=False)
+
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['attempt_number'], 2)
 
     def test_quiz_question_analytics_uses_current_option_schema(self):
         QuizAttempt.objects.create(

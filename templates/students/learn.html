@@ -687,11 +687,22 @@ async function loadQuizInterface() {
         const isNotFound = error.status === 404;
         contentArea.innerHTML = `
             <div class="max-w-4xl mx-auto text-center py-12">
-                <p class="text-xl font-semibold mb-2">${escapeHtml(isNotFound ? 'Quiz Not Created Yet' : 'Error Loading Quiz')}</p>
-                <p class="text-gray-400 mb-4">${escapeHtml(isNotFound ? 'This lesson is set up as a quiz, but no questions have been added yet.' : (error.message || 'An error occurred while loading the quiz'))}</p>
+                <p class="text-xl font-semibold mb-2">${escapeHtml(isNotFound ? 'Quiz Not Available Yet' : 'Error Loading Quiz')}</p>
+                <p class="text-gray-400 mb-4">${escapeHtml(isNotFound ? "This lesson's quiz hasn't been published yet." : (error.message || 'An error occurred while loading the quiz'))}</p>
             </div>
         `;
     }
+}
+
+function attemptStatus() {
+    return (quizData && quizData.attempt_status) || {};
+}
+
+function attemptsLabel(status) {
+    if (status.max_attempts === null || status.max_attempts === undefined) {
+        return `${Number(status.attempts_used || 0)} used • unlimited attempts`;
+    }
+    return `${Number(status.attempts_used || 0)} of ${Number(status.max_attempts)} used`;
 }
 
 function renderQuizStartScreen() {
@@ -699,12 +710,37 @@ function renderQuizStartScreen() {
     const questionCount = quizData.questions.length;
     const totalMarks = quizData.total_marks || quizData.questions.reduce((sum, q) => sum + (q.marks || 1), 0);
     const instructions = currentLessonData && currentLessonData.content_text;
+    const status = attemptStatus();
+    const last = status.last_attempt;
+
+    let action;
+    if (status.has_passed) {
+        action = `
+            <div class="bg-green-900/30 border border-green-500 rounded-lg p-4 text-center">
+                <p class="text-green-400 font-semibold">✓ You passed this quiz</p>
+                ${currentLesson.is_completed ? '' : `
+                    <button onclick="markLessonComplete()" class="mt-3 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold">
+                        Complete this lesson
+                    </button>`}
+            </div>`;
+    } else if (!status.can_start && !status.has_open_attempt) {
+        action = `
+            <div class="bg-red-900/30 border border-red-500 rounded-lg p-4 text-center">
+                <p class="text-red-400 font-semibold">No attempts left</p>
+                <p class="text-sm text-gray-400 mt-1">Contact your instructor if you need another attempt.</p>
+            </div>`;
+    } else {
+        action = `
+            <button onclick="startQuiz()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
+                ${status.has_open_attempt ? 'Resume Quiz' : (status.attempts_used ? 'Try Again' : 'Start Quiz')}
+            </button>`;
+    }
 
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-8 border border-dark-border">
                 <h3 class="text-xl font-semibold mb-1">${escapeHtml(quizData.title || currentLesson.title)}</h3>
-                <p class="text-sm text-gray-400 mb-6">Test your knowledge</p>
+                <p class="text-sm text-gray-400 mb-6">Pass mark: ${escapeHtml(quizData.passing_percentage ?? 50)}% • Attempts: ${escapeHtml(attemptsLabel(status))}</p>
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-dark-bg p-4 rounded-lg">
                         <p class="text-sm text-gray-400 mb-1">Questions</p>
@@ -718,18 +754,20 @@ function renderQuizStartScreen() {
                         <div class="bg-dark-bg p-4 rounded-lg col-span-2">
                             <p class="text-sm text-gray-400 mb-1">Time Limit</p>
                             <p class="text-2xl font-bold">${escapeHtml(quizData.time_limit_minutes)} minutes</p>
+                            <p class="text-xs text-gray-500 mt-1">Answers are saved as you go. When time runs out, only saved answers are graded.</p>
                         </div>
                     ` : ''}
                 </div>
+                ${last ? `
+                    <p class="text-sm text-gray-400 mb-4">Last attempt (#${Number(last.attempt_number)}): ${escapeHtml(last.score ?? 0)} marks — ${last.passed ? 'passed' : 'not passed'}${last.is_auto_submitted ? ' (time ran out)' : ''}</p>
+                ` : ''}
                 ${instructions ? `
                     <div class="prose prose-invert mb-6">
                         <h4>Instructions</h4>
                         <p class="text-gray-300 whitespace-pre-wrap">${escapeHtml(instructions)}</p>
                     </div>
                 ` : ''}
-                <button onclick="startQuiz()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
-                    Start Quiz
-                </button>
+                ${action}
             </div>
         </div>
     `;
@@ -743,6 +781,7 @@ async function startQuiz() {
     } catch (error) {
         console.error('Error starting quiz:', error);
         showAlert(error.message || 'Failed to start quiz', 'error');
+        loadQuizInterface();  // refresh attempt status (e.g. already passed / no attempts left)
     }
 }
 
@@ -753,7 +792,7 @@ function renderQuizQuestions() {
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-6 border border-dark-border mb-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-semibold">${escapeHtml(quizData.title || 'Quiz')}</h3>
+                    <h3 class="text-xl font-semibold">${escapeHtml(quizData.title || 'Quiz')} — attempt ${Number(quizAttempt.attempt_number || 1)}</h3>
                     ${quizData.time_limit_minutes ? `
                         <div id="quiz-timer" class="bg-blue-900/30 border border-blue-500 px-4 py-2 rounded-lg">
                             <span class="text-blue-400 font-mono font-bold">--:--</span>
@@ -765,7 +804,7 @@ function renderQuizQuestions() {
                 ${quizData.questions.map((question, index) => renderQuestion(question, index)).join('')}
             </div>
             <div class="mt-8 bg-dark-surface rounded-lg p-6 border border-dark-border">
-                <button onclick="submitQuiz()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
+                <button id="submit-quiz-btn" onclick="submitQuiz()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
                     Submit Quiz
                 </button>
             </div>
@@ -803,6 +842,19 @@ function renderQuestion(question, index) {
 
 function selectAnswer(questionId, optionId) {
     quizAnswers[questionId] = optionId;
+    // Save each answer immediately (ASM-02): if time runs out, the server grades
+    // exactly what was saved in time and ignores anything posted later.
+    if (!quizAttempt) return;
+    apiRequest(`/assessments/quiz/attempt/${Number(quizAttempt.id)}/answer/submit/`, {
+        method: 'POST',
+        body: JSON.stringify({ question_id: questionId, option_id: optionId }),
+    }).catch(error => {
+        if (error.status === 409) {
+            clearInterval(quizTimerInterval);
+            showAlert('Time is up — your saved answers were submitted.', 'warning');
+            showQuizOutcome(null);
+        }
+    });
 }
 
 function startQuizTimer() {
@@ -841,38 +893,68 @@ async function submitQuiz(force = false) {
             return;
         }
         clearInterval(quizTimerInterval);
+        const btn = document.getElementById('submit-quiz-btn');
+        if (btn) btn.disabled = true;
         const result = await apiRequest(`/assessments/quiz/attempt/${Number(quizAttempt.id)}/submit/`, {
             method: 'POST',
             body: JSON.stringify({ answers: quizAnswers }),
         });
-        showAlert('Quiz submitted successfully!', 'success');
-        renderQuizResults(result);
-        if (result.passed) {
-            setTimeout(() => markLessonComplete(), 1500);
-        }
+        showAlert('Quiz submitted!', 'success');
+        await showQuizOutcome(result);
     } catch (error) {
         console.error('Error submitting quiz:', error);
+        // Already graded (e.g. auto-submitted when time ran out): show the outcome.
+        if (error.status === 400 && /already submitted/i.test(error.message || '')) {
+            await showQuizOutcome(null);
+            return;
+        }
         showAlert(error.message || 'Failed to submit quiz', 'error');
+        const btn = document.getElementById('submit-quiz-btn');
+        if (btn) btn.disabled = false;
     }
 }
 
-function renderQuizResults(result) {
+/** Refresh attempt status from the server, then show the result. */
+async function showQuizOutcome(result) {
+    try {
+        quizData = await apiRequest(`/assessments/quiz/lesson/${Number(currentLesson.id)}/`);
+    } catch (error) {
+        console.error('Error refreshing quiz status:', error);
+    }
+    const status = attemptStatus();
+    const outcome = result || status.last_attempt || {};
+    renderQuizResults(outcome, status);
+    if (outcome.passed) {
+        setTimeout(() => markLessonComplete(), 1500);
+    }
+}
+
+function renderQuizResults(result, status) {
     const contentArea = document.getElementById('lesson-content');
     const totalMarks = quizData.total_marks || quizData.questions.reduce((sum, q) => sum + (q.marks || 1), 0);
     const score = Number(result.score) || 0;
     const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
     const passed = Boolean(result.passed);  // decided by the server's passing percentage
+    const canRetry = !passed && status.can_start;
 
     contentArea.innerHTML = `
         <div class="max-w-4xl mx-auto">
             <div class="bg-dark-surface rounded-lg p-8 border border-dark-border text-center">
                 <h3 class="text-2xl font-bold mb-2">${passed ? 'Quiz Passed!' : 'Quiz Not Passed'}</h3>
-                <p class="text-gray-400 mb-8">You scored ${escapeHtml(score)} out of ${escapeHtml(totalMarks)} marks</p>
-                <div class="bg-dark-bg rounded-lg p-6 mb-6">
+                <p class="text-gray-400 mb-2">You scored ${escapeHtml(score)} out of ${escapeHtml(totalMarks)} marks</p>
+                ${result.is_auto_submitted ? '<p class="text-sm text-yellow-400 mb-4">Time ran out — only answers saved in time were graded.</p>' : ''}
+                <div class="bg-dark-bg rounded-lg p-6 my-6">
                     <div class="text-6xl font-bold ${passed ? 'text-green-400' : 'text-red-400'} mb-2">${escapeHtml(percentage)}%</div>
-                    <p class="text-gray-400">Your Score</p>
+                    <p class="text-gray-400">Pass mark: ${escapeHtml(quizData.passing_percentage ?? 50)}%</p>
                 </div>
-                ${passed ? '' : '<p class="text-sm text-gray-400">This lesson needs a passing quiz score to be completed.</p>'}
+                ${passed ? '' : `
+                    <p class="text-sm text-gray-400 mb-4">Attempts: ${escapeHtml(attemptsLabel(status))}</p>
+                    ${canRetry ? `
+                        <button onclick="startQuiz()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">
+                            Try Again
+                        </button>` : `
+                        <p class="text-sm text-red-400">No attempts left. Contact your instructor if you need another attempt.</p>`}
+                `}
             </div>
         </div>
     `;
