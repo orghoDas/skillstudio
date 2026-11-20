@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import InstructorProfile, InstructorPayout
+from .models import InstructorProfile
 
 
 @admin.register(InstructorProfile)
@@ -92,76 +92,3 @@ class InstructorProfileAdmin(admin.ModelAdmin):
             profile.verify()
         self.message_user(request, f"{queryset.count()} instructors verified.")
     verify_instructors.short_description = "Verify selected instructors"
-
-
-@admin.register(InstructorPayout)
-class InstructorPayoutAdmin(admin.ModelAdmin):
-    list_display = [
-        'instructor_link',
-        'amount_display',
-        'status_display',
-        'payment_method',
-        'created_at',
-        'processed_at',
-    ]
-    list_filter = [
-        'status',
-        'payment_method',
-        'created_at',
-        'processed_at',
-    ]
-    search_fields = [
-        'instructor__email',
-        'transaction_id',
-    ]
-    readonly_fields = [
-        'id',
-        'instructor',
-        'created_at',
-        'updated_at',
-    ]
-    fieldsets = (
-        ('Payout Information', {
-            'fields': ('id', 'instructor', 'amount', 'currency')
-        }),
-        ('Status', {
-            'fields': ('status', 'processed_at')
-        }),
-        ('Payment Details', {
-            'fields': (
-                'payment_method',
-                'payment_details',
-                'transaction_id',
-            )
-        }),
-        ('Metadata', {
-            'fields': ('notes', 'created_at', 'updated_at')
-        }),
-    )
-    date_hierarchy = 'created_at'
-    ordering = ['-created_at']
-    
-    def instructor_link(self, obj):
-        url = reverse('admin:accounts_user_change', args=[obj.instructor.id])
-        return format_html('<a href="{}">{}</a>', url, obj.instructor.email)
-    instructor_link.short_description = 'Instructor'
-    
-    def amount_display(self, obj):
-        return format_html('${:,.2f} {}', obj.amount, obj.currency)
-    amount_display.short_description = 'Amount'
-    
-    def status_display(self, obj):
-        colors = {
-            'pending': 'orange',
-            'processing': 'blue',
-            'completed': 'green',
-            'failed': 'red',
-            'cancelled': 'gray',
-        }
-        color = colors.get(obj.status, 'black')
-        return format_html(
-            '<span style="color: {}; font-weight: bold;">{}</span>',
-            color,
-            obj.get_status_display()
-        )
-    status_display.short_description = 'Status'

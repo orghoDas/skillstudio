@@ -8,7 +8,7 @@ from courses.models import Course
 from enrollments.models import Enrollment, LessonProgress
 from payments.models import Payment, Payout
 # from events.models import Event  # Removed - events app disabled
-from .models import InstructorProfile, InstructorPayout
+from .models import InstructorProfile
 
 
 def get_course_overview(instructor):
@@ -50,15 +50,22 @@ def get_lesson_dropoff(course):
 
 
 def get_revenue_summary(instructor):
-    """Get revenue summary and payout history for instructor."""
-    earnings = (
-        Payment.objects
-        .filter(instructor=instructor, status="completed")
-        .aggregate(
-            total_earned=Sum("instructor_earnings"),
-            platform_fee=Sum("platform_fee"),
-        )
-    )
+    """Revenue summary (wallet-ledger based, PAY-07) and payout history."""
+    from payments.services import calculate_instructor_balance
+
+    balance = calculate_instructor_balance(instructor)
+    fees = Payment.objects.filter(
+        instructor=instructor,
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+        status__in=("completed", "partially_refunded"),
+    ).aggregate(platform_fee=Sum("platform_fee"))
+    earnings = {
+        "total_earned": balance["total_earnings"],   # net of refunds
+        "platform_fee": fees["platform_fee"] or 0,
+        "available": balance["available"],           # withdrawable wallet balance
+        "pending_payouts": balance["pending"],
+        "paid_out": balance["paid_out"],
+    }
 
     payouts = (
         Payout.objects
@@ -140,82 +147,3 @@ def update_instructor_profile(user, **kwargs):
     profile.save()
     return profile
 
-
-@transaction.atomic
-def request_payout(instructor, amount, payment_method='bank_transfer', payment_details=None):
-    """
-    Request a payout for an instructor.
-    
-    Args:
-        instructor: User instance
-        amount: Payout amount
-        payment_method: Payment method
-        payment_details: Payment method details dict
-    
-    Returns:
-        InstructorPayout instance
-    
-    Raises:
-        ValidationError: If amount invalid or insufficient balance
-    """
-    if amount <= 0:
-        raise ValidationError("Payout amount must be greater than zero.")
-    
-    # Check available balance
-    earnings = Payment.objects.filter(
-        instructor=instructor,
-        status='completed'
-    ).aggregate(
-        total=Sum('instructor_earnings')
-    )['total'] or Decimal('0.00')
-    
-    paid_out = InstructorPayout.objects.filter(
-        instructor=instructor,
-        status__in=['completed', 'processing']
-    ).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0.00')
-    
-    available = earnings - paid_out
-    
-    if amount > available:
-        raise ValidationError(f"Insufficient balance. Available: ${available}")
-    
-    payout = InstructorPayout.objects.create(
-        instructor=instructor,
-        amount=amount,
-        payment_method=payment_method,
-        payment_details=payment_details or {}
-    )
-    
-    return payout
-
-
-@transaction.atomic
-def complete_payout(payout_id, transaction_id, admin_user):
-    """
-    Complete a payout (admin only).
-    
-    Args:
-        payout_id: Payout UUID
-        transaction_id: Transaction ID from payment processor
-        admin_user: Admin user completing the payout
-    
-    Returns:
-        Updated InstructorPayout instance
-    
-    Raises:
-        ValidationError: If payout not found
-        PermissionDenied: If user is not staff
-    """
-    if not admin_user.is_staff:
-        raise PermissionDenied("Only staff can complete payouts.")
-    
-    try:
-        payout = InstructorPayout.objects.get(id=payout_id)
-    except InstructorPayout.DoesNotExist:
-        raise ValidationError("Payout not found.")
-    
-    payout.complete(transaction_id)
-    
-    return payout

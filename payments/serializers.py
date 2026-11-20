@@ -56,13 +56,13 @@ class PayoutSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'instructor', 'instructor_email', 'instructor_name',
             'amount', 'currency', 'payment_count',
-            'status', 'payout_method', 'account_details',
+            'status', 'wallet_debited', 'payout_method', 'account_details',
             'transaction_id', 'provider_details',
             'failure_reason', 'admin_notes',
             'processed_at', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'transaction_id', 'provider_details',
+            'id', 'transaction_id', 'provider_details', 'wallet_debited',
             'processed_at', 'created_at', 'updated_at', 'payment_count'
         ]
     
@@ -109,27 +109,31 @@ class RefundSerializer(serializers.ModelSerializer):
             'requested_by', 'requested_by_email',
             'processed_by', 'processed_by_email',
             'amount', 'refund_type', 'reason', 'status',
+            'instructor_debit', 'platform_absorbed',
             'admin_notes', 'rejection_reason',
             'provider_refund_id',
             'requested_at', 'processed_at', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'processed_by', 'status', 'admin_notes', 'rejection_reason',
+            'instructor_debit', 'platform_absorbed', 'refund_type',
             'provider_refund_id', 'requested_at', 'processed_at',
             'created_at', 'updated_at'
         ]
 
 
 class RefundRequestSerializer(serializers.Serializer):
-    """Serializer for requesting refunds"""
-    
+    """Request a refund of a course purchase.
+
+    ``amount`` is optional and defaults to everything still refundable; the
+    full/partial type is derived server-side.
+    """
+
     payment_id = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
-    reason = serializers.CharField(max_length=1000)
-    refund_type = serializers.ChoiceField(
-        choices=Refund.REFUND_TYPE_CHOICES,
-        default='full'
+    amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'), required=False, allow_null=True
     )
+    reason = serializers.CharField(max_length=1000)
 
 
 class CouponSerializer(serializers.ModelSerializer):

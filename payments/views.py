@@ -106,195 +106,183 @@ class PaymentCancelView(APIView):
 # ==========================================
 # REFUND VIEWS
 # ==========================================
+# Refunds of course purchases go back to the student's wallet (PAY-08).
+
+def _payments_error_response(exc):
+    """Map a PaymentsError to a safe 400/404 response (never echoes internals)."""
+    code = status.HTTP_404_NOT_FOUND if exc.code == "not_found" else status.HTTP_400_BAD_REQUEST
+    return Response({'detail': exc.message, 'code': exc.code}, status=code)
+
 
 class RefundListView(APIView):
-    """List refunds"""
+    """Admins see all refunds; everyone else sees the refunds they requested."""
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        # Users see their own refunds, admins see all
         if is_platform_admin(request.user):
             refunds = Refund.objects.all()
         else:
             refunds = Refund.objects.filter(requested_by=request.user)
-        
-        refunds = refunds.order_by('-created_at')
-        serializer = RefundSerializer(refunds, many=True)
-        return Response(serializer.data)
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            refunds = refunds.filter(status=status_filter)
+        refunds = refunds.select_related('payment', 'requested_by', 'processed_by').order_by('-created_at')
+        return Response(RefundSerializer(refunds, many=True).data)
 
 
 class RefundRequestView(APIView):
-    """Request a refund"""
+    """Request a refund of one of your course purchases (amount defaults to all refundable)."""
     permission_classes = [IsAuthenticated]
-    
-    @transaction.atomic
+
     def post(self, request):
         serializer = RefundRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
         data = serializer.validated_data
-        
         try:
-            payment = Payment.objects.get(id=data['payment_id'], user=request.user)
-            
             refund = services.request_refund(
-                payment=payment,
-                amount=data['amount'],
-                reason=data['reason'],
                 user=request.user,
-                refund_type=data.get('refund_type', 'full')
+                payment_id=data['payment_id'],
+                reason=data['reason'],
+                amount=data.get('amount'),
             )
-            
-            return Response(
-                RefundSerializer(refund).data,
-                status=status.HTTP_201_CREATED
-            )
-        
-        except Payment.DoesNotExist:
-            return Response(
-                {'error': 'Payment not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(RefundSerializer(refund).data, status=status.HTTP_201_CREATED)
 
 
 class RefundApproveView(APIView):
-    """Approve a refund (admin only)"""
+    """Approve a refund (admin only). Money moves immediately, wallet to wallet.
+
+    Body: {"notes": str, "absorb_shortfall": bool} — absorb_shortfall lets the
+    platform cover what the instructor's wallet can't.
+    """
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @transaction.atomic
+
     def post(self, request, refund_id):
+        absorb = str(request.data.get('absorb_shortfall', '')).lower() in ('1', 'true', 'yes')
         try:
-            refund = Refund.objects.get(id=refund_id)
-            notes = request.data.get('notes', '')
-            
-            refund = services.approve_refund(refund, request.user, notes)
-            
-            return Response(RefundSerializer(refund).data)
-        
-        except Refund.DoesNotExist:
-            return Response(
-                {'error': 'Refund not found'},
-                status=status.HTTP_404_NOT_FOUND
+            refund = services.approve_refund(
+                refund_id, request.user, notes=request.data.get('notes', ''), absorb_shortfall=absorb,
             )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(RefundSerializer(refund).data)
 
 
 class RefundRejectView(APIView):
     """Reject a refund (admin only)"""
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @transaction.atomic
+
     def post(self, request, refund_id):
         try:
-            refund = Refund.objects.get(id=refund_id)
-            reason = request.data.get('reason', 'No reason provided')
-            
-            refund = services.reject_refund(refund, request.user, reason)
-            
-            return Response(RefundSerializer(refund).data)
-        
-        except Refund.DoesNotExist:
-            return Response(
-                {'error': 'Refund not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            refund = services.reject_refund(refund_id, request.user, request.data.get('reason', ''))
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(RefundSerializer(refund).data)
 
 
 # ==========================================
 # PAYOUT VIEWS
 # ==========================================
+# Withdrawable money = the instructor's wallet balance. Requesting a payout
+# reserves (debits) the amount immediately (PAY-06 / PAY-07).
 
 class PayoutListView(APIView):
-    """List payouts"""
+    """Instructors see their payouts; admins see all (optional ?status=)."""
     permission_classes = [IsAuthenticated, IsInstructor]
-    
+
     def get(self, request):
-        payouts = Payout.objects.filter(instructor=request.user).order_by('-created_at')
-        serializer = PayoutSerializer(payouts, many=True)
-        return Response(serializer.data)
+        if is_platform_admin(request.user):
+            payouts = Payout.objects.all()
+        else:
+            payouts = Payout.objects.filter(instructor=request.user)
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            payouts = payouts.filter(status=status_filter)
+        payouts = payouts.select_related('instructor', 'instructor__profile').order_by('-created_at')
+        return Response(PayoutSerializer(payouts, many=True).data)
 
 
 class PayoutRequestView(APIView):
-    """Request a payout"""
+    """Request a payout from your wallet balance (amount defaults to all of it)."""
     permission_classes = [IsAuthenticated, IsInstructor]
-    
-    @transaction.atomic
+
     def post(self, request):
         serializer = PayoutRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
         data = serializer.validated_data
-        
         try:
             payout = services.create_payout(
                 instructor=request.user,
                 amount=data.get('amount'),
                 payout_method=data.get('payout_method', 'stripe_connect'),
-                account_details=data.get('account_details')
+                account_details=data.get('account_details'),
             )
-            
-            return Response(
-                PayoutSerializer(payout).data,
-                status=status.HTTP_201_CREATED
-            )
-        
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(PayoutSerializer(payout).data, status=status.HTTP_201_CREATED)
 
 
 class PayoutBalanceView(APIView):
     """Get instructor balance"""
     permission_classes = [IsAuthenticated, IsInstructor]
-    
+
     def get(self, request):
         balance = services.calculate_instructor_balance(request.user)
         serializer = InstructorBalanceSerializer(balance)
         return Response(serializer.data)
 
 
-class PayoutApproveView(APIView):
-    """Approve a payout (admin only)"""
-    permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @transaction.atomic
+class PayoutCancelView(APIView):
+    """Instructor cancels their own pending payout; the amount returns to the wallet."""
+    permission_classes = [IsAuthenticated, IsInstructor]
+
     def post(self, request, payout_id):
         try:
-            payout = Payout.objects.get(id=payout_id)
-            notes = request.data.get('notes', '')
-            
-            payout = services.approve_payout(payout, request.user, notes)
-            
-            return Response(PayoutSerializer(payout).data)
-        
-        except Payout.DoesNotExist:
-            return Response(
-                {'error': 'Payout not found'},
-                status=status.HTTP_404_NOT_FOUND
+            payout = services.cancel_payout(payout_id, request.user)
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(PayoutSerializer(payout).data)
+
+
+class PayoutApproveView(APIView):
+    """Approve a payout (admin only): pending -> processing."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request, payout_id):
+        try:
+            payout = services.approve_payout(payout_id, request.user, request.data.get('notes', ''))
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(PayoutSerializer(payout).data)
+
+
+class PayoutCompleteView(APIView):
+    """Mark a payout as sent (admin only): processing -> paid. Body: {"transaction_id"}."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request, payout_id):
+        try:
+            payout = services.complete_payout(
+                payout_id, request.data.get('transaction_id', ''), admin_user=request.user,
             )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(PayoutSerializer(payout).data)
+
+
+class PayoutRejectView(APIView):
+    """Reject a payout (admin only); the reserved amount returns to the wallet."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request, payout_id):
+        try:
+            payout = services.reject_payout(payout_id, request.user, request.data.get('reason', ''))
+        except services.PaymentsError as exc:
+            return _payments_error_response(exc)
+        return Response(PayoutSerializer(payout).data)
 
 
 # ==========================================

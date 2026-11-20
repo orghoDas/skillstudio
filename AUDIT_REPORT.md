@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *6 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-09, ENR-01; all 2026-11-21); 61 open, of which SEC-01, SEC-03, PAY-04, PAY-05, PAY-07, API-01, TEST-01 are partially done* |
+| *Resolved so far* | *9 (SEC-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01; all 2026-11-21); 58 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, TEST-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -120,9 +120,9 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [SEC-05](#sec-05) | P1 | Instructors can move modules/lessons into other instructors' courses |
 | [SEC-06](#sec-06) | P1 | Token endpoints return JWTs in the JSON body, undoing httpOnly cookies |
 | [SEC-07](#sec-07) | P1 | Anyone can self-register as an instructor *(carried over; mislabelled resolved)* |
-| [PAY-06](#pay-06) | P1 | Instructor payout requests are not reserved or locked |
-| [PAY-07](#pay-07) | P1 | Two payout systems, two fee rates, and earnings counted twice — 🟡 single fee rate done 2026-11-21 |
-| [PAY-08](#pay-08) | P1 | Refunds can exceed the payment and have no financial effect *(re-scoped by D-01: refund to wallet)* |
+| [PAY-06](#pay-06) | P1 | ~~Instructor payout requests are not reserved or locked~~ ✅ resolved 2026-11-21 |
+| [PAY-07](#pay-07) | P1 | ~~Two payout systems, two fee rates, and earnings counted twice~~ ✅ resolved 2026-11-21 (payouts on the wallet ledger) |
+| [PAY-08](#pay-08) | P1 | ~~Refunds can exceed the payment and have no financial effect~~ ✅ resolved 2026-11-21 (refunds to wallet) |
 | [PAY-09](#pay-09) | P1 | ~~Every active coupon code is listed to every logged-in user~~ ✅ resolved 2026-11-21 |
 | [ASM-01](#asm-01) | P1 | Unpublished or failed quizzes permanently block course completion |
 | [ASM-02](#asm-02) | P1 | Quiz time limit can be bypassed |
@@ -556,7 +556,15 @@ The serializer becomes validation only; the view calls the service.
 Document the choice either way.
 
 <a id="pay-06"></a>
-### PAY-06: Instructor payout requests are not reserved or locked
+### PAY-06: Instructor payout requests are not reserved or locked — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** `payments.services.create_payout` (alias `request_payout`) locks the instructor's wallet, validates the amount as a `Decimal` (minimum $10.00; it defaults to the whole balance), and **debits (reserves) it immediately** (`Payout.wallet_debited=True`).
+> - Pending requests can therefore never add up to more than the wallet, and the same money can't be requested twice.
+> - Rejected, failed or cancelled payouts credit the amount back.
+> - All state changes lock the payout row and enforce `pending → processing → paid` (or `→ cancelled/failed`).
+> - Bad input returns 400 `{detail, code}` instead of a 500.
+
+*Original finding:*
 
 **Evidence:** [instructors/services.py:161-191](instructors/services.py#L161)
 - `request_payout` computes `available = earnings − (completed + processing)`, so **pending** requests are not subtracted.
@@ -571,12 +579,20 @@ Document the choice either way.
 - Fold this into the single payout model from [PAY-07](#pay-07).
 
 <a id="pay-07"></a>
-### PAY-07: Two payout systems, two fee rates, and earnings counted twice — 🟡 FEE UNIFIED 2026-11-21
+### PAY-07: Two payout systems, two fee rates, and earnings counted twice — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21.**
+> **Resolved 2026-11-21 (payouts on the wallet ledger).**
+> - **The instructor wallet is the single source of truth** for withdrawable money. `calculate_instructor_balance` reports `available` = wallet balance, `pending` = reserved open payouts, `paid_out`, and `total_earnings` net of refunds. `Payment.instructor_earnings` is now only an immutable reporting snapshot, so earnings can't be withdrawn twice (covered by a test).
+> - **One payout model:** `instructors.InstructorPayout`, its routes (`/api/instructors/payouts/…`), services, serializers, admin and tests were removed. Migration `instructors/0003` first **copies every legacy row into `payments.Payout`** (`completed → paid`) with `wallet_debited=False`. Approving or completing such a legacy payout reserves the money from the wallet first, and refuses if the wallet can't cover it.
+> - **Full admin lifecycle** under `/api/payments/payouts/<id>/`: `approve/`, `complete/` (needs `transaction_id`), and `reject/` (returns funds). Instructors can `cancel/` their own pending request. Admins can list all payouts (`?status=`).
+> - **Instructors can read their own wallet:** `GET /api/students/wallet/` and its transactions are no longer student-only.
+> - **Dashboard:** the instructor dashboard revenue comes from the same ledger (adds `available`, `pending_payouts`, `paid_out`).
+> - **Reconciliation:** `python manage.py reconcile_payout_ledger` (dry run unless `--apply`) debits legacy *paid* payouts that never left the wallet, which is the money the old system counted twice. It skips and reports any instructor whose wallet can't cover it. **Run it once after deploying.**
+> - **No admin bypass:** the Payout and Refund admin forms now show money and state fields as read-only.
+> - The deprecated `Payout.payments` M2M is kept only for history.
 > - There is now **one fee rate**, `settings.PLATFORM_FEE_RATE` (env-overridable, default `0.10`, which keeps the rate users actually experienced). It's applied through `payments.services.split_platform_fee`; the unused `0.20` constant is gone.
 > - Revenue stats (`get_payment_stats`, `AdminCourseStatsView`) count only `course_purchase` payments, so top-ups aren't revenue.
-> - **Still open:** the two payout models, and the double-count between the instructor wallet and `Payment.instructor_earnings`. Per D-01, earnings should live in the **instructor wallet ledger** and payouts should debit it.
+> - *(Earlier progress the same day: one fee rate, `settings.PLATFORM_FEE_RATE` (default `0.10`), applied via `split_platform_fee`; revenue stats count only `course_purchase` payments.)*
 
 *Original finding:*
 
@@ -595,9 +611,16 @@ Document the choice either way.
 4. Add a reconciliation management command: Σ purchases − Σ fees − Σ payouts − Σ refunds = Σ balances.
 
 <a id="pay-08"></a>
-### PAY-08: Refunds can exceed the payment and have no financial effect *(carried over, expanded)* — open (re-scoped by D-01)
+### PAY-08: Refunds can exceed the payment and have no financial effect *(carried over, expanded)* — ✅ RESOLVED 2026-11-21 (re-scoped by D-01)
 
-> *Re-scoped 2026-11-21:* refunds apply to `course_purchase` payments and **credit the student's wallet**, debiting the instructor's wallet share. Refunding a Stripe top-up back to a card is out of scope for the demo. Not started yet.
+> **Resolved 2026-11-21.** Refunds apply to `course_purchase` payments and move money **wallet to wallet**.
+> - **Requesting** (`request_refund`, from the student): locks the payment. Only one open request per payment is allowed. `amount` defaults to everything still refundable, and **cumulative refunds can never exceed the payment**. Top-ups and other users' payments are refused.
+> - **Approving** (`approve_refund`, admin): credits the student's wallet and debits the instructor's **pro-rata share**. That share is cent-exact overall: the final refund takes back exactly what remains, so there's no rounding drift. It records `instructor_debit` on the refund and sets the payment to `partially_refunded` or `refunded`.
+> - **Full refund revokes access:** the enrollment is canceled. Re-buying then charges again. Certificate revocation is still CRT-01.
+> - **Instructor already paid out:** if their wallet can't cover the share, approval is refused (`instructor_balance_insufficient`) unless the admin passes `absorb_shortfall=true`. In that case the platform covers the rest, recorded as `platform_absorbed`.
+> - **Rejecting** moves no money.
+> - **Removed:** the webhook-only `process_refund`. Views return `{detail, code}` and no longer echo Python errors.
+> - Refunding a Stripe top-up back to a card stays out of scope for the demo.
 
 *Original finding:*
 
@@ -1312,7 +1335,7 @@ Move aspirational features to a "Roadmap" section.
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, FE-01, SEC-04, SEC-05, BUG-01, BUG-02, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | LRN-01, LRN-02, LRN-03, ASM-01, ASM-02, EXM-01, EXM-03, API-02, API-03, CRS-01, ENR-03, TEST-02 (contract test first) | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → PAY-07 🟡 → PAY-06 → PAY-08 → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, SEC-07, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, SEC-06, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |

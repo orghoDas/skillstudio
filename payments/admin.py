@@ -64,9 +64,14 @@ class PayoutAdmin(admin.ModelAdmin):
         'id', 'instructor_email', 'amount_display', 'status_display',
         'payout_method', 'created_at'
     ]
-    list_filter = ['status', 'payout_method', 'created_at']
+    list_filter = ['status', 'wallet_debited', 'payout_method', 'created_at']
     search_fields = ['instructor__email', 'transaction_id']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'processed_at']
+    # Money/state fields are read-only here: changing them in the admin would
+    # bypass the wallet ledger. Use the payout API (approve/complete/reject).
+    readonly_fields = [
+        'id', 'instructor', 'amount', 'status', 'wallet_debited',
+        'created_at', 'updated_at', 'processed_at',
+    ]
     date_hierarchy = 'created_at'
     filter_horizontal = ['payments']
     
@@ -101,8 +106,11 @@ class RefundAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'refund_type', 'created_at']
     search_fields = ['payment__id', 'requested_by__email', 'reason']
+    # Money/state fields are read-only: refunds move wallet money and must go
+    # through the refund API (approve/reject), not the admin form.
     readonly_fields = [
-        'id', 'payment', 'requested_by', 'requested_at',
+        'id', 'payment', 'requested_by', 'requested_at', 'amount', 'status',
+        'refund_type', 'instructor_debit', 'platform_absorbed',
         'created_at', 'updated_at', 'processed_at'
     ]
     date_hierarchy = 'created_at'

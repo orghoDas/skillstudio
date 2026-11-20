@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import InstructorProfile, InstructorPayout
+from .models import InstructorProfile
 
 User = get_user_model()
 
@@ -45,53 +45,6 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
             'verified_at',
             'created_at',
             'updated_at',
-        ]
-
-
-class InstructorPayoutSerializer(serializers.ModelSerializer):
-    """Serializer for instructor payouts."""
-    
-    instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
-    
-    class Meta:
-        model = InstructorPayout
-        fields = [
-            'id',
-            'instructor',
-            'instructor_email',
-            'amount',
-            'currency',
-            'status',
-            'payment_method',
-            'payment_details',
-            'transaction_id',
-            'processed_at',
-            'notes',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = [
-            'id',
-            'instructor',
-            'status',
-            'transaction_id',
-            'processed_at',
-            'created_at',
-            'updated_at',
-        ]
-
-
-class InstructorPayoutListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for payout lists."""
-    
-    class Meta:
-        model = InstructorPayout
-        fields = [
-            'id',
-            'amount',
-            'currency',
-            'status',
-            'created_at',
         ]
 
 

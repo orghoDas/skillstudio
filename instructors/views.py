@@ -11,11 +11,9 @@ from accounts.permissions import IsInstructor
 from courses.models import Course
 from enrollments.models import Enrollment
 from django.shortcuts import get_object_or_404
-from .models import InstructorProfile, InstructorPayout
+from .models import InstructorProfile
 from .serializers import (
     InstructorProfileSerializer,
-    InstructorPayoutSerializer,
-    InstructorPayoutListSerializer,
     InstructorDashboardSerializer,
 )
 from .services import (
@@ -25,7 +23,6 @@ from .services import (
     get_lesson_dropoff,
     get_or_create_instructor_profile,
     update_instructor_profile,
-    request_payout,
 )
 
 
@@ -92,6 +89,9 @@ class InstructorDashboardView(APIView, InstructorOnlyMixin):
             "revenue": {
                 "total_earned": earnings.get("total_earned") or 0,
                 "platform_fee": earnings.get("platform_fee") or 0,
+                "available": earnings.get("available") or 0,
+                "pending_payouts": earnings.get("pending_payouts") or 0,
+                "paid_out": earnings.get("paid_out") or 0,
             },
             "payouts": [
                 {
@@ -130,38 +130,6 @@ class InstructorProfileView(APIView):
             profile = update_instructor_profile(request.user, **request.data)
             serializer = InstructorProfileSerializer(profile)
             return Response(serializer.data)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-
-class InstructorPayoutListView(ListAPIView):
-    """List all payouts for instructor."""
-    permission_classes = [IsAuthenticated, IsInstructor]
-    serializer_class = InstructorPayoutListSerializer
-    
-    def get_queryset(self):
-        return InstructorPayout.objects.filter(
-            instructor=self.request.user
-        ).order_by('-created_at')
-
-
-class InstructorPayoutRequestView(APIView):
-    """Request a new payout."""
-    permission_classes = [IsAuthenticated, IsInstructor]
-    
-    def post(self, request):
-        try:
-            payout = request_payout(
-                instructor=request.user,
-                amount=request.data.get('amount'),
-                payment_method=request.data.get('payment_method', 'bank_transfer'),
-                payment_details=request.data.get('payment_details')
-            )
-            serializer = InstructorPayoutSerializer(payout)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
         except DjangoValidationError as e:
             return Response(
                 {"error": str(e)},

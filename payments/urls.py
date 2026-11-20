@@ -25,7 +25,10 @@ urlpatterns = [
     path('payouts/', views.PayoutListView.as_view(), name='payout-list'),
     path('payouts/request/', views.PayoutRequestView.as_view(), name='payout-request'),
     path('payouts/balance/', views.PayoutBalanceView.as_view(), name='payout-balance'),
+    path('payouts/<int:payout_id>/cancel/', views.PayoutCancelView.as_view(), name='payout-cancel'),
     path('payouts/<int:payout_id>/approve/', views.PayoutApproveView.as_view(), name='payout-approve'),
+    path('payouts/<int:payout_id>/complete/', views.PayoutCompleteView.as_view(), name='payout-complete'),
+    path('payouts/<int:payout_id>/reject/', views.PayoutRejectView.as_view(), name='payout-reject'),
     
     # Coupon endpoints
     path('coupons/', views.CouponListView.as_view(), name='coupon-list'),

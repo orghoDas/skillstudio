@@ -124,13 +124,21 @@ def record_coupon_redemption(coupon, user, discount_amount, payment=None):
 # COURSE PURCHASE (wallet)
 # ==========================================
 
-class PurchaseError(Exception):
-    """A purchase was refused for a reason the user should see."""
+class PaymentsError(Exception):
+    """A money action was refused for a reason the user should see.
+
+    ``message`` is safe to show to users; ``code`` is a stable machine-readable
+    reason. Views return them as ``{"detail": message, "code": code}``.
+    """
 
     def __init__(self, message, code):
         super().__init__(message)
         self.message = message
         self.code = code
+
+
+class PurchaseError(PaymentsError):
+    """A purchase was refused for a reason the user should see."""
 
 
 PurchaseResult = namedtuple("PurchaseResult", "enrollment outcome payment charged_amount")
@@ -192,9 +200,11 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     except ValidationError as exc:
         raise PurchaseError(exc.messages[0], "invalid_coupon")
 
+    # A fully refunded purchase no longer counts as paid (status "refunded").
     previously_paid = enrollment is not None and Payment.objects.filter(
         user=user, course=course,
-        purpose=Payment.PURPOSE_COURSE_PURCHASE, status="completed",
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+        status__in=("completed", "partially_refunded"),
     ).exists()
 
     payment = None
@@ -257,96 +267,170 @@ def get_payment_by_provider_id(provider, provider_id):
 
 
 # ==========================================
-# REFUND MANAGEMENT
+# REFUNDS (course purchases -> student wallet)
 # ==========================================
+#
+# Decision D-01 / PAY-08: a course purchase was paid from the wallet, so a
+# refund puts the money back into the student's wallet and takes the
+# instructor's pro-rata share back out of the instructor's wallet. The platform
+# fee part is simply not re-credited to anyone (it was never in a wallet).
+
+class RefundError(PaymentsError):
+    """A refund request/decision was refused for a reason the user should see."""
+
+
+REFUNDABLE_PAYMENT_STATUSES = ("completed", "partially_refunded")
+OPEN_REFUND_STATUSES = ("requested",)
+
+
+def _refunded_total(payment):
+    return payment.refunds.filter(status="processed").aggregate(t=Sum("amount"))["t"] or Decimal("0.00")
+
+
+def refundable_amount(payment) -> Decimal:
+    """How much of ``payment`` can still be refunded."""
+    if payment.status not in REFUNDABLE_PAYMENT_STATUSES:
+        return Decimal("0.00")
+    return max(Decimal("0.00"), payment.amount - _refunded_total(payment))
+
 
 @transaction.atomic
-def request_refund(payment, amount, reason, user, refund_type='full'):
-    """Create a refund request"""
-    if not payment.can_be_refunded:
-        raise ValidationError(f"Payment cannot be refunded. Status: {payment.status}")
-    
-    if amount > payment.amount:
-        raise ValidationError("Refund amount cannot exceed payment amount")
-    
-    if refund_type == 'full' and amount != payment.amount:
-        raise ValidationError("Full refund must equal payment amount")
-    
+def request_refund(user, payment_id, reason, amount=None):
+    """Student asks for (part of) a course purchase back.
+
+    ``amount`` defaults to everything still refundable. Only one open request
+    per payment at a time; cumulative refunds can never exceed the payment.
+    """
+    try:
+        payment = Payment.objects.select_for_update().get(pk=payment_id, user=user)
+    except Payment.DoesNotExist:
+        raise RefundError("Payment not found.", "not_found")
+
+    if payment.purpose != Payment.PURPOSE_COURSE_PURCHASE:
+        raise RefundError("Only course purchases can be refunded.", "not_refundable")
+    if payment.status not in REFUNDABLE_PAYMENT_STATUSES:
+        raise RefundError(f"This payment cannot be refunded (status: {payment.status}).", "not_refundable")
+    if payment.refunds.filter(status__in=OPEN_REFUND_STATUSES).exists():
+        raise RefundError("There is already an open refund request for this payment.", "refund_already_requested")
+
+    remaining = refundable_amount(payment)
+    amount = remaining if amount is None else to_money(amount)
+    if amount <= 0:
+        raise RefundError("Refund amount must be greater than zero.", "invalid_amount")
+    if amount > remaining:
+        raise RefundError(f"Refund amount cannot exceed the refundable ${remaining}.", "invalid_amount")
+
     refund = Refund.objects.create(
         payment=payment,
         requested_by=user,
         amount=amount,
         reason=reason,
-        refund_type=refund_type,
-        status='requested'
+        refund_type="full" if amount == payment.amount else "partial",
+        status="requested",
     )
-    
-    logger.info(f"Refund requested: {refund.id} for payment {payment.id}")
+    logger.info("Refund requested: refund=%s payment=%s amount=%s", refund.pk, payment.pk, amount)
     return refund
 
 
+def _instructor_share(payment, refund_amount, remaining_after):
+    """Instructor's pro-rata share of a refund, exact to the cent overall."""
+    already = payment.refunds.filter(status="processed").aggregate(t=Sum("instructor_debit"))["t"] or Decimal("0.00")
+    if remaining_after == 0:
+        # Final refund: take back exactly what is left so rounding never drifts.
+        return max(Decimal("0.00"), payment.instructor_earnings - already)
+    if payment.amount <= 0:
+        return Decimal("0.00")
+    share = to_money(refund_amount * payment.instructor_earnings / payment.amount)
+    return min(share, max(Decimal("0.00"), payment.instructor_earnings - already))
+
+
 @transaction.atomic
-def approve_refund(refund, admin_user, notes=None):
-    """Approve a refund request"""
-    if refund.status != 'requested':
-        raise ValidationError(f"Cannot approve refund with status: {refund.status}")
-    
-    refund.status = 'approved'
+def approve_refund(refund_id, admin_user, notes="", absorb_shortfall=False):
+    """Admin approves a refund: money moves immediately (wallet to wallet).
+
+    If the instructor's wallet can't cover their share (e.g. it was already
+    paid out), approval is refused unless ``absorb_shortfall`` is set, in which
+    case the instructor is debited what they have and the platform absorbs the
+    rest (recorded on the refund).
+    """
+    from enrollments.models import Enrollment
+
+    try:
+        refund = Refund.objects.select_for_update().select_related("payment").get(pk=refund_id)
+    except Refund.DoesNotExist:
+        raise RefundError("Refund not found.", "not_found")
+    if refund.status != "requested":
+        raise RefundError(f"Cannot approve a refund with status '{refund.status}'.", "invalid_state")
+
+    payment = Payment.objects.select_for_update().select_related("user", "instructor", "course").get(pk=refund.payment_id)
+    remaining = refundable_amount(payment)
+    if refund.amount > remaining:
+        raise RefundError(f"Refund exceeds the refundable ${remaining}.", "invalid_amount")
+    remaining_after = remaining - refund.amount
+
+    share = _instructor_share(payment, refund.amount, remaining_after)
+    student_wallet, instructor_wallet = _lock_wallets(payment.user, payment.instructor)
+    instructor_debit = share
+    absorbed = Decimal("0.00")
+    if instructor_wallet.balance < share:
+        if not absorb_shortfall:
+            raise RefundError(
+                f"The instructor's wallet (${instructor_wallet.balance}) can't cover their "
+                f"${share} share. Approve with absorb_shortfall to let the platform cover it.",
+                "instructor_balance_insufficient",
+            )
+        instructor_debit = instructor_wallet.balance
+        absorbed = share - instructor_debit
+
+    title = payment.course.title if payment.course else f"payment #{payment.pk}"
+    student_wallet.add_money(refund.amount, description=f"Refund #{refund.pk}: {title}")
+    if instructor_debit > 0:
+        instructor_wallet.deduct_money(instructor_debit, description=f"Refund #{refund.pk} reversal: {title}")
+
+    now = timezone.now()
+    refund.status = "processed"
     refund.processed_by = admin_user
-    refund.admin_notes = notes or ''
-    refund.save(update_fields=['status', 'processed_by', 'admin_notes', 'updated_at'])
-    
-    payment = refund.payment
-    if refund.refund_type == 'full':
-        payment.status = 'refunded'
-    else:
-        payment.status = 'partially_refunded'
-    payment.save(update_fields=['status', 'updated_at'])
-    
-    logger.info(f"Refund approved: {refund.id}")
+    refund.processed_at = now
+    refund.admin_notes = notes or ""
+    refund.instructor_debit = instructor_debit
+    refund.platform_absorbed = absorbed
+    refund.save(update_fields=[
+        "status", "processed_by", "processed_at", "admin_notes",
+        "instructor_debit", "platform_absorbed", "updated_at",
+    ])
+
+    payment.status = "refunded" if remaining_after == 0 else "partially_refunded"
+    payment.save(update_fields=["status", "updated_at"])
+
+    if remaining_after == 0 and payment.course_id:
+        # Full refund revokes access. (Certificate revocation: see CRT-01.)
+        Enrollment.objects.filter(
+            user=payment.user, course_id=payment.course_id, status__in=("active", "completed")
+        ).update(status="canceled")
+
+    logger.info(
+        "Refund processed: refund=%s payment=%s amount=%s instructor_debit=%s absorbed=%s",
+        refund.pk, payment.pk, refund.amount, instructor_debit, absorbed,
+    )
     return refund
 
 
 @transaction.atomic
-def reject_refund(refund, admin_user, reason):
-    """Reject a refund request"""
-    if refund.status != 'requested':
-        raise ValidationError(f"Cannot reject refund with status: {refund.status}")
-    
-    refund.status = 'rejected'
+def reject_refund(refund_id, admin_user, reason):
+    """Admin rejects a refund request. No money moves."""
+    try:
+        refund = Refund.objects.select_for_update().get(pk=refund_id)
+    except Refund.DoesNotExist:
+        raise RefundError("Refund not found.", "not_found")
+    if refund.status != "requested":
+        raise RefundError(f"Cannot reject a refund with status '{refund.status}'.", "invalid_state")
+
+    refund.status = "rejected"
     refund.processed_by = admin_user
-    refund.rejection_reason = reason
+    refund.rejection_reason = reason or "No reason provided"
     refund.processed_at = timezone.now()
-    refund.save(update_fields=[
-        'status', 'processed_by', 'rejection_reason',
-        'processed_at', 'updated_at'
-    ])
-    
-    logger.info(f"Refund rejected: {refund.id}")
-    return refund
-
-
-@transaction.atomic
-def process_refund(refund, provider_refund_id, admin_user=None):
-    """Mark refund as processed"""
-    refund.status = 'processed'
-    refund.provider_refund_id = provider_refund_id
-    refund.processed_at = timezone.now()
-    
-    if admin_user:
-        refund.processed_by = admin_user
-    
-    refund.save(update_fields=[
-        'status', 'provider_refund_id', 'processed_at',
-        'processed_by', 'updated_at'
-    ])
-    
-    payment = refund.payment
-    payment.platform_fee = Decimal('0.00')
-    payment.instructor_earnings = Decimal('0.00')
-    payment.save(update_fields=['platform_fee', 'instructor_earnings', 'updated_at'])
-    
-    logger.info(f"Refund processed: {refund.id}")
+    refund.save(update_fields=["status", "processed_by", "rejection_reason", "processed_at", "updated_at"])
+    logger.info("Refund rejected: %s", refund.pk)
     return refund
 
 
@@ -358,131 +442,167 @@ def get_pending_refunds():
 
 
 # ==========================================
-# PAYOUT MANAGEMENT
+# PAYOUTS (instructor wallet -> outside world)
 # ==========================================
+#
+# PAY-07 / PAY-06: the instructor's wallet is the single source of truth for
+# withdrawable money. Requesting a payout immediately debits (reserves) the
+# amount from the wallet, so the same money can't be requested twice or spent
+# elsewhere. Rejected/failed/cancelled payouts credit it back.
+# Payment.instructor_earnings is an immutable reporting snapshot only.
 
-def get_unpaid_payments_for_instructor(instructor):
-    """Get payments eligible for payout"""
-    return Payment.objects.filter(
-        instructor=instructor,
-        status='completed',
-        payouts__isnull=True,
-    ).select_related('course')
+class PayoutError(PaymentsError):
+    """A payout action was refused for a reason the user should see."""
+
+
+OPEN_PAYOUT_STATUSES = ("pending", "processing")
 
 
 def calculate_instructor_balance(instructor):
-    """Calculate instructor's current balance"""
-    total_earnings = Payment.objects.filter(
+    """Instructor money summary, all derived from the wallet ledger + payouts."""
+    from students.models import Wallet
+
+    wallet, _ = Wallet.objects.get_or_create(user=instructor)
+    payouts = Payout.objects.filter(instructor=instructor)
+    gross = Payment.objects.filter(
         instructor=instructor,
-        status='completed'
-    ).aggregate(
-        total=Sum('instructor_earnings')
-    )['total'] or Decimal('0.00')
-    
-    paid_out = Payout.objects.filter(
-        instructor=instructor,
-        status__in=['paid', 'processing']
-    ).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0.00')
-    
-    pending = Payout.objects.filter(
-        instructor=instructor,
-        status='pending'
-    ).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0.00')
-    
-    available = total_earnings - paid_out - pending
-    
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+        status__in=("completed", "partially_refunded", "refunded"),
+    ).aggregate(t=Sum("instructor_earnings"))["t"] or Decimal("0.00")
+    reversed_by_refunds = Refund.objects.filter(
+        payment__instructor=instructor, status="processed"
+    ).aggregate(t=Sum("instructor_debit"))["t"] or Decimal("0.00")
+
     return {
-        'total_earnings': total_earnings,
-        'paid_out': paid_out,
-        'pending': pending,
-        'available': available
+        "total_earnings": gross - reversed_by_refunds,
+        "paid_out": payouts.filter(status="paid").aggregate(t=Sum("amount"))["t"] or Decimal("0.00"),
+        "pending": payouts.filter(status__in=OPEN_PAYOUT_STATUSES, wallet_debited=True)
+                          .aggregate(t=Sum("amount"))["t"] or Decimal("0.00"),
+        "available": wallet.balance,
     }
 
 
+def _reserve_payout_funds(payout):
+    """Debit the payout amount from the instructor's wallet (caller holds locks)."""
+    (wallet,) = _lock_wallets(payout.instructor)
+    if wallet.balance < payout.amount:
+        raise PayoutError(
+            f"Insufficient wallet balance. Available: ${wallet.balance}", "insufficient_balance"
+        )
+    wallet.deduct_money(payout.amount, description=f"Payout #{payout.pk} (reserved)")
+    payout.wallet_debited = True
+
+
+def _release_payout_funds(payout):
+    """Credit a reserved payout amount back to the instructor's wallet."""
+    if payout.wallet_debited:
+        (wallet,) = _lock_wallets(payout.instructor)
+        wallet.add_money(payout.amount, description=f"Payout #{payout.pk} returned")
+        payout.wallet_debited = False
+
+
+def _locked_payout(payout_id):
+    try:
+        return Payout.objects.select_for_update().select_related("instructor").get(pk=payout_id)
+    except Payout.DoesNotExist:
+        raise PayoutError("Payout not found.", "not_found")
+
+
 @transaction.atomic
-def create_payout(instructor, amount=None, payout_method='stripe_connect', account_details=None):
-    """Create payout from unpaid payments"""
-    balance = calculate_instructor_balance(instructor)
-    
-    if not amount:
-        amount = balance['available']
-    
+def create_payout(instructor, amount=None, payout_method="stripe_connect", account_details=None):
+    """Instructor requests a payout; the amount is reserved from their wallet now."""
+    (wallet,) = _lock_wallets(instructor)
+    amount = wallet.balance if amount is None else to_money(amount)
     if amount < MIN_PAYOUT_AMOUNT:
-        raise ValidationError(f"Minimum payout amount is ${MIN_PAYOUT_AMOUNT}")
-    
-    if amount > balance['available']:
-        raise ValidationError(f"Insufficient balance. Available: ${balance['available']}")
-    
-    payments = get_unpaid_payments_for_instructor(instructor)
-    
-    if not payments.exists():
-        raise ValidationError("No eligible payments for payout")
-    
+        raise PayoutError(f"Minimum payout amount is ${MIN_PAYOUT_AMOUNT}.", "below_minimum")
+    if amount > wallet.balance:
+        raise PayoutError(f"Insufficient wallet balance. Available: ${wallet.balance}", "insufficient_balance")
+
     payout = Payout.objects.create(
         instructor=instructor,
         amount=amount,
         payout_method=payout_method,
         account_details=account_details or {},
-        status='pending'
+        status="pending",
     )
-    
-    total = Decimal('0.00')
-    for payment in payments:
-        if total >= amount:
-            break
-        payout.payments.add(payment)
-        total += payment.instructor_earnings
-    
-    logger.info(f"Payout created: {payout.id} for {instructor.email}")
+    _reserve_payout_funds(payout)
+    payout.save(update_fields=["wallet_debited", "updated_at"])
+    logger.info("Payout requested: payout=%s instructor=%s amount=%s", payout.pk, instructor.pk, amount)
+    return payout
+
+
+request_payout = create_payout  # clearer name for new callers
+
+
+@transaction.atomic
+def approve_payout(payout_id, admin_user=None, notes=None):
+    """Admin approves a pending payout (pending -> processing)."""
+    payout = _locked_payout(payout_id)
+    if payout.status != "pending":
+        raise PayoutError(f"Cannot approve a payout with status '{payout.status}'.", "invalid_state")
+    if not payout.wallet_debited:  # legacy request made before the wallet ledger
+        _reserve_payout_funds(payout)
+    payout.status = "processing"
+    payout.admin_notes = notes or payout.admin_notes
+    payout.save(update_fields=["status", "admin_notes", "wallet_debited", "updated_at"])
+    logger.info("Payout approved: %s", payout.pk)
     return payout
 
 
 @transaction.atomic
-def approve_payout(payout, admin_user=None, notes=None):
-    """Approve and mark payout as processing"""
-    if payout.status != 'pending':
-        raise ValidationError(f"Cannot approve payout with status: {payout.status}")
-    
-    payout.status = 'processing'
-    payout.admin_notes = notes or ''
-    payout.save(update_fields=['status', 'admin_notes', 'updated_at'])
-    
-    logger.info(f"Payout approved: {payout.id}")
-    return payout
-
-
-@transaction.atomic
-def complete_payout(payout, transaction_id, metadata=None):
-    """Mark payout as completed"""
-    payout.status = 'paid'
+def complete_payout(payout_id, transaction_id, admin_user=None, metadata=None):
+    """Admin records that the money was sent (processing -> paid)."""
+    if not transaction_id:
+        raise PayoutError("A transaction id is required.", "invalid_request")
+    payout = _locked_payout(payout_id)
+    if payout.status != "processing":
+        raise PayoutError(f"Only approved (processing) payouts can be completed, not '{payout.status}'.", "invalid_state")
+    if not payout.wallet_debited:
+        _reserve_payout_funds(payout)
+    payout.status = "paid"
     payout.transaction_id = transaction_id
     payout.processed_at = timezone.now()
-    
     if metadata:
         payout.provider_details.update(metadata)
-    
     payout.save(update_fields=[
-        'status', 'transaction_id', 'processed_at',
-        'provider_details', 'updated_at'
+        "status", "transaction_id", "processed_at", "provider_details", "wallet_debited", "updated_at",
     ])
-    
-    logger.info(f"Payout completed: {payout.id}")
+    logger.info("Payout completed: %s", payout.pk)
+    return payout
+
+
+def _close_payout(payout_id, new_status, reason, allowed_from):
+    payout = _locked_payout(payout_id)
+    if payout.status not in allowed_from:
+        raise PayoutError(f"Cannot change a payout with status '{payout.status}'.", "invalid_state")
+    _release_payout_funds(payout)
+    payout.status = new_status
+    payout.failure_reason = reason or ""
+    payout.processed_at = timezone.now()
+    payout.save(update_fields=["status", "failure_reason", "processed_at", "wallet_debited", "updated_at"])
+    logger.info("Payout %s: %s", new_status, payout.pk)
     return payout
 
 
 @transaction.atomic
-def fail_payout(payout, reason):
-    """Mark payout as failed"""
-    payout.status = 'failed'
-    payout.failure_reason = reason
-    payout.save(update_fields=['status', 'failure_reason', 'updated_at'])
-    
-    logger.warning(f"Payout failed: {payout.id}")
-    return payout
+def reject_payout(payout_id, admin_user=None, reason=""):
+    """Admin rejects a payout; the reserved amount returns to the wallet."""
+    return _close_payout(payout_id, "cancelled", reason or "Rejected by admin", OPEN_PAYOUT_STATUSES)
+
+
+@transaction.atomic
+def fail_payout(payout_id, reason):
+    """The transfer failed; the reserved amount returns to the wallet."""
+    return _close_payout(payout_id, "failed", reason, OPEN_PAYOUT_STATUSES)
+
+
+@transaction.atomic
+def cancel_payout(payout_id, instructor):
+    """Instructor withdraws their own still-pending request."""
+    payout = _locked_payout(payout_id)
+    if payout.instructor_id != instructor.pk:
+        raise PayoutError("Payout not found.", "not_found")
+    return _close_payout(payout_id, "cancelled", "Cancelled by instructor", ("pending",))
 
 
 def get_pending_payouts():
@@ -602,28 +722,34 @@ def get_payment_stats(start_date=None, end_date=None):
 
 
 def get_instructor_earnings(instructor, start_date=None, end_date=None):
-    """Get instructor earnings statistics"""
-    queryset = Payment.objects.filter(instructor=instructor, status='completed')
-    
+    """Instructor earnings: all-time wallet-ledger balance + sales in a date range.
+
+    ``total_earnings``/``paid_out``/``pending``/``available`` are all-time
+    (see calculate_instructor_balance); ``period_*`` cover start/end dates.
+    """
+    queryset = Payment.objects.filter(
+        instructor=instructor,
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+        status__in=('completed', 'partially_refunded'),
+    )
+
     if start_date:
         queryset = queryset.filter(created_at__gte=start_date)
     if end_date:
         queryset = queryset.filter(created_at__lte=end_date)
-    
+
     stats = queryset.aggregate(
-        total_earnings=Sum('instructor_earnings'),
-        total_sales=Sum('amount'),
-        total_transactions=Count('id')
+        period_earnings=Sum('instructor_earnings'),
+        period_sales=Sum('amount'),
+        period_transactions=Count('id')
     )
-    
-    balance = calculate_instructor_balance(instructor)
-    
+
     return {
+        **calculate_instructor_balance(instructor),
         **stats,
-        **balance,
         'average_transaction': (
-            stats['total_sales'] / stats['total_transactions']
-            if stats['total_transactions'] > 0 else Decimal('0.00')
+            stats['period_sales'] / stats['period_transactions']
+            if stats['period_transactions'] else Decimal('0.00')
         )
     }
 

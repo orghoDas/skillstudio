@@ -175,13 +175,13 @@ class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
             )
 
 class WalletView(APIView):
-    """Read the student's wallet.
+    """Read your own wallet (any role: instructors earn into theirs, PAY-07).
 
     There is intentionally no POST: students must not be able to credit their
     own wallet (AUDIT_REPORT.md SEC-01). Funds will only arrive through the
     Stripe test-mode top-up, credited by the verified webhook.
     """
-    permission_classes = [IsAuthenticated, IsStudent]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """Get wallet details and recent transactions."""
@@ -191,8 +191,8 @@ class WalletView(APIView):
 
 
 class WalletTransactionsView(ListAPIView):
-    """List all wallet transactions."""
-    permission_classes = [IsAuthenticated, IsStudent]
+    """List your own wallet transactions (any role)."""
+    permission_classes = [IsAuthenticated]
     serializer_class = WalletTransactionSerializer
     
     def get_queryset(self):

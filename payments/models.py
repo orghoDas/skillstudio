@@ -224,14 +224,23 @@ class Payout(models.Model):
     )
     currency = models.CharField(max_length=10, default="USD")
 
+    # DEPRECATED (PAY-07, 2026-11-21): payouts are no longer tied to individual
+    # payments. Withdrawable money is the instructor's wallet balance; a payout
+    # debits the wallet. Kept only for historical rows.
     payments = models.ManyToManyField(
-        Payment, related_name="payouts"
+        Payment, related_name="payouts", blank=True
     )
 
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="pending"
     )
-    
+
+    # True once ``amount`` has been taken out of the instructor's wallet ledger.
+    # New payouts are debited (reserved) at request time; if a payout is
+    # rejected/failed/cancelled the amount is credited back and this flips to
+    # False. Legacy rows created before the wallet ledger start as False.
+    wallet_debited = models.BooleanField(default=False)
+
     payout_method = models.CharField(
         max_length=50,
         choices=METHOD_CHOICES,
@@ -350,9 +359,16 @@ class Refund(models.Model):
     admin_notes = models.TextField(blank=True)
     rejection_reason = models.TextField(blank=True)
     
+    # How the refund was funded when it was processed (PAY-08): the student's
+    # wallet is credited ``amount``; the instructor's wallet is debited their
+    # pro-rata share; anything the instructor could not cover (only when an
+    # admin explicitly chose to absorb it) is recorded as platform_absorbed.
+    instructor_debit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    platform_absorbed = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
     # Provider tracking
     provider_refund_id = models.CharField(max_length=255, blank=True)
-    
+
     # Timestamps
     requested_at = models.DateTimeField(default=timezone.now)
     processed_at = models.DateTimeField(null=True, blank=True)
