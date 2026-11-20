@@ -1,0 +1,14 @@
+# gitleaks configuration — default rules plus a project allowlist.
+# Run locally:  gitleaks detect --source . --config .gitleaks.toml
+title = "skillstudio"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vendored virtualenvs (to be untracked, see AUDIT_REPORT.md REPO-01) and placeholder-only example files"
+paths = [
+  '''(^|/)venv/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)\.env\.example$''',
+]

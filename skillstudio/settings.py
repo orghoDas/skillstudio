@@ -51,6 +51,14 @@ if not SECRET_KEY:
         SECRET_KEY = "django-insecure-dev-only-do-not-use-in-production"
     else:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DEBUG=False")
+elif not DEBUG and (SECRET_KEY.startswith("django-insecure-") or len(SECRET_KEY) < 50):
+    # The original key was committed to git and is public; refuse placeholder,
+    # startproject-style or short keys in production. Generate a new one with:
+    #   python -c "import secrets; print(secrets.token_urlsafe(64))"
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY looks insecure (django-insecure-* or shorter than 50 "
+        "characters). Generate a fresh random key for production."
+    )
 
 ALLOWED_HOSTS = [
     'localhost',

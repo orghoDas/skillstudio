@@ -149,18 +149,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Show success message
                     showAlert('Login successful! Redirecting...', 'success', 2000);
                     
-                    // Redirect based on role
+                    // Redirect to a validated ?next= target, else the role default
                     setTimeout(() => {
-                        const redirectUrl = new URLSearchParams(window.location.search).get('next');
-                        if (redirectUrl) {
-                            window.location.href = redirectUrl;
-                        } else if (userData.role === 'instructor') {
-                            window.location.href = '/instructor/dashboard/';
-                        } else if (userData.role === 'admin') {
-                            window.location.href = '/dashboard/';
-                        } else {
-                            window.location.href = '/dashboard/';
-                        }
+                        window.location.href = postLoginDestination(userData.role);
                     }, 1000);
                 }
             } else {
@@ -186,18 +177,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Check if already logged in
-    const accessToken = localStorage.getItem('user');
-    if (accessToken) {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user.role === 'instructor') {
-            window.location.href = '/instructor/dashboard/';
-        } else if (user.role === 'admin') {
-            window.location.href = '/dashboard/';
-        } else {
-            window.location.href = '/dashboard/';
-        }
+    // Already logged in? The cached `user` in localStorage is display-only and
+    // can outlive the auth cookies, so confirm the session with the server
+    // first. Trusting it blindly caused a redirect loop (server gate sends the
+    // user here, this page sends them straight back) once the cookies expired.
+    if (localStorage.getItem('user')) {
+        fetch('/api/accounts/me/', { credentials: 'same-origin' })
+            .then(async (res) => {
+                if (!res.ok) {
+                    localStorage.removeItem('user');
+                    return;
+                }
+                const user = await res.json();
+                localStorage.setItem('user', JSON.stringify(user));
+                window.location.href = postLoginDestination(user.role);
+            })
+            .catch(() => { /* stay on the login page */ });
     }
 });
+
+/**
+ * Return `raw` only if it is a same-origin, relative path; otherwise null.
+ *
+ * `?next=` is attacker-controlled (anyone can send a crafted login link), so
+ * it must never be used as-is: `https://evil.example` / `//evil.example` would
+ * be an open redirect, and `javascript:...` would run script in our origin.
+ * The URL-parser origin comparison is the authoritative check — it also
+ * catches browser normalisation tricks such as `/\evil.example` or embedded
+ * tabs/newlines that turn into `//evil.example`.
+ */
+function safeNextPath(raw) {
+    if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) {
+        return null;
+    }
+    let url;
+    try {
+        url = new URL(raw, window.location.origin);
+    } catch (e) {
+        return null;
+    }
+    if (url.origin !== window.location.origin) {
+        return null;
+    }
+    // Never bounce back to the login page itself.
+    if (url.pathname.startsWith('/auth/login')) {
+        return null;
+    }
+    return url.pathname + url.search + url.hash;
+}
+
+function postLoginDestination(role) {
+    const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+    if (next) {
+        return next;
+    }
+    return role === 'instructor' ? '/instructor/dashboard/' : '/dashboard/';
+}
 </script>
 {% endblock %}

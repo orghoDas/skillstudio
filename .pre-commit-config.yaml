@@ -1,0 +1,14 @@
+# Install once per clone:  pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: forbid-env-files
+        name: Block committing .env files
+        entry: ".env files must not be committed — use .env.example for placeholders"
+        language: fail
+        files: '(^|/)\.env(\..+)?$'
+        exclude: '(^|/)\.env\.example$'
