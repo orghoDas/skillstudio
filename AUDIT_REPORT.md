@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *21 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02; all 2026-11-21); 46 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01 are partially done* |
+| *Resolved so far* | *22 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-03; all 2026-11-21); 2 not applicable since the project is no longer deployed (OPS-01, OPS-02; [D-03](#d-03)); 43 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01, DEP-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -116,6 +116,25 @@ The domain layering (services, policies, serializers per app) is good, and the a
 
 **Accepted trade-off:** because emails aren't verified, anyone who types an `@instructor.com` address becomes an instructor. That's mitigated by courses still needing admin review before they're published.
 
+
+<a id="d-03"></a>
+#### D-03 (2026-11-21): The project is not deployed
+
+**Decision (owner).** There are no deployments any more; SkillStudio only runs locally.
+
+**Repo-side changes:**
+- `ALLOWED_HOSTS` is now `localhost`, `127.0.0.1` and `[::1]`; the Railway domains and `RAILWAY_PUBLIC_DOMAIN` were removed.
+- The Railway notes were removed from `.env.example`.
+- The production-only servers `gunicorn` and `daphne` were dropped from `requirements.txt`.
+- The `if not DEBUG` security block stays: it's inert with `DEBUG=True` and only protects a non-debug run.
+
+**Owner action:** delete the Railway project/service, and disconnect Railway's GitHub app from the repo, so pushes stop triggering deploys. The repo holds no Railway config file, so this can only be done on Railway's side.
+
+**Effect on findings:**
+- [OPS-01](#ops-01) and [OPS-02](#ops-02) are **not applicable** (they only matter for a deployed `DEBUG=False` site).
+- [OPS-03](#ops-03) is resolved (`gunicorn` removed).
+- [OPS-04](#ops-04) drops its deploy-only items (Procfile, health and readiness checks).
+- [SEC-03](#sec-03)'s Railway secret-key step is no longer needed once the service is deleted. The Neon database password still has to be rotated.
 ---
 
 ## 3. Findings index
@@ -151,9 +170,9 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [BUG-01](#bug-01) | P1 | ~~Instructor lesson-analytics CSV export always 500s~~ ✅ resolved 2026-11-21 |
 | [BUG-02](#bug-02) | P1 | ~~`InstructorCoursesView` error path raises `NameError`~~ ✅ resolved 2026-11-21 |
 | [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent — 🟡 partial 2026-11-21 |
-| [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 |
-| [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production |
-| [OPS-03](#ops-03) | P1 | `gunicorn==21.2.0` has known request-smuggling CVEs |
+| [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 — ⏸ not applicable (not deployed) |
+| [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production — ⏸ not applicable (not deployed) |
+| [OPS-03](#ops-03) | P1 | ~~`gunicorn==21.2.0` has known request-smuggling CVEs~~ ✅ resolved 2026-11-21 (gunicorn removed) |
 | [TEST-01](#test-01) | P1 | Payments tests don't run, and tests write into the real `media/` — 🟡 payments part resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract |
 | [OPS-05](#ops-05) | P1 | Tests and scratch scripts run against the hosted database by default |
@@ -177,7 +196,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [ACC-01](#acc-01) | P2 | Account-management inconsistencies |
 | [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints |
 | [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes |
-| [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs |
+| [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs — re-scoped (deploy items dropped) |
 | [SEC-08](#sec-08) | P2 | Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope |
 | [FE-02](#fe-02) | P2 | Role-based navbar never works; debug logs and stale routes |
 | [ASM-03](#asm-03) | P2 | Quiz editing ignores course lock; error points to a non-existent feature |
@@ -187,7 +206,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [REPO-03](#repo-03) | P3 | Migration churn in `accounts` |
 | [DOC-01](#doc-01) | P3 | README advertises features that don't exist and has no setup guide |
 | [DOC-02](#doc-02) | P3 | App READMEs document a different API |
-| [DEP-01](#dep-01) | P3 | Dependencies installed but unused; no lock file |
+| [DEP-01](#dep-01) | P3 | Dependencies installed but unused; no lock file — 🟡 gunicorn/daphne removed |
 | [ASM-04](#asm-04) | P3 | Assessment model and analytics gaps |
 
 ---
@@ -285,7 +304,7 @@ Mirror the same check server-side if `next` is ever used in a Django redirect (`
 >
 > **Still required:**
 > 1. **Rotate the Neon DB password.**
-> 2. **Set a new `DJANGO_SECRET_KEY` in Railway.**
+> 2. ~~**Set a new `DJANGO_SECRET_KEY` in Railway.**~~ Not needed once the Railway service is deleted ([D-03](#d-03)); the leaked key only ever signed tokens for that deployment.
 >
 > The scrub does not invalidate already-leaked values. GitHub may also keep serving old commits by their SHA (and any forks keep the old history). If the repo is or was public, ask GitHub Support to purge cached views. Any other clone must be re-cloned; pulling into an old clone would bring the secrets back.
 
@@ -301,8 +320,8 @@ Mirror the same check server-side if `next` is ever used in a Django redirect (`
 > - **Verified:** `manage.py check` is clean locally and under `DEBUG=False` with a strong key. The full suite is unchanged from baseline (226 tests; only the known `payments.tests` import error, [TEST-01](#test-01)).
 >
 > **Still required (outside the repo, owner action):**
-> 1. **Rotate the Neon DB password** (Neon console → role → reset password). Update `DATABASE_URL` in your local `.env` and in Railway's variables. Until this is done, the leaked password is valid.
-> 2. **Set a new production `DJANGO_SECRET_KEY` in Railway** (`python -c "import secrets; print(secrets.token_urlsafe(64))"`) and redeploy. This logs everyone out (all JWTs are re-signed).
+> 1. **Rotate the Neon DB password** (Neon console → role → reset password). Update `DATABASE_URL` in your local `.env`. Until this is done, the leaked password is valid.
+> 2. ~~**Set a new production `DJANGO_SECRET_KEY` in Railway** and redeploy.~~ Superseded by [D-03](#d-03): no deployment.
 > 3. ~~**Commit the staged `.env` removal** together with the new files.~~ ✅ Done by the owner (`git: secrets removed`).
 > 4. ~~**Scrub history.**~~ ✅ Done 2026-11-21; see the note above. *Original plan kept for reference:* This is destructive and needs a force-push, so it was not run. Rotation (steps 1–2) is what actually fixes the exposure; the scrub is hygiene. The leaks are:
 >    - `.env` in commits `0365a9c` and `c423c29`
@@ -922,7 +941,11 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 - Add a policy test matrix: role × course status × enrollment status.
 
 <a id="ops-01"></a>
-### OPS-01: WhiteNoise storage setting is silently ignored on Django 6
+### OPS-01: WhiteNoise storage setting is silently ignored on Django 6 — ⏸ NOT APPLICABLE (not deployed, D-03)
+
+> *2026-11-21:* only relevant for a deployed `DEBUG=False` site serving static files through WhiteNoise. Local development uses `runserver`'s static serving. If the project is ever deployed again, replace `STATICFILES_STORAGE` with `STORAGES` as described below.
+
+*Original finding:*
 
 **Evidence (✔ verified):** `STATICFILES_STORAGE` ([skillstudio/settings.py:194](skillstudio/settings.py#L194)) was removed in Django 5.1. At runtime, `settings.STORAGES['staticfiles']` is the plain `StaticFilesStorage`, so there are no compressed or hashed static files and no long-cache headers. `check --deploy` doesn't flag it.
 
@@ -936,7 +959,11 @@ STORAGES = {
 Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm hashed filenames are served.
 
 <a id="ops-02"></a>
-### OPS-02: Certificate PDFs live on local disk and aren't served in production
+### OPS-02: Certificate PDFs live on local disk and aren't served in production — ⏸ NOT APPLICABLE (not deployed, D-03)
+
+> *2026-11-21:* certificate PDFs are written to the local `media/` folder and served by Django in development, which is fine for a local-only project. Revisit (object storage) only if it's deployed again.
+
+*Original finding:*
 
 **Evidence:**
 - `Certificate.pdf` uses the default `FileSystemStorage` under `MEDIA_ROOT`.
@@ -946,7 +973,11 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 **Fix approach:** Use object storage (S3/R2 via `django-storages`) for `STORAGES['default']`. In `certificate_has_pdf`, check `storage.exists(name)`, and if the file is missing, re-render on demand.
 
 <a id="ops-03"></a>
-### OPS-03: `gunicorn==21.2.0` has known request-smuggling CVEs
+### OPS-03: `gunicorn==21.2.0` has known request-smuggling CVEs — ✅ RESOLVED 2026-11-21 (D-03)
+
+> **Resolved 2026-11-21:** `gunicorn` was only the production web server. With no deployments it was removed from `requirements.txt` (along with the unused `daphne`), so the vulnerable version is gone.
+
+*Original finding:*
 
 **Evidence:** [requirements.txt](requirements.txt) pins `gunicorn==21.2.0`. That version is affected by CVE-2024-1135 (fixed in 22.0.0) and CVE-2024-6827 (fixed in 23.0.0).
 
@@ -1287,7 +1318,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Have CI diff the schema on PRs.
 
 <a id="ops-04"></a>
-### OPS-04: No throttling, logging, health check or real background jobs
+### OPS-04: No throttling, logging, health check or real background jobs — re-scoped by D-03
+
+> *Re-scoped 2026-11-21 ([D-03](#d-03)):* the deploy-only items (Procfile/deploy manifest, `/healthz` and `/readyz`, `check --deploy` in CI) no longer apply. **Still useful locally:** auth throttling, a `LOGGING` config (and replacing the stray `print`), CI running the test suite plus `pip-audit`/`gitleaks` (secret scanning already exists), and the Celery decision.
+
+*Original finding:*
 
 **Evidence:**
 - No `DEFAULT_THROTTLE_*`, so login, register, enroll and payment endpoints can be brute-forced or spammed.
@@ -1439,7 +1474,11 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Once the OpenAPI schema ([API-04](#api-04)) exists, delete the hand-written endpoint lists and keep a short domain/invariants README per app that links to `/api/schema/`.
 
 <a id="dep-01"></a>
-### DEP-01: Dependencies installed but unused; no lock file
+### DEP-01: Dependencies installed but unused; no lock file — 🟡 PARTIAL 2026-11-21
+
+> *Progress 2026-11-21:* the unused or deploy-only `gunicorn` and `daphne` were removed ([D-03](#d-03)). **Still open:** Celery, Redis and kombu (no tasks exist), and hash-locked requirements.
+
+*Original finding:*
 
 **Evidence:**
 - `daphne` is installed and `ASGI_APPLICATION` is set, but `daphne` isn't in `INSTALLED_APPS` and nothing is async.
@@ -1492,7 +1531,7 @@ Move aspirational features to a "Roadmap" section.
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
-| **4: Production readiness** | Deployable, observable, hardened | OPS-01, OPS-02, OPS-04, ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
+| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ⏸, ~~OPS-02~~ ⏸, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |
 
 ### Definition of done for release
@@ -1502,5 +1541,5 @@ Move aspirational features to a "Roadmap" section.
 - No code path credits a wallet or grants an enrollment without a verified payment.
 - Reconciliation shows zero unexplained differences.
 - No tracked secrets, virtualenvs, bytecode or generated files; secrets rotated.
-- `check --deploy` is clean, static files are hashed, media is on object storage, and throttles, logging and health checks are in place.
+- ~~`check --deploy` is clean, static files are hashed, media is on object storage, and~~ throttles and logging are in place. *(Deployment items dropped by [D-03](#d-03).)*
 - The OpenAPI schema is published, and templates use only routes in it.

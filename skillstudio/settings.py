@@ -73,15 +73,9 @@ elif not DEBUG and (SECRET_KEY.startswith("django-insecure-") or len(SECRET_KEY)
         "characters). Generate a fresh random key for production."
     )
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '.railway.app',  # Railway domains
-    os.getenv('RAILWAY_PUBLIC_DOMAIN', ''),
-]
-
-# Remove empty strings
-ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host]
+# The project is not deployed anywhere (Decision D-03): it only serves local
+# development. Add hosts here if that ever changes.
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 
 
 # Application definition
@@ -237,13 +231,13 @@ CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
 CELERY_BEAT_SCHEDULE = {}
 
 
-# Production security hardening
-# Applied only when DEBUG is off so local http development is unaffected.
-# See `manage.py check --deploy`.
+# Security hardening for running with DEBUG off.
+# The project isn't deployed (Decision D-03); this block is inert during local
+# development (DEBUG=True) and only protects a non-debug run behind HTTPS.
 if not DEBUG:
-    # Trust the X-Forwarded-Proto header set by the platform's TLS-terminating
-    # proxy (e.g. Railway). Without this, SECURE_SSL_REDIRECT loops forever
-    # because Django never sees the request as HTTPS.
+    # Trust the X-Forwarded-Proto header of a TLS-terminating reverse proxy.
+    # Without this, SECURE_SSL_REDIRECT loops forever because Django never
+    # sees the request as HTTPS.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
 
