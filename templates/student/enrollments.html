@@ -107,7 +107,7 @@ async function loadEnrollments() {
         if (enrollments.length > 0) {
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    ${escapeHtml(enrollments.map(enrollment => renderEnrollmentCard(enrollment)).join(''))}
+                    ${enrollments.map(enrollment => renderEnrollmentCard(enrollment)).join('') /* cards escape their own data */}
                 </div>
             `;
         } else {

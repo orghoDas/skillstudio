@@ -218,7 +218,7 @@ function renderSection(section, index) {
             
             ${lessons.length > 0 ? `
                 <div class="divide-y divide-dark-border">
-                    ${escapeHtml(lessons.map((lesson, lessonIndex) => renderLesson(lesson, lessonIndex)).join(''))}
+                    ${lessons.map((lesson, lessonIndex) => renderLesson(lesson, lessonIndex)).join('') /* renderLesson escapes its own data */}
                 </div>
             ` : `
                 <div class="p-8 text-center text-gray-400">
@@ -241,7 +241,7 @@ function renderLesson(lesson, index) {
             <div class="flex items-center space-x-4 flex-1">
                 <div class="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        ${escapeHtml(typeIcons[lesson.content_type] || typeIcons.article)}
+                        ${typeIcons[lesson.content_type] || typeIcons.article /* trusted constant SVG */}
                     </svg>
                 </div>
                 <div class="flex-1 min-w-0">

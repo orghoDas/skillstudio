@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *30 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05; all 2026-11-21); 37 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, TEST-02, ENR-03, DEP-01 are partially done* |
+| *Resolved so far* | *31 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02; all 2026-11-21); 36 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, ENR-03, DEP-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -174,7 +174,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [OPS-02](#ops-02) | P1 | ~~Certificate PDFs live on local disk and aren't served in production~~ ✅ resolved 2026-11-21 (local scope) |
 | [OPS-03](#ops-03) | P1 | ~~`gunicorn==21.2.0` has known request-smuggling CVEs~~ ✅ resolved 2026-11-21 (gunicorn removed) |
 | [TEST-01](#test-01) | P1 | ~~Payments tests don't run, and tests write into the real `media/`~~ ✅ resolved 2026-11-21 |
-| [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract — 🟡 route + method contract test added 2026-11-21 |
+| [TEST-02](#test-02) | P1 | ~~No tests cover the frontend↔API contract~~ ✅ resolved 2026-11-21 (contract + browser smoke tests) |
 | [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
 | [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
 | [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext |
@@ -1047,13 +1047,26 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Use `@override_settings(MEDIA_ROOT=tempfile.mkdtemp())` in a shared base `TestCase` (or `STORAGES['default']` = `InMemoryStorage`, available since Django 4.2) for all tests.
 
 <a id="test-02"></a>
-### TEST-02: No tests cover the frontend↔API contract — 🟡 ROUTE CONTRACT TEST ADDED 2026-11-21
+### TEST-02: No tests cover the frontend↔API contract — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21:**
-> - `core.tests.TemplateApiContractTests` checks that every statically visible `apiRequest`/`fetch` URL in the templates resolves to a route **and** that the view handles the HTTP method used ([API-03](#api-03)).
-> - `TemplateGlobalsTests` guards the [FE-01](#fe-01) class of bug.
+> **Resolved 2026-11-21.**
+> - **Static contract** (`core/tests.py`): every template `apiRequest`/`fetch` URL must resolve to a route, and the view must handle the HTTP method used. `TemplateGlobalsTests` guards [FE-01](#fe-01).
+> - **Browser smoke suite** (`core/test_browser_smoke.py`, headless Chromium via Playwright, tag `browser`):
+>   - It renders the public, student and instructor pages, about 30 in total.
+>   - It runs the **enroll → learn → mark complete** flow and the **instructor deletes a lesson** flow.
+>   - It fails on JS exceptions, `console.error`, any `/api/` response ≥ 400, or **raw HTML markup visible as text**.
+>   - It's offline: Tailwind, fonts and the YouTube/Vimeo scripts are stubbed locally.
+>   - It uses a single-threaded live server, because the in-memory SQLite test DB is one shared connection.
+>   - It's skipped automatically unless `requirements-dev.txt` (Playwright 1.49.1) and Chromium are installed. Run with `manage.py test --tag browser`, or skip with `--exclude-tag browser`.
+> - **Bugs the browser suite found and fixed.** The earlier XSS pass had escaped HTML that the pages build themselves, so it showed up as literal markup:
+>   - **Every alert toast** showed its SVG icon as raw markup (`components/alert.html`).
+>   - The course-content page's **lesson list** (so the delete buttons didn't exist) and lesson icons.
+>   - The **enrollments** page's cards.
+>   - The course-preview page's lesson icons.
+>   - The lesson editor's **quiz options**.
 >
-> **Still open:** a Playwright browser smoke suite (and checking response shapes, which needs the OpenAPI schema from [API-04](#api-04)).
+>   Each inner render function was checked to escape its own data before the outer escape was removed.
+> - **Still open (not blocking):** response-*shape* checks need the OpenAPI schema ([API-04](#api-04)).
 
 *Original finding:*
 
@@ -1591,7 +1604,7 @@ Move aspirational features to a "Roadmap" section.
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, ~~TEST-02~~ ✅ | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, ~~TEST-01~~ ✅ | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |

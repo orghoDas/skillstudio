@@ -21,7 +21,7 @@ window.showAlert = function(message, type = 'info', duration = 5000) {
     // Alert content
     alert.innerHTML = `
         <div class="flex-shrink-0">
-            ${escapeHtml(getAlertIcon(type))}
+            ${getAlertIcon(type) /* trusted constant SVG */}
         </div>
         <div class="flex-1 min-w-0">
             <p class="text-sm font-medium">${escapeHtml(getAlertTitle(type))}</p>

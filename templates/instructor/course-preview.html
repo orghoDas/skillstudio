@@ -312,7 +312,7 @@ function renderCurriculum() {
                             <div class="p-3 flex items-center space-x-3 hover:bg-dark-hover transition-colors">
                                 <div class="w-8 h-8 bg-blue-900/50 rounded flex items-center justify-center flex-shrink-0">
                                     <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        ${escapeHtml(icons[lesson.content_type] || icons.text)}
+                                        ${icons[lesson.content_type] || icons.text /* trusted constant SVG */}
                                     </svg>
                                 </div>
                                 <div class="flex-1">

@@ -412,7 +412,7 @@ function addQuestion(questionData = null) {
             <div class="mb-4">
                 <label class="block text-sm mb-2">Options</label>
                 <div class="space-y-2 question-options">
-                    ${escapeHtml(renderQuestionOptions(questionData?.options || []))}
+                    ${renderQuestionOptions(questionData?.options || []) /* escapes its own data */}
                 </div>
                 <button onclick="addOption('${escapeHtml(questionId)}')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
                     + Add Option

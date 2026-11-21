@@ -1,0 +1,8 @@
+# Development / test-only dependencies (not needed to run the app).
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   python -m playwright install chromium     # once, downloads the test browser
+-r requirements.txt
+
+# Browser smoke tests (core/test_browser_smoke.py, AUDIT_REPORT.md TEST-02).
+# They are skipped automatically when Playwright or its browser isn't installed.
+playwright==1.49.1
