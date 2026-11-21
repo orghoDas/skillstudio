@@ -120,10 +120,12 @@ python manage.py test --tag browser           # only the browser tests
 - **Back up the database before applying migrations to any database you care about.** Several older migrations delete data and can't be reversed: `core/0001`–`0002` drop the removed social-feature tables, and `assessments/0004` and `exams/0003` delete non-MCQ questions. For Postgres: `pg_dump "$DATABASE_URL" > backup.sql`.
 - Run `python manage.py migrate --plan` before `migrate`. Read every `Raw Python operation` / `Raw SQL operation` line in the plan before applying it.
 - `accounts/0001_squashed_0008` replaces the old `accounts` 0001–0008 for new databases. Databases that already applied the old files keep working. The old files can be deleted once no database still needs them.
+- Before applying `payments/0005_encrypt_payout_destination` to a database with payout details, set `PAYOUT_DETAILS_ENCRYPTION_KEY` using the generator in [.env.example](.env.example). Keep the key separate from database backups and retain it for existing encrypted rows. Backups taken before this migration and any rollback to `payments/0004` contain plaintext payout details.
 
 ## Secrets and repository hygiene
 
 - `.env` is git-ignored. Only `.env.example`, with placeholders, is committed.
+- Payout requests can include `account_details` when a payout encryption key is configured. Responses return `{"provided": true}` for stored details or `{}` for no details. Django admin shows whether the destination is on file. An authorized operator with access to the key can use `Payout.get_account_details()` in a trusted local Django shell for manual processing.
 - Install the hooks once per clone: `pip install pre-commit && pre-commit install`. They block:
   - committed secrets (gitleaks)
   - `.env` files

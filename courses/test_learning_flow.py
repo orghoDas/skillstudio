@@ -145,14 +145,76 @@ class LessonContentEndpointTests(LearningFlowFixture, APITestCase):
     def test_curriculum_matches_content_endpoint(self):
         self.enroll()
         self.client.force_authenticate(self.student)
-        curriculum = self.client.get(f"/api/courses/{self.course.id}/curriculum/")
-        self.assertEqual(curriculum.status_code, status.HTTP_200_OK)
-        lessons = {l["id"]: l for m in curriculum.data["modules"] for l in m["lessons"]}
-        for lesson_id, summary in lessons.items():
-            lesson = Lesson.objects.get(id=lesson_id)
-            served = self.client.get(self.content_url(lesson)).status_code == 200
-            with self.subTest(lesson=lesson.title):
-                self.assertEqual(served, not summary["is_locked"])
+        expected = {
+            lesson.pk: self.client.get(self.content_url(lesson)).status_code != 200
+            for lesson in (self.free_intro, self.lesson1, self.lesson2)
+        }
+        course_url = f"/api/courses/{self.course.pk}/"
+        for url, structure in (
+            (f"{course_url}curriculum/", "course"),
+            (course_url, "course"),
+            (f"{course_url}sections/", "modules"),
+            (f"/api/courses/sections/{self.module.pk}/lessons/", "lessons"),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                if structure == "course":
+                    summaries = [lesson for module in response.data["modules"] for lesson in module["lessons"]]
+                elif structure == "modules":
+                    summaries = [lesson for module in response.data["results"] for lesson in module["lessons"]]
+                else:
+                    summaries = response.data["results"]
+                self.assertEqual({lesson["id"]: lesson["is_locked"] for lesson in summaries}, expected)
+
+    def test_catalog_lock_flags_respect_viewer_access(self):
+        url = f"/api/courses/{self.course.pk}/"
+
+        def locks():
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            return [lesson["is_locked"] for module in response.data["modules"] for lesson in module["lessons"]]
+
+        self.assertEqual(locks(), [False, True, True])
+        self.enroll("canceled")
+        self.client.force_authenticate(self.student)
+        self.assertEqual(locks(), [False, True, True])
+        self.client.force_authenticate(self.instructor)
+        self.assertEqual(locks(), [False, False, False])
+        self.client.force_authenticate(None)
+        self.course.is_free = True
+        self.course.price = 0
+        self.course.save(update_fields=["is_free", "price"])
+        self.assertEqual(locks(), [False, False, False])
+
+    def test_navigation_uses_the_first_unlocked_required_lesson_in_module_order(self):
+        enrollment = self.enroll()
+        self.client.force_authenticate(self.student)
+        module = Module.objects.create(course=self.course, title="M2", position=self.module.position)
+        later_lesson = Lesson.objects.create(module=module, title="L3", position=0)
+        course_url = f"/api/enrollments/courses/{self.course.pk}/"
+        resumes = [f"{course_url}resume-lesson/", f"/api/courses/{self.course.pk}/resume/"]
+
+        def next_after(lesson):
+            response = self.client.get(f"{course_url}lessons/{lesson.pk}/next/")
+            self.assertEqual(response.status_code, 200, response.data)
+            return response.data
+
+        self.assertEqual(next_after(self.free_intro)["lesson_id"], self.lesson1.pk)
+        self.assertFalse(next_after(self.lesson1)["completed"])
+        self.assertFalse(next_after(later_lesson)["completed"])
+        self.complete(enrollment, self.lesson1)
+        for url in resumes:
+            self.assertEqual(self.client.get(url).data["lesson_id"], self.lesson2.pk)
+        enrollment_detail = self.client.get(f"/api/enrollments/enrollments/{enrollment.pk}/")
+        self.assertEqual(enrollment_detail.data["next_lesson"]["id"], self.lesson2.pk)
+        self.assertEqual(next_after(self.lesson1)["lesson_id"], self.lesson2.pk)
+        self.assertEqual(self.client.get(self.content_url(later_lesson)).status_code, 403)
+        self.complete(enrollment, self.lesson2)
+        self.assertEqual(next_after(self.lesson2)["lesson_id"], later_lesson.pk)
+        self.assertEqual(self.client.get(self.content_url(later_lesson)).status_code, 200)
+        self.complete(enrollment, later_lesson)
+        self.assertTrue(next_after(later_lesson)["completed"])
 
 
 class WatchTimeCompletesVideoLessonTests(LearningFlowFixture, APITestCase):
@@ -178,6 +240,48 @@ class WatchTimeCompletesVideoLessonTests(LearningFlowFixture, APITestCase):
 
         enrollment.refresh_from_db()
         self.assertEqual(enrollment.status, "completed")
+
+
+class LessonPositionTests(LearningFlowFixture, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.course.status = "draft"
+        self.course.save(update_fields=["status"])
+        self.client.force_authenticate(self.instructor)
+
+    def test_create_appends_and_put_without_position_preserves_order(self):
+        self.lesson2.position = 10
+        self.lesson2.save(update_fields=["position"])
+        url = f"/api/courses/sections/{self.module.pk}/lessons/"
+        response = self.client.post(url, {"title": "Appended"}, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["position"], 11)
+        response = self.client.put(
+            f"/api/courses/lessons/{self.lesson2.pk}/", {"title": "Renamed", "content_type": "text"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["position"], 10)
+
+    def test_duplicate_positions_are_rejected_on_create_and_update(self):
+        position = self.lesson1.position
+        created = self.client.post(
+            "/api/courses/lessons/create/",
+            {"title": "Duplicate", "module": self.module.pk, "position": position}, format="json",
+        )
+        updated = self.client.patch(
+            f"/api/courses/lessons/{self.lesson2.pk}/", {"position": position}, format="json",
+        )
+        for response in (created, updated):
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertIn("position", response.data)
+
+        target = Module.objects.create(course=self.course, title="M2")
+        Lesson.objects.create(module=target, title="Existing", position=position)
+        moved = self.client.patch(
+            f"/api/courses/lessons/{self.lesson1.pk}/", {"module": target.pk}, format="json",
+        )
+        self.assertEqual(moved.status_code, 200, moved.data)
+        self.assertEqual(moved.data["position"], position + 1)
 
 
 class CompletedCourseStaysAccessibleTests(LearningFlowFixture, APITestCase):

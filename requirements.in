@@ -9,6 +9,7 @@ dj-database-url==3.0.1
 python-dotenv==1.2.1
 whitenoise==6.6.0
 psycopg2-binary==2.9.11     # PostgreSQL driver (DATABASE_URL=postgres://...)
-reportlab==4.2.5            # certificate PDFs
+reportlab[shaping]==4.4.10            # certificate PDFs
 qrcode==8.0                 # verification QR code on certificates
 Pillow==12.1.0              # image backend qrcode.make() renders with
+cryptography==50.0.2        # authenticated encryption for payout destinations

@@ -2,13 +2,15 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
+from rest_framework.test import APIClient
 
 from courses.models import Course, Module, Lesson
 from enrollments.models import Enrollment, LessonProgress
 from certificates.models import Certificate
-from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
+from .models import LearningActivity, StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .services import (
     get_or_create_student_profile,
     update_student_profile,
@@ -93,9 +95,9 @@ class StudentProfileModelTests(TestCase):
         self.assertEqual(profile.preferred_learning_style, 'visual')
         self.assertEqual(profile.weekly_study_hours, 10)
     
-    def test_update_statistics(self):
-        """Test updating profile statistics."""
+    def test_statistics_follow_new_enrollments(self):
         profile = StudentProfile.objects.create(user=self.user)
+        self.assertEqual(profile.total_courses_enrolled, 0)
         
         # Create some data
         course = Course.objects.create(
@@ -104,8 +106,6 @@ class StudentProfileModelTests(TestCase):
             price=Decimal('99.99')
         )
         Enrollment.objects.create(user=self.user, course=course, status='active')
-        
-        profile.update_statistics()
         
         self.assertEqual(profile.total_courses_enrolled, 1)
 
@@ -449,6 +449,76 @@ class StudentBookmarkServiceTests(TestCase):
         
         self.assertEqual(bookmarks.count(), 2)
 
+    def test_private_course_and_lesson_look_missing_when_bookmarked(self):
+        client = APIClient()
+        client.force_authenticate(self.other_user)
+        url = '/api/students/bookmarks/'
+        for course_status in ('draft', 'under_review', 'archived'):
+            self.course.status = course_status
+            self.course.save(update_fields=['status'])
+            for field, target in (('course', self.course), ('lesson', self.lesson)):
+                with self.subTest(course_status=course_status, field=field):
+                    hidden = client.post(url, {field: target.pk}, format='json')
+                    missing = client.post(url, {field: 999999}, format='json')
+                    self.assertEqual(hidden.status_code, 400)
+                    self.assertEqual(hidden.json(), missing.json())
+        self.assertFalse(StudentBookmark.objects.filter(user=self.other_user).exists())
+
+    def test_archived_bookmarks_are_hidden_when_access_ends_and_remain_deletable(self):
+        self.course.status = 'archived'
+        self.course.save(update_fields=['status'])
+        enrollment = Enrollment.objects.create(user=self.other_user, course=self.course, status='completed')
+        client = APIClient()
+        client.force_authenticate(self.other_user)
+        url = '/api/students/bookmarks/'
+        bookmarks = []
+        for field, target in (('course', self.course), ('lesson', self.lesson)):
+            response = client.post(url, {field: target.pk}, format='json')
+            self.assertEqual(response.status_code, 201, response.data)
+            bookmarks.append(response.data['id'])
+        self.assertEqual(client.get(url).data['count'], 2)
+
+        enrollment.status = 'canceled'
+        enrollment.save(update_fields=['status'])
+        self.assertEqual(client.get(url).data['count'], 0)
+        for bookmark_id in bookmarks:
+            detail = f'{url}{bookmark_id}/'
+            self.assertEqual(client.get(detail).status_code, 404)
+            self.assertEqual(client.patch(detail, {'note': 'update'}, format='json').status_code, 404)
+            self.assertEqual(client.delete(detail).status_code, 204)
+
+    def test_can_edit_note_but_cannot_retarget_to_private_content(self):
+        published = Course.objects.create(title='Public course', instructor=self.user, status='published')
+        client = APIClient()
+        client.force_authenticate(self.other_user)
+        bookmark = create_bookmark(self.other_user, course_id=published.pk)
+        url = f'/api/students/bookmarks/{bookmark.pk}/'
+        for data, field in (
+            ({'course': self.course.pk}, 'course'),
+            ({'course': None, 'lesson': self.lesson.pk}, 'lesson'),
+        ):
+            for method in (client.patch, client.put):
+                with self.subTest(field=field, method=method.__name__):
+                    response = method(url, data, format='json')
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn(field, response.data)
+        response = client.patch(url, {'note': 'New note'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['note'], 'New note')
+        bookmark.refresh_from_db()
+        self.assertEqual(bookmark.course_id, published.pk)
+
+    def test_admin_can_bookmark_and_read_private_course(self):
+        admin = User.objects.create_user(email='bookmark-admin@example.test', role='admin')
+        client = APIClient()
+        client.force_authenticate(admin)
+        url = '/api/students/bookmarks/'
+        response = client.post(url, {'course': self.course.pk}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        detail = client.get(f"{url}{response.data['id']}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data['course_title'], self.course.title)
+
 
 class StudentDashboardServiceTests(TestCase):
     """Test student dashboard services."""
@@ -506,6 +576,74 @@ class StudentDashboardServiceTests(TestCase):
         
         self.assertIn('active_days', progress)
         self.assertIn('total_watch_time', progress)
+
+    def test_completion_percentage_and_certificate_use_their_own_records(self):
+        free = Lesson.objects.create(module=self.module, title='Preview', position=2, is_free=True)
+        now = timezone.now()
+        for lesson in (self.lesson, free):
+            LessonProgress.objects.create(
+                enrollment=self.enrollment, user=self.user, lesson=lesson, is_completed=True,
+                completed_at=now, watch_time=30,
+            )
+        self.enrollment.status = 'completed'
+        self.enrollment.is_completed = True
+        self.enrollment.completed_at = now
+        self.enrollment.save(update_fields=['status', 'is_completed', 'completed_at'])
+
+        client = APIClient()
+        client.force_authenticate(self.user)
+        data = client.get('/api/students/dashboard/').data
+        course = data['courses'][0]
+        self.assertEqual((course['completed_lessons'], course['total_lessons'], course['progress_percentage']), (1, 1, 100))
+        self.assertFalse(course['has_certificate'])
+        self.assertEqual(course['primary_action'], 'view_course')
+        self.assertEqual(data['summary'], {
+            'total_courses_enrolled': 1, 'total_courses_completed': 1, 'total_certificates_earned': 0,
+        })
+        profile = client.get('/api/accounts/profile/').data['student_profile']
+        self.assertEqual(profile['total_courses_completed'], 1)
+        self.assertEqual(profile['total_watch_time'], 60)
+
+        # A legacy certificate may predate the optional enrollment link.
+        Certificate.objects.create(user=self.user, course=self.course)
+        data = client.get('/api/students/dashboard/').data
+        self.assertTrue(data['courses'][0]['has_certificate'])
+        self.assertEqual(data['courses'][0]['primary_action'], 'view_certificate')
+        self.assertEqual(data['summary']['total_certificates_earned'], 1)
+        self.assertEqual(client.get('/api/students/profile/').data['total_certificates_earned'], 1)
+
+    def test_watch_activity_keeps_each_local_day_and_yesterday_keeps_the_streak(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        self.lesson.duration_seconds = 100
+        self.lesson.save(update_fields=['duration_seconds'])
+        first = datetime(2026, 11, 8, 18, 10, tzinfo=UTC)
+        watch = f'/api/enrollments/lessons/{self.lesson.pk}/watch-time/?timezone=Asia%2FDhaka'
+        for when, delta in ((first, 6), (first + timedelta(seconds=4), 4), (first + timedelta(days=1), 5)):
+            with patch('django.utils.timezone.now', return_value=when):
+                self.assertEqual(client.patch(watch, {'watch_time_delta': delta}, format='json').status_code, 200)
+        with patch('django.utils.timezone.now', return_value=first + timedelta(days=2)):
+            self.assertEqual(client.patch(watch, {'watch_time_delta': 0}, format='json').status_code, 200)
+            self.assertEqual(client.patch(watch, {'watch_time_delta': 500}, format='json').status_code, 400)
+            data = client.get('/api/students/dashboard/?timezone=Asia%2FDhaka').data
+        self.assertEqual(data['streak'], {'current_streak': 2, 'longest_streak': 2})
+        self.assertEqual(data['weekly_progress'], {'active_days': 2, 'total_watch_time': 15})
+        self.assertEqual(
+            list(LearningActivity.objects.filter(user=self.user).order_by('date').values_list('date', 'watch_seconds')),
+            [(date(2026, 11, 9), 10), (date(2026, 11, 10), 5)],
+        )
+
+    def test_text_completion_records_activity_without_replayed_completion_counting_again(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        first = datetime(2026, 11, 8, 18, 10, tzinfo=UTC)
+        complete = f'/api/enrollments/lessons/{self.lesson.pk}/complete/?timezone=Asia%2FDhaka'
+        for when in (first, first + timedelta(days=1)):
+            with patch('django.utils.timezone.now', return_value=when):
+                self.assertEqual(client.post(complete).status_code, 200)
+        self.assertEqual(list(LearningActivity.objects.filter(user=self.user).values_list('date', flat=True)), [
+            date(2026, 11, 9),
+        ])
     
     def test_get_achievements(self):
         """Test getting achievements."""

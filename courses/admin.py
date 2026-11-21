@@ -1,9 +1,16 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.db.models import Count
+from django.http import Http404
+from django.urls import reverse
 from django.utils.html import format_html
+from accounts.utils import is_platform_admin
+from core.admin import ReadOnlyAdmin
 from .models import (
     Course, Category, Tag, Module, Lesson,
     CourseVersion, CourseTag, LessonResource
 )
+from .services import transition
 
 
 class LessonResourceInline(admin.TabularInline):
@@ -33,18 +40,18 @@ class CourseTagInline(admin.TabularInline):
 
 
 @admin.register(Course)
-class CourseAdmin(admin.ModelAdmin):
+class CourseAdmin(ReadOnlyAdmin):
     list_display = (
         'title', 'instructor', 'category', 'status_badge', 
         'is_free', 'price', 'level', 'enrollment_count', 'created_at'
     )
     list_filter = ('status', 'is_free', 'level', 'category', 'created_at')
     search_fields = ('title', 'instructor__email', 'category__name', 'description')
-    prepopulated_fields = {'slug': ('title',)}
     inlines = [ModuleInline, CourseTagInline]
     readonly_fields = (
         'created_at', 'updated_at', 'published_at', 'submitted_for_review_at',
-        'reviewed_at', 'reviewed_by', 'archived_at'
+        'reviewed_at', 'reviewed_by', 'archived_at', 'status', 'rejection_reason',
+        'revision_of', 'current_version', 'content_editor',
     )
     
     fieldsets = (
@@ -55,7 +62,7 @@ class CourseAdmin(admin.ModelAdmin):
             'fields': ('price', 'is_free')
         }),
         ('Course Details', {
-            'fields': ('level', 'status')
+            'fields': ('level', 'status', 'revision_of', 'current_version', 'content_editor')
         }),
         ('Publishing Information', {
             'fields': (
@@ -88,30 +95,40 @@ class CourseAdmin(admin.ModelAdmin):
     enrollment_count.short_description = 'Enrollments'
     
     actions = ['publish_courses', 'archive_courses']
+
+    def has_moderate_permission(self, request):
+        return is_platform_admin(request.user) and request.user.has_perm('courses.change_course')
+
+    @admin.display(description='Course editor')
+    def content_editor(self, obj):
+        return format_html('<a href="{}">Manage course content</a>', reverse('instructor_course_content', args=[obj.slug]))
     
+    @admin.action(permissions=['moderate'], description='Publish selected courses')
     def publish_courses(self, request, queryset):
-        from django.utils import timezone
-        updated = queryset.filter(status='under_review').update(
-            status='published',
-            published_at=timezone.now(),
-            reviewed_by=request.user,
-            reviewed_at=timezone.now()
-        )
-        self.message_user(request, f'{updated} course(s) published successfully.')
-    publish_courses.short_description = 'Publish selected courses'
-    
+        self._transition_courses(request, queryset, 'published')
+
+    @admin.action(permissions=['moderate'], description='Archive selected courses')
     def archive_courses(self, request, queryset):
-        from django.utils import timezone
-        updated = queryset.update(
-            status='archived',
-            archived_at=timezone.now()
-        )
-        self.message_user(request, f'{updated} course(s) archived successfully.')
-    archive_courses.short_description = 'Archive selected courses'
+        self._transition_courses(request, queryset, 'archived')
+
+    def _transition_courses(self, request, queryset, to_state):
+        updated = skipped = 0
+        for course in queryset:
+            try:
+                transition(course, to_state, request.user)
+            except (ValidationError, Http404):
+                skipped += 1
+            else:
+                updated += 1
+        self.message_user(request, f'{updated} course(s) {to_state}.')
+        if skipped:
+            self.message_user(
+                request, f'Skipped {skipped} course(s) in an ineligible status.', messages.WARNING
+            )
 
 
 @admin.register(Module)
-class ModuleAdmin(admin.ModelAdmin):
+class ModuleAdmin(ReadOnlyAdmin):
     list_display = ('title', 'course', 'position', 'lesson_count', 'created_at')
     list_filter = ('course', 'created_at')
     search_fields = ('title', 'course__title')
@@ -123,7 +140,7 @@ class ModuleAdmin(admin.ModelAdmin):
 
 
 @admin.register(Lesson)
-class LessonAdmin(admin.ModelAdmin):
+class LessonAdmin(ReadOnlyAdmin):
     list_display = (
         'title', 'module', 'content_type', 'position', 
         'is_free', 'duration_seconds', 'view_count', 'created_at'
@@ -150,11 +167,13 @@ class LessonAdmin(admin.ModelAdmin):
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'course_count')
     search_fields = ('name',)
-    prepopulated_fields = {'slug': ('name',)}
-    
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(total_courses=Count('courses'))
+
+    @admin.display(ordering='total_courses', description='Courses')
     def course_count(self, obj):
-        return obj.courses.count()
-    course_count.short_description = 'Courses'
+        return obj.total_courses
 
 
 @admin.register(Tag)
@@ -168,7 +187,7 @@ class TagAdmin(admin.ModelAdmin):
 
 
 @admin.register(LessonResource)
-class LessonResourceAdmin(admin.ModelAdmin):
+class LessonResourceAdmin(ReadOnlyAdmin):
     list_display = ('lesson', 'resource_type', 'uploaded_at')
     list_filter = ('resource_type', 'uploaded_at')
     search_fields = ('lesson__title',)
@@ -176,11 +195,11 @@ class LessonResourceAdmin(admin.ModelAdmin):
 
 
 @admin.register(CourseVersion)
-class CourseVersionAdmin(admin.ModelAdmin):
+class CourseVersionAdmin(ReadOnlyAdmin):
     list_display = ('course', 'version_number', 'created_at')
     list_filter = ('course', 'created_at')
     search_fields = ('course__title',)
     readonly_fields = ('created_at',)
 
 
-admin.site.register(CourseTag)
+admin.site.register(CourseTag, ReadOnlyAdmin)

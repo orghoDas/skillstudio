@@ -1,9 +1,13 @@
 from datetime import timezone as dt_timezone
+from random import Random
+from secrets import token_hex
 
 from django.utils import timezone
-from django.db import IntegrityError, transaction
-from decimal import Decimal, InvalidOperation
-from .models import QuestionBank, Exam, ExamAttempt, ExamResult
+from django.db import transaction
+from django.utils.dateparse import parse_datetime
+from decimal import Decimal
+from .grading import MAX_EXAM_MARKS, build_questions, exam_snapshot, legacy_passing_marks, total_question_marks
+from .models import Exam, ExamAttempt, ExamResult
 
 
 class ExamUnavailable(ValueError):
@@ -48,340 +52,237 @@ def attempt_started_within_window(attempt):
     (A student who starts near the end may still finish within the attempt's
     own duration; the window limits when attempts can *start*.)
     """
-    exam = attempt.exam
-    if exam.start_datetime and attempt.started_at < exam.start_datetime:
-        return False
-    if exam.end_datetime and attempt.started_at > exam.end_datetime:
-        return False
-    return True
+    if attempt.snapshot is None:
+        start, end = attempt.exam.start_datetime, attempt.exam.end_datetime
+    else:
+        start = parse_datetime(attempt.snapshot['window_start']) if attempt.snapshot['window_start'] else None
+        end = parse_datetime(attempt.snapshot['window_end']) if attempt.snapshot['window_end'] else None
+    return (start is None or attempt.started_at >= start) and (end is None or attempt.started_at <= end)
 
 
-def _decimal_marks(value, default='0'):
+def graded_course_exam_attempts(user, course):
+    attempts = ExamAttempt.objects.filter(
+        user=user, exam__course=course, exam__status='published',
+        status='completed', score__isnull=False,
+    ).select_related('exam').order_by('pk')
+    return (attempt for attempt in attempts if attempt_started_within_window(attempt))
+
+
+def course_exam_requirements_met(user, course):
+    required_ids = set(course.exams.filter(status='published').values_list('pk', flat=True))
+    if not required_ids:
+        return True
+    passed_ids = {attempt.exam_id for attempt in graded_course_exam_attempts(user, course) if attempt.passed}
+    return required_ids <= passed_ids
+
+
+def current_exam_questions(exam):
+    return build_questions(exam.questions.all(), exam.custom_questions)
+
+
+def ensure_question_bank_matches_course(exam):
+    if exam.questions.exclude(course_id=exam.course_id).exists():
+        raise ExamUnavailable("Select questions from this exam’s course.", 'invalid_question_course')
+
+
+def validated_exam_total(questions, passing_marks):
+    if not questions:
+        raise ExamUnavailable("Cannot publish or start an exam with no questions.", 'no_questions')
+    total = total_question_marks(questions)
+    if total > MAX_EXAM_MARKS or any(Decimal(q['marks']) <= 0 for q in questions):
+        raise ExamUnavailable("Question marks must be positive and the total must fit within 9999.99.", 'invalid_marks')
+    for question in questions:
+        options = question['options']
+        if len(options) < 2 or any(not isinstance(option, dict) for option in options) or sum(
+            bool(option.get('is_correct')) for option in options
+        ) != 1:
+            raise ExamUnavailable("Every question must have at least two options and one correct answer.", 'invalid_options')
+    if not 0 < passing_marks <= total:
+        raise ExamUnavailable("Passing marks must be greater than zero and at most the question total.", 'invalid_passing_marks')
+    return total
+
+
+def _ensure_snapshot(attempt):
+    if attempt.snapshot is None:
+        exam = attempt.exam
+        questions = current_exam_questions(exam)
+        passing = legacy_passing_marks(exam.passing_marks, exam.total_marks, total_question_marks(questions))
+        attempt.snapshot = exam_snapshot(exam, questions, passing)
+        attempt.save(update_fields=['snapshot'])
+
+
+def _ensure_attempt_can_be_graded(attempt):
+    if attempt.exam.status != 'published':
+        raise ExamUnavailable("This exam is no longer available.", 'not_published')
+    if not attempt_started_within_window(attempt):
+        raise ExamUnavailable("This attempt wasn't started within the exam window.", 'outside_window')
+
+
+def start_exam_attempt(exam, user):
+    refusal = None
+    with transaction.atomic():
+        exam = Exam.objects.select_for_update().get(pk=exam.pk)
+        ensure_question_bank_matches_course(exam)
+        attempts = ExamAttempt.objects.filter(exam=exam, user=user)
+        active = attempts.select_for_update().filter(status='in_progress').first()
+        if active:
+            active.exam = exam
+            _ensure_attempt_can_be_graded(active)
+            _ensure_snapshot(active)
+            if not active.is_expired():
+                return active
+            _grade_attempt(active, completed_at=active.deadline)
+
+        # Let any overdue grading commit even if the next attempt is refused.
+        try:
+            ensure_exam_open(exam)
+            if attempts.count() >= exam.max_attempts:
+                raise ExamUnavailable(
+                    f"You have used all {exam.max_attempts} attempt(s) for this exam.", 'max_attempts'
+                )
+            questions = current_exam_questions(exam)
+            validated_exam_total(questions, exam.passing_marks)
+        except ExamUnavailable as exc:
+            refusal = exc
+        else:
+            previous = attempts.order_by('-attempt_number').values_list('attempt_number', flat=True).first()
+            seed = token_hex(16) if exam.randomize_questions else None
+            if seed is not None:
+                Random(seed).shuffle(questions)
+            snapshot = exam_snapshot(exam, questions, exam.passing_marks)
+            if seed is not None:
+                snapshot['question_order_seed'] = seed
+            return ExamAttempt.objects.create(
+                exam=exam, user=user, attempt_number=(previous or 0) + 1,
+                snapshot=snapshot,
+            )
+
+    raise refusal
+
+
+def selected_option_index(answer, options):
     try:
-        return Decimal(str(value))
-    except (TypeError, ValueError, InvalidOperation):
-        return Decimal(default)
+        answer_idx = int(answer) if isinstance(answer, str) else answer
+    except ValueError:
+        return None
+    return answer_idx if type(answer_idx) is int and 0 <= answer_idx < len(options) else None
 
 
 def _answer_matches_options(answer, options):
     if answer is None or answer == '':
         return False
-
     options = options or []
-    answer_text = str(answer).strip()
-
-    try:
-        answer_idx = int(answer) if isinstance(answer, str) else answer
-    except (TypeError, ValueError):
-        answer_idx = None
-
-    if isinstance(answer_idx, int) and 0 <= answer_idx < len(options):
-        return bool(options[answer_idx].get('is_correct', False))
-
-    for option in options:
-        if (
-            option.get('is_correct', False)
-            and answer_text.lower() == str(option.get('text', '')).strip().lower()
-        ):
-            return True
-
-    return False
-
-
-def _custom_question_key(question, index):
-    return str(
-        question.get('id')
-        or question.get('question_id')
-        or question.get('key')
-        or f'custom_{index}'
+    answer_idx = selected_option_index(answer, options)
+    if answer_idx is not None:
+        option = options[answer_idx]
+        return isinstance(option, dict) and bool(option.get('is_correct'))
+    answer_text = str(answer).strip().lower()
+    return any(
+        isinstance(option, dict) and option.get('is_correct')
+        and answer_text == str(option.get('text', '')).strip().lower()
+        for option in options
     )
 
 
-def _custom_question_marks(question):
-    return _decimal_marks(question.get('marks', question.get('max_marks', 1)), default='1')
+def _merge_answers(attempt, answers):
+    valid_ids = {str(q['id']) for q in attempt.snapshot['questions']}
+    if set(answers) - valid_ids:
+        raise ExamUnavailable("Answers must reference questions in this attempt.", 'invalid_question')
+    attempt.answers = {**(attempt.answers or {}), **answers}
 
 
-def get_exam_total_possible_marks(exam):
-    total = sum((question.marks for question in exam.questions.all()), Decimal('0'))
-    total += sum((_custom_question_marks(question) for question in exam.custom_questions or []), Decimal('0'))
-    return total
-
-
-def calculate_exam_attempt_score(attempt):
-    exam = attempt.exam
-    answers = attempt.answers or {}
-    earned = Decimal('0')
-    total_possible = Decimal('0')
-
-    for question in exam.questions.all():
-        total_possible += question.marks
-        answer = answers.get(str(question.id))
-
-        if question.question_type in ['mcq', 'tf'] and _answer_matches_options(answer, question.options):
-            earned += question.marks
-
-    for index, question in enumerate(exam.custom_questions or []):
-        marks = _custom_question_marks(question)
-        total_possible += marks
-        answer = answers.get(_custom_question_key(question, index))
-
-        if _answer_matches_options(answer, question.get('options', [])):
-            earned += marks
-
-    return earned, total_possible
-
-
-def start_exam_attempt(exam, user):
-    """
-    Start a new exam attempt for a user.
-    
-    Args:
-        exam: Exam instance
-        user: User instance
-    
-    Returns:
-        ExamAttempt instance
-    
-    Raises:
-        ValueError: If exam is not active or user has exceeded max attempts
-    """
-    with transaction.atomic():
-        locked_exam = Exam.objects.select_for_update().get(pk=exam.pk)
-
-        ensure_exam_open(locked_exam)
-
-        attempts = (
-            ExamAttempt.objects
-            .select_for_update()
-            .filter(exam=locked_exam, user=user)
-            .order_by('attempt_number', 'started_at', 'id')
-        )
-
-        in_progress = attempts.filter(status='in_progress').first()
-        if in_progress:
-            if not in_progress.is_expired():
-                return in_progress
-
-            in_progress.status = 'abandoned'
-            in_progress.save(update_fields=['status'])
-
-        used_attempts = attempts.filter(status__in=['completed', 'abandoned']).count()
-        if used_attempts >= locked_exam.max_attempts:
-            raise ExamUnavailable(
-                f"You have used all {locked_exam.max_attempts} attempt(s) for this exam.", 'max_attempts'
-            )
-
-        next_attempt_number = (
-            attempts.order_by('-attempt_number')
-            .values_list('attempt_number', flat=True)
-            .first()
-            or 0
-        ) + 1
-
-        try:
-            return ExamAttempt.objects.create(
-                exam=locked_exam,
-                user=user,
-                attempt_number=next_attempt_number
-            )
-        except IntegrityError:
-            in_progress = ExamAttempt.objects.select_for_update().filter(
-                exam=locked_exam,
-                user=user,
-                status='in_progress'
-            ).first()
-            if in_progress:
-                return in_progress
-            raise
-
-
-def submit_exam_attempt(attempt, answers):
-    """
-    Submit exam attempt with answers.
-    
-    Args:
-        attempt: ExamAttempt instance
-        answers: Dictionary of {question_id: answer}
-    
-    Returns:
-        ExamAttempt instance with calculated score
-    
-    Raises:
-        ValueError: If attempt is already completed or expired
-    """
+@transaction.atomic
+def record_exam_answers(attempt, answers=None, *, submit=False):
+    """Save answer changes, optionally submit, or finalize an overdue attempt."""
+    exam = Exam.objects.select_for_update().get(pk=attempt.exam_id)
+    attempt = ExamAttempt.objects.select_for_update().get(pk=attempt.pk)
+    attempt.exam = exam
+    _ensure_attempt_can_be_graded(attempt)
     if attempt.status == 'completed':
-        raise ValueError("Attempt already completed")
+        return attempt
+    if attempt.status != 'in_progress':
+        raise ExamUnavailable("This attempt is no longer in progress.", 'attempt_closed')
+    _ensure_snapshot(attempt)
 
-    # EXM-01: re-check availability at submit time, not only at start.
-    if attempt.exam.status != 'published':
-        raise ExamUnavailable("This exam is no longer available.", 'not_published')
-    if not attempt_started_within_window(attempt):
-        raise ExamUnavailable("This attempt wasn't started within the exam window.", 'outside_window')
-    
-    if attempt.is_expired():
-        attempt.status = 'abandoned'
-        attempt.save()
-        raise ValueError("Attempt time has expired")
-    
-    # Save answers
-    attempt.answers = answers
-    attempt.completed_at = timezone.now()
-    attempt.time_spent_seconds = int((attempt.completed_at - attempt.started_at).total_seconds())
-    attempt.status = 'completed'
-
-    earned, total_possible = calculate_exam_attempt_score(attempt)
-    attempt.score = earned
-    attempt.percentage = (earned / total_possible * 100) if total_possible > 0 else Decimal('0')
-    attempt.passed = attempt.score >= attempt.exam.passing_marks
-    attempt.auto_graded_at = timezone.now()
-    attempt.save(update_fields=[
-        'answers',
-        'completed_at',
-        'time_spent_seconds',
-        'status',
-        'score',
-        'percentage',
-        'passed',
-        'auto_graded_at',
-    ])
-    
-    # Create detailed result
-    create_exam_result(attempt)
-    
+    now = timezone.now()
+    if attempt.is_expired(now):
+        return _grade_attempt(attempt, completed_at=attempt.deadline)
+    if answers is not None:
+        _merge_answers(attempt, answers)
+    if submit:
+        return _grade_attempt(attempt, completed_at=now)
+    if answers is not None:
+        attempt.save(update_fields=['answers'])
     return attempt
 
 
-def create_exam_result(attempt):
-    """
-    Create detailed result breakdown for an exam attempt.
-    
-    Args:
-        attempt: ExamAttempt instance
-    
-    Returns:
-        ExamResult instance
-    """
-    exam = attempt.exam
-    answers = attempt.answers
-    
-    question_results = {}
-    correct_count = 0
-    incorrect_count = 0
-    unanswered_count = 0
-    
-    difficulty_correct = {'easy': 0, 'medium': 0, 'hard': 0}
-    
-    # Process each question
-    for question in exam.questions.all():
-        q_id = str(question.id)
-        answer = answers.get(q_id)
-        
-        if answer is None or answer == '':
-            unanswered_count += 1
-            question_results[q_id] = {
-                'correct': False,
-                'marks_earned': 0,
-                'difficulty': question.difficulty
-            }
-            continue
-        
-        is_correct = False
-        marks_earned = Decimal('0')
-        
-        if question.question_type in ['mcq', 'tf']:
-            is_correct = _answer_matches_options(answer, question.options)
+def submit_exam_attempt(attempt, answers):
+    return record_exam_answers(attempt, answers, submit=True)
 
-        if is_correct:
-            marks_earned = question.marks
-            correct_count += 1
-            difficulty_correct[question.difficulty] += 1
-        else:
-            incorrect_count += 1
-        
-        question_results[q_id] = {
-            'correct': is_correct,
-            'marks_earned': float(marks_earned),
-            'difficulty': question.difficulty,
-            'answer': answer
-        }
 
-    for index, question in enumerate(exam.custom_questions or []):
-        q_id = _custom_question_key(question, index)
-        answer = answers.get(q_id)
-        difficulty = question.get('difficulty', 'medium')
-        if difficulty not in difficulty_correct:
+def _grade_attempt(attempt, *, completed_at):
+    breakdown = {}
+    counts = {'correct_count': 0, 'incorrect_count': 0, 'unanswered_count': 0}
+    difficulty_counts = {'easy': 0, 'medium': 0, 'hard': 0}
+    earned = Decimal('0.00')
+    for question in attempt.snapshot['questions']:
+        key = str(question['id'])
+        answer = (attempt.answers or {}).get(key)
+        answered = answer is not None and answer != ''
+        correct = _answer_matches_options(answer, question['options'])
+        marks = Decimal(question['marks']) if correct else Decimal('0.00')
+        difficulty = question['difficulty']
+        if difficulty not in difficulty_counts:
             difficulty = 'medium'
-
-        if answer is None or answer == '':
-            unanswered_count += 1
-            question_results[q_id] = {
-                'correct': False,
-                'marks_earned': 0,
-                'difficulty': difficulty,
-            }
-            continue
-
-        is_correct = _answer_matches_options(answer, question.get('options', []))
-        marks_earned = _custom_question_marks(question) if is_correct else Decimal('0')
-        if is_correct:
-            correct_count += 1
-            difficulty_correct[difficulty] += 1
+        if correct:
+            counts['correct_count'] += 1
+            difficulty_counts[difficulty] += 1
+        elif answered:
+            counts['incorrect_count'] += 1
         else:
-            incorrect_count += 1
-
-        question_results[q_id] = {
-            'correct': is_correct,
-            'marks_earned': float(marks_earned),
-            'difficulty': difficulty,
-            'answer': answer,
-            'custom': True,
+            counts['unanswered_count'] += 1
+        earned += marks
+        breakdown[key] = {
+            'correct': correct, 'marks_earned': float(marks), 'difficulty': difficulty,
+            'answer': answer, 'custom': question['custom'],
         }
-    
-    # Create or update result
-    result, created = ExamResult.objects.update_or_create(
+
+    total = attempt.grading_total_marks
+    attempt.score = earned
+    attempt.percentage = (earned * 100 / total).quantize(Decimal('0.01')) if total else Decimal('0.00')
+    attempt.passed = bool(total and earned >= Decimal(attempt.snapshot['passing_marks']))
+    attempt.status = 'completed'
+    attempt.completed_at = completed_at
+    attempt.auto_graded_at = timezone.now()
+    attempt.time_spent_seconds = max(0, int((completed_at - attempt.started_at).total_seconds()))
+    attempt.save(update_fields=[
+        'answers', 'score', 'percentage', 'passed', 'status',
+        'completed_at', 'auto_graded_at', 'time_spent_seconds',
+    ])
+    ExamResult.objects.update_or_create(
         attempt=attempt,
         defaults={
-            'question_results': question_results,
-            'correct_count': correct_count,
-            'incorrect_count': incorrect_count,
-            'unanswered_count': unanswered_count,
-            'easy_correct': difficulty_correct['easy'],
-            'medium_correct': difficulty_correct['medium'],
-            'hard_correct': difficulty_correct['hard']
-        }
+            'question_results': breakdown,
+            **counts,
+            **{f'{difficulty}_correct': count for difficulty, count in difficulty_counts.items()},
+        },
     )
-    
-    return result
+    if attempt.passed:
+        from enrollments.models import Enrollment
+        from enrollments.services import evaluate_and_complete_enrollment
 
-
-def calculate_exam_score(attempt):
-    """
-    Calculate score for an exam attempt.
-    
-    Args:
-        attempt: ExamAttempt instance
-    
-    Returns:
-        Decimal: Total score earned
-    """
-    total_score, _ = calculate_exam_attempt_score(attempt)
-    return total_score
+        enrollment_id = Enrollment.objects.filter(
+            user_id=attempt.user_id, course_id=attempt.exam.course_id,
+        ).values_list('pk', flat=True).first()
+        if enrollment_id is not None:
+            evaluate_and_complete_enrollment(enrollment_id)
+    return attempt
 
 
 def get_exam_analytics(exam):
-    """
-    Get analytics for an exam.
-    
-    Args:
-        exam: Exam instance
-    
-    Returns:
-        Dictionary with analytics data
-    """
-    attempts = ExamAttempt.objects.filter(exam=exam, status='completed')
-    
-    total_attempts = attempts.count()
-    if total_attempts == 0:
+    """Summarize completed grades, preferring the questions captured at grading."""
+    attempts = list(ExamAttempt.objects.filter(exam=exam, status='completed').select_related('result'))
+    if not attempts:
         return {
             'total_attempts': 0,
             'average_score': 0,
@@ -389,45 +290,40 @@ def get_exam_analytics(exam):
             'question_analytics': []
         }
     
-    # Calculate averages
-    scores = [float(a.score) for a in attempts if a.score]
+    scores = [attempt.score for attempt in attempts if attempt.score is not None]
     average_score = sum(scores) / len(scores) if scores else 0
-    
-    passed_count = attempts.filter(passed=True).count()
-    pass_rate = (passed_count / total_attempts) * 100
-    
-    # Question-wise analytics
-    question_analytics = []
-    for question in exam.questions.all():
-        q_id = str(question.id)
-        
-        total_answered = 0
-        correct_answered = 0
-        
-        for attempt in attempts:
-            if q_id in attempt.answers:
-                total_answered += 1
-                
-                # Check if correct
-                correct_options = [opt for opt in question.options if opt.get('is_correct')]
-                if correct_options:
-                    correct_answer = correct_options[0].get('text')
-                    if str(attempt.answers[q_id]).strip().lower() == str(correct_answer).strip().lower():
-                        correct_answered += 1
-        
-        correct_percentage = (correct_answered / total_answered * 100) if total_answered > 0 else 0
-        
-        question_analytics.append({
-            'question_id': question.id,
-            'question_text': question.question_text[:100],
-            'difficulty': question.difficulty,
-            'correct_percentage': round(correct_percentage, 2),
-            'total_attempts': total_answered
-        })
-    
+    pass_rate = sum(attempt.passed is True for attempt in attempts) / len(attempts) * 100
+    questions = {}
+    current_questions = build_questions(exam.questions.filter(course_id=exam.course_id), exam.custom_questions)
+    for attempt in attempts:
+        snapshot_questions = attempt.snapshot['questions'] if attempt.snapshot is not None else current_questions
+        breakdown = attempt.result.question_results if hasattr(attempt, 'result') else {}
+        for question in snapshot_questions:
+            key = str(question['id'])
+            stats = questions.setdefault(key, {
+                'question_id': question['id'],
+                'question_text': question['question_text'][:100],
+                'difficulty': question['difficulty'],
+                'total_attempts': 0,
+                'correct': 0,
+            })
+            answer = (attempt.answers or {}).get(key)
+            if answer is None or answer == '':
+                continue
+            graded = breakdown.get(key, {}).get('correct')
+            if not isinstance(graded, bool):
+                graded = _answer_matches_options(answer, question['options'])
+            stats['total_attempts'] += 1
+            stats['correct'] += graded
+
+    for stats in questions.values():
+        answered = stats['total_attempts']
+        correct = stats.pop('correct')
+        stats['correct_percentage'] = round(correct * 100 / answered, 2) if answered else 0
+
     return {
-        'total_attempts': total_attempts,
-        'average_score': round(average_score, 2),
+        'total_attempts': len(attempts),
+        'average_score': round(float(average_score), 2),
         'pass_rate': round(pass_rate, 2),
-        'question_analytics': question_analytics
+        'question_analytics': list(questions.values()),
     }

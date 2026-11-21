@@ -1,20 +1,23 @@
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from certificates.services import issue_certificate
+from certificates.models import Certificate
 from accounts.utils import is_platform_admin
 from courses.models import Lesson
 from enrollments.constants import LESSON_COMPLETION_THRESHOLD
 from enrollments.constants import ACCESS_STATUSES
+from students.activity import record_learning_activity
 from .models import Enrollment, LessonProgress
 
 MAX_WATCH_PROGRESS_DELTA_SECONDS = 120
 WATCH_PROGRESS_GRACE_SECONDS = 15
 
 
-def mark_lesson_completed(enrollment, lesson):
-    progress, _ = LessonProgress.objects.get_or_create(
+@transaction.atomic
+def mark_lesson_completed(enrollment, lesson, *, local_zone=None, record_activity=True):
+    progress, _ = LessonProgress.objects.select_for_update().get_or_create(
         enrollment=enrollment,
         user=enrollment.user,
         lesson=lesson
@@ -23,16 +26,21 @@ def mark_lesson_completed(enrollment, lesson):
     if not progress.is_completed:
         progress.is_completed = True
         progress.completed_at = timezone.now()
-        progress.save()
+        progress.save(update_fields=['is_completed', 'completed_at', 'updated_at'])
+        if record_activity:
+            record_learning_activity(enrollment.user_id, progress.completed_at, local_zone=local_zone)
 
     return progress
 
 
+def _course_lessons_in_order(course):
+    return Lesson.objects.filter(module__course=course).order_by(
+        'module__position', 'module_id', 'position', 'id',
+    )
+
+
 def get_required_lessons(course):
-    return Lesson.objects.filter(
-        module__course=course,
-        is_free=False
-    ).order_by('module__position', 'position')
+    return _course_lessons_in_order(course).filter(is_free=False)
 
 
 def get_completed_required_lesson_ids(enrollment):
@@ -45,9 +53,11 @@ def get_completed_required_lesson_ids(enrollment):
     )
 
 
-def get_lesson_completion_stats(enrollment):
-    required_lessons = get_required_lessons(enrollment.course)
-    required_ids = set(required_lessons.values_list('id', flat=True))
+def get_lesson_completion_stats(enrollment, *, required_lessons=None):
+    if required_lessons is None:
+        required_ids = set(get_required_lessons(enrollment.course).values_list('id', flat=True))
+    else:
+        required_ids = {lesson.pk for lesson in required_lessons}
     completed_required_ids = get_completed_required_lesson_ids(enrollment)
     completed_count = len(required_ids & completed_required_ids)
     total_count = len(required_ids)
@@ -76,28 +86,55 @@ def assessment_requirements_met(enrollment):
 
 @transaction.atomic
 def evaluate_and_complete_enrollment(enrollment_id):
+    from exams.services import course_exam_requirements_met
+
     enrollment = Enrollment.objects.select_for_update().select_related(
         'user',
         'course'
     ).get(id=enrollment_id)
 
-    stats = get_lesson_completion_stats(enrollment)
-    if not stats['all_required_completed'] or not assessment_requirements_met(enrollment):
+    if enrollment.status not in ACCESS_STATUSES:
         return False
 
-    if not enrollment.is_completed:
+    has_certificate = Certificate.objects.filter(
+        user_id=enrollment.user_id, course_id=enrollment.course_id, revoked_at__isnull=True,
+    ).exists()
+    if enrollment.status == 'completed' and enrollment.is_completed and has_certificate:
+        return True
+
+    stats = get_lesson_completion_stats(enrollment)
+    if (
+        not stats['all_required_completed']
+        or not assessment_requirements_met(enrollment)
+        or not course_exam_requirements_met(enrollment.user, enrollment.course)
+    ):
+        return False
+
+    if enrollment.status != 'completed' or not enrollment.is_completed or enrollment.completed_at is None:
         enrollment.status = 'completed'
         enrollment.is_completed = True
-        enrollment.completed_at = timezone.now()
+        enrollment.completed_at = enrollment.completed_at or timezone.now()
         enrollment.save(update_fields=[
             'status',
             'is_completed',
             'completed_at'
         ])
 
-        issue_certificate(enrollment.user, enrollment.course)
+    issue_certificate(enrollment.user, enrollment.course)
 
     return True
+
+
+@transaction.atomic
+def cancel_enrollments(queryset):
+    """Cancel access and revoke certificates in the same transaction."""
+    enrollments = list(queryset.filter(status__in=ACCESS_STATUSES).order_by('pk').select_for_update(of=('self',)))
+    revoked_at = timezone.now()
+    for enrollment in enrollments:
+        Certificate.objects.filter(
+            user_id=enrollment.user_id, course_id=enrollment.course_id, revoked_at__isnull=True,
+        ).update(revoked_at=revoked_at)
+    return Enrollment.objects.filter(pk__in=[enrollment.pk for enrollment in enrollments]).update(status='canceled')
 
 
 def check_and_complete_course(enrollment):
@@ -115,7 +152,7 @@ def auto_complete_lesson(progress):
 
 
 @transaction.atomic
-def update_lesson_watch_progress(enrollment, lesson, watch_time_delta):
+def update_lesson_watch_progress(enrollment, lesson, watch_time_delta, *, local_zone=None):
     """
     Apply one bounded incremental watch-progress event.
 
@@ -132,28 +169,11 @@ def update_lesson_watch_progress(enrollment, lesson, watch_time_delta):
     enrollment = Enrollment.objects.select_for_update().get(pk=enrollment.pk)
     now = timezone.now()
 
-    try:
-        progress = LessonProgress.objects.select_for_update().get(
-            enrollment=enrollment,
-            user=enrollment.user,
-            lesson=lesson,
-        )
-        created = False
-    except LessonProgress.DoesNotExist:
-        try:
-            progress = LessonProgress.objects.create(
-                enrollment=enrollment,
-                user=enrollment.user,
-                lesson=lesson,
-            )
-            created = True
-        except IntegrityError:
-            progress = LessonProgress.objects.select_for_update().get(
-                enrollment=enrollment,
-                user=enrollment.user,
-                lesson=lesson,
-            )
-            created = False
+    progress, created = LessonProgress.objects.select_for_update().get_or_create(
+        enrollment=enrollment,
+        user_id=enrollment.user_id,
+        lesson=lesson,
+    )
 
     if not created:
         elapsed_seconds = max(0, int((now - progress.updated_at).total_seconds()))
@@ -171,9 +191,12 @@ def update_lesson_watch_progress(enrollment, lesson, watch_time_delta):
     if max_duration > 0:
         next_watch_time = min(next_watch_time, max_duration)
 
+    credited_seconds = max(0, next_watch_time - progress.watch_time)
     progress.watch_time = next_watch_time
     progress.updated_at = now
     progress.save(update_fields=["watch_time", "updated_at"])
+    if watch_time_delta > 0:
+        record_learning_activity(enrollment.user_id, now, local_zone=local_zone, watch_seconds=credited_seconds)
     return progress
 
 
@@ -195,41 +218,23 @@ def get_previous_lesson(lesson):
     
     return pre_module.lessons.order_by('-position').first()
 
-def get_resume_lesson(enrollment):
-    lessons = get_required_lessons(enrollment.course)
-    completed_ids = get_completed_required_lesson_ids(enrollment)
-
-    for lesson in lessons:
-        if lesson.id not in completed_ids:
-            return lesson
-
-    return None
-
-def get_next_lesson(enrollment, current_lesson):
-    lessons = get_required_lessons(enrollment.course)
-    completed_ids = get_completed_required_lesson_ids(enrollment)
-
-    lesson_list = list(lessons)
-    try:
-        current_index = lesson_list.index(current_lesson)
-    except ValueError:
-        return None
-
-    # Look for next incomplete required lesson after current.
-    for lesson in lesson_list[current_index + 1:]:
-        if lesson.id not in completed_ids:
-            return lesson
-
-    return None
+def get_resume_lesson(enrollment, *, lessons=None, completed_ids=None):
+    """Find the first unlocked, incomplete required lesson in study order."""
+    if lessons is None:
+        lessons = ordered_course_lessons(enrollment.course)
+    if completed_ids is None:
+        completed_ids = completed_lesson_ids(enrollment)
+    locks = lesson_lock_state(enrollment, lessons, completed_ids)
+    return next(
+        (lesson for lesson in lessons
+         if not lesson.is_free and lesson.pk not in completed_ids and not locks[lesson.pk]),
+        None,
+    )
 
 
 def ordered_course_lessons(course):
     """All lessons of a course in one deterministic study order."""
-    return list(
-        Lesson.objects.filter(module__course=course)
-        .select_related('module')
-        .order_by('module__position', 'module__id', 'position', 'id')
-    )
+    return list(_course_lessons_in_order(course).select_related('module'))
 
 
 def completed_lesson_ids(enrollment):

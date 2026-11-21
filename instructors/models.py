@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from decimal import Decimal
 import uuid
 
 User = get_user_model()
@@ -28,11 +27,6 @@ class InstructorProfile(models.Model):
     certifications = models.JSONField(default=list, help_text="List of certifications")
     education = models.JSONField(default=list, help_text="Educational background")
     
-    # Statistics (denormalized for performance)
-    total_courses = models.IntegerField(default=0)
-    total_students = models.IntegerField(default=0)
-    total_revenue = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    
     # Verification
     is_verified = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
@@ -47,7 +41,6 @@ class InstructorProfile(models.Model):
         indexes = [
             models.Index(fields=['user']),
             models.Index(fields=['is_verified']),
-            models.Index(fields=['-total_students']),
         ]
     
     def __str__(self):
@@ -59,31 +52,23 @@ class InstructorProfile(models.Model):
         self.verified_at = timezone.now()
         self.save(update_fields=['is_verified', 'verified_at'])
     
-    def update_statistics(self):
-        """Update denormalized statistics from related models."""
+    @property
+    def total_courses(self):
         from courses.models import Course
+
+        return Course.objects.filter(instructor_id=self.user_id).count()
+
+    @property
+    def total_students(self):
         from enrollments.models import Enrollment
-        from payments.models import Payment
-        
-        courses = Course.objects.filter(instructor=self.user)
-        self.total_courses = courses.count()
-        
-        self.total_students = Enrollment.objects.filter(
-            course__instructor=self.user
-        ).values('user').distinct().count()
-        
-        self.total_revenue = Payment.objects.filter(
-            instructor=self.user,
-            status='completed'
-        ).aggregate(
-            total=models.Sum('instructor_earnings')
-        )['total'] or Decimal('0.00')
-        
-        self.save(update_fields=[
-            'total_courses',
-            'total_students',
-            'total_revenue',
-        ])
+
+        return Enrollment.objects.filter(course__instructor_id=self.user_id).values('user').distinct().count()
+
+    @property
+    def total_revenue(self):
+        from payments.services import get_instructor_net_earnings
+
+        return get_instructor_net_earnings(self.user_id)
 
 
 # InstructorPayout was removed (AUDIT_REPORT.md PAY-07, 2026-11-21): payouts

@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}Certificate Verification | SkillStudio{% endblock %}
+
+{% block content %}
+<main class="max-w-xl mx-auto px-4 py-12">
+    <div class="bg-dark-surface border border-dark-border rounded-xl p-8">
+        <h1 class="text-2xl font-semibold mb-4">Certificate Verification</h1>
+        {% if certificate.valid %}
+            <p class="text-green-400 font-semibold mb-4">Verified certificate</p>
+            <dl class="space-y-4">
+                <div><dt class="text-gray-400">Learner</dt><dd>{{ certificate.user_name }}</dd></div>
+                <div><dt class="text-gray-400">Course</dt><dd>{{ certificate.course_title }}</dd></div>
+                <div><dt class="text-gray-400">Issued</dt><dd>{{ certificate.issued_at|date:"j F Y" }}</dd></div>
+                {% if certificate.grade is not None %}
+                    <div><dt class="text-gray-400">Grade</dt><dd>{{ certificate.grade }}%</dd></div>
+                {% endif %}
+                <div><dt class="text-gray-400">Certificate ID</dt><dd class="break-all">{{ certificate.id }}</dd></div>
+            </dl>
+        {% elif certificate.revoked %}
+            <p class="text-red-400 font-semibold">This certificate was revoked.</p>
+            {% if certificate.revoked_at %}<p class="text-gray-400 mt-2">Revoked {{ certificate.revoked_at|date:"j F Y" }}</p>{% endif %}
+        {% else %}
+            <p class="text-gray-400">Certificate not found.</p>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

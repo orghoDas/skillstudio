@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load instructor courses
     async function loadMyCourses() {
         try {
-            const response = await apiRequest('/courses/?instructor=me&limit=3');
+            const response = await apiRequest('/courses/?instructor=me&page_size=3');
             const container = document.getElementById('my-courses');
 
             const courses = response.results || response || [];

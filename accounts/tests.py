@@ -1,10 +1,13 @@
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
+from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
+from rest_framework_simplejwt.tokens import AccessToken
 from .models import Profile, APIKey
 from .utils import is_platform_admin
 from instructors.models import InstructorProfile
@@ -108,6 +111,12 @@ class UserModelTest(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 User.objects.filter(id=user.id).update(role=User.Role.ADMIN, is_staff=False)
+
+    def test_database_rejects_staff_flag_for_non_admin(self):
+        user = User.objects.create_user(email='not-staff@example.test', is_staff=True)
+        self.assertFalse(user.is_staff)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            User.objects.filter(pk=user.pk).update(is_staff=True)
 
     def test_database_rejects_superuser_without_admin_role(self):
         """Bulk/manual writes cannot bypass superuser/admin invariants."""
@@ -462,6 +471,37 @@ class APIKeyTest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_read_scope_allows_reads_within_the_users_role(self):
+        _, secret = APIKey.create_for_user(user=self.user, label='Read key', scopes=['read'])
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_X_API_KEY=secret)
+        self.assertEqual(self.client.get('/api/accounts/me/').status_code, 200)
+        self.assertEqual(self.client.get('/api/accounts/users/').status_code, 403)
+        response = self.client.patch('/api/accounts/me/', {'username': 'blocked'}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.username, 'blocked')
+
+    def test_write_scope_cannot_mint_a_key_with_broader_access(self):
+        _, secret = APIKey.create_for_user(user=self.user, label='Write key', scopes=['write'])
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Api-Key {secret}')
+        self.assertEqual(self.client.get('/api/accounts/me/').status_code, 403)
+        response = self.client.patch('/api/accounts/me/', {'username': 'allowed'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        url = '/api/accounts/api-keys/'
+        for scopes in ([], ['read', 'write']):
+            response = self.client.post(url, {'label': 'Blocked key', 'scopes': scopes}, format='json')
+            self.assertEqual(response.status_code, 403)
+        response = self.client.post(url, {'label': 'Child key', 'scopes': ['write']}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['scopes'], ['write'])
+
+    def test_unknown_scope_is_rejected_when_creating_a_key(self):
+        response = self.client.post('/api/accounts/api-keys/', {'label': 'Invalid', 'scopes': ['other']}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('scopes', response.data)
+
 
 class PermissionsTest(APITestCase):
     def setUp(self):
@@ -509,6 +549,55 @@ class PermissionsTest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.get('/api/accounts/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_role_demotion_ends_django_admin_access_for_existing_session(self):
+        former_admin = User.objects.create_user(email='demoted@example.test', role='admin')
+        django_admin = APIClient()
+        django_admin.force_login(former_admin)
+        self.assertEqual(django_admin.get(reverse('admin:index'), secure=True).status_code, 200)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            f'/api/accounts/users/{former_admin.pk}/role/', {'role': 'student'}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        former_admin.refresh_from_db()
+        self.assertEqual((former_admin.role, former_admin.is_staff), ('student', False))
+        self.assertEqual(django_admin.get(reverse('admin:index'), secure=True).status_code, 302)
+
+    def test_both_role_endpoints_reject_superuser_demotion(self):
+        superuser = User.objects.create_superuser(email='protected-superuser@example.test')
+        self.client.force_authenticate(self.admin)
+        url = f'/api/accounts/users/{superuser.pk}/'
+        response = self.client.patch(f'{url}role/', {'role': 'student'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('role', response.data)
+        response = self.client.post(f'{url}promote/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('role', response.data)
+        superuser.refresh_from_db()
+        self.assertEqual((superuser.role, superuser.is_staff, superuser.is_superuser), ('admin', True, True))
+
+    def test_django_admin_form_rejects_superuser_demotion(self):
+        actor = User.objects.create_superuser(email='form-admin@example.test')
+        target = User.objects.create_superuser(email='form-superuser@example.test')
+        client = APIClient()
+        client.force_login(actor)
+        response = client.post(reverse('admin:accounts_user_change', args=[target.pk]), {
+            'email': target.email, 'role': 'instructor', 'is_active': 'on', 'is_superuser': 'on', '_save': 'Save',
+        }, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('A superuser must retain the admin role.', response.context['adminform'].form.errors['role'])
+        target.refresh_from_db()
+        self.assertEqual(target.role, 'admin')
+
+    def test_me_updates_username_but_keeps_active_flag_read_only(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.patch('/api/accounts/me/', {'username': 'renamed', 'is_active': False}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.username, 'renamed')
+        self.assertTrue(self.student.is_active)
 
 
 class CookieJWTAuthTests(APITestCase):
@@ -589,6 +678,32 @@ class CookieJWTAuthTests(APITestCase):
         self.assertEqual(out.cookies['access_token'].value, '')
         self.assertEqual(out.cookies['refresh_token'].value, '')
 
+    def test_anonymous_logout_always_expires_both_auth_cookies(self):
+        strict = APIClient(enforce_csrf_checks=True)
+        response = strict.post('/api/accounts/logout/', {}, format='json')
+        self.assertEqual(response.status_code, 205)
+        for name in ('access_token', 'refresh_token'):
+            self.assertEqual(response.cookies[name]['max-age'], 0)
+
+    def test_expired_access_cookie_can_log_out_and_blacklist_refresh(self):
+        strict, csrf = self._strict_login()
+        refresh = strict.cookies['refresh_token'].value
+        access = AccessToken(strict.cookies['access_token'].value)
+        access.set_exp(from_time=timezone.now() - timedelta(hours=1))
+        strict.cookies['access_token'] = str(access)
+        response = strict.post('/api/accounts/logout/', {}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn('refresh_token', response.cookies)
+
+        response = strict.post(
+            '/api/accounts/logout/', {'refresh': 'invalid'}, format='json', HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertEqual(response.status_code, 205)
+        self.assertEqual(response.cookies['access_token']['max-age'], 0)
+        self.assertEqual(response.cookies['refresh_token']['max-age'], 0)
+        token = APIClient().post('/api/accounts/token/refresh/', {'refresh': refresh}, format='json')
+        self.assertEqual(token.status_code, 401)
+
     # ----- SEC-06 -----------------------------------------------------------
 
     def test_login_without_csrf_is_rejected_in_cookie_mode(self):
@@ -646,3 +761,21 @@ class PageGatingTests(TestCase):
     def test_public_page_is_open_to_anonymous(self):
         resp = self.client.get('/courses/')
         self.assertEqual(resp.status_code, 200)
+
+
+class StaffFlagMigrationTests(TransactionTestCase):
+    def test_legacy_non_admin_staff_flags_are_cleared(self):
+        executor = MigrationExecutor(connection)
+        old = [('accounts', '0009_remove_profile_wallet')]
+        executor.migrate(old)
+        apps = executor.loader.project_state(old).apps
+        try:
+            users = apps.get_model('accounts', 'User').objects
+            legacy = users.create(email='old-staff@example.test', role='instructor', is_staff=True)
+            admin = users.create(email='old-admin@example.test', role='admin', is_staff=True)
+        finally:
+            executor = MigrationExecutor(connection)
+            executor.migrate(executor.loader.graph.leaf_nodes())
+
+        self.assertFalse(User.objects.get(pk=legacy.pk).is_staff)
+        self.assertTrue(User.objects.get(pk=admin.pk).is_staff)

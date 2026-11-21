@@ -121,7 +121,7 @@ class MeSerializer(serializers.ModelSerializer):
             "student_profile",
             "instructor_profile",
         )
-        read_only_fields = ('id', 'email', 'role', 'created_at')
+        read_only_fields = ('id', 'email', 'role', 'is_active', 'created_at')
 
     def get_account_profile(self, obj):
         profile, _ = Profile.objects.get_or_create(user=obj)
@@ -149,7 +149,8 @@ class MeSerializer(serializers.ModelSerializer):
         # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        instance.save()
+        if validated_data:
+            instance.save(update_fields=validated_data.keys())
 
         return instance
 
@@ -187,6 +188,7 @@ class APIKeySerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "prefix",
+            "scopes",
             "created_at",
             "last_used_at",
             "revoked_at",
@@ -197,7 +199,7 @@ class APIKeySerializer(serializers.ModelSerializer):
 class CreateAPIKeySerializer(serializers.Serializer):
     label = serializers.CharField(max_length=255)
     scopes = serializers.ListField(
-        child=serializers.CharField(max_length=64),
+        child=serializers.ChoiceField(choices=APIKey.Scope.choices),
         required=False,
         allow_empty=True,
     )

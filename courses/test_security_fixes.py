@@ -49,7 +49,7 @@ class CourseOrderingTests(Fixture, APITestCase):
     def test_sensitive_and_unknown_fields_fall_back_to_default(self):
         default = self.titles("-created_at")
         for ordering in ("instructor__password", "-instructor__password", "instructor__email",
-                         "nonexistent_field", "rating", "id;DROP TABLE"):
+                         "nonexistent_field", "--title", "id;DROP TABLE"):
             with self.subTest(ordering=ordering):
                 self.assertEqual(self.titles(ordering), default)
 
@@ -100,9 +100,109 @@ class NoCrossCourseInjectionTests(Fixture, APITestCase):
                                   {"course": self.bob_course.id, "title": "Injected"}, format="json")
         lesson = self.client.post("/api/courses/lessons/create/",
                                   {"module": self.bob_module.id, "title": "Injected"}, format="json")
-        self.assertEqual((module.status_code, lesson.status_code), (400, 400))
+        self.assertEqual((module.status_code, lesson.status_code), (403, 403))
         self.assertFalse(Module.objects.filter(title="Injected").exists())
         self.assertFalse(Lesson.objects.filter(title="Injected").exists())
+
+
+class CourseModerationTests(Fixture, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(email="moderator@test.com", role="admin")
+        self.base = "/api/courses/"
+        self.course = self.alice_course
+        self.module = self.alice_module
+        self.lesson = self.alice_lesson
+
+    def test_nonowners_get_403_for_course_and_content_management(self):
+        for actor in (self.bob, self.student):
+            self.client.force_authenticate(actor)
+            cases = [
+                ("PATCH", f"{self.course.pk}/update/"),
+                ("DELETE", f"{self.course.pk}/delete/"),
+                ("POST", f"{self.course.pk}/submit/"),
+                ("POST", f"{self.course.slug}/sections/"),
+                ("POST", f"modules/{self.module.pk}/lessons/"),
+                ("GET", f"sections/{self.module.pk}/"),
+                ("PATCH", f"modules/{self.module.pk}/update/"),
+                ("DELETE", f"modules/{self.module.pk}/delete/"),
+                ("GET", f"lessons/{self.lesson.pk}/"),
+                ("PATCH", f"lessons/{self.lesson.pk}/update/"),
+                ("DELETE", f"lessons/{self.lesson.pk}/delete/"),
+            ]
+            for method, route in cases:
+                with self.subTest(actor=actor.role, method=method, route=route):
+                    request = getattr(self.client, method.lower())
+                    payload = {"title": "Unauthorized", "content_type": "text"} if method in ("POST", "PATCH") else {}
+                    response = request(self.base + route, payload, format="json")
+                    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.title, "Alice Course")
+        self.client.force_authenticate(self.student)
+        self.assertEqual(self.client.post(f"{self.base}create/").status_code, 403)
+
+    def test_admin_can_edit_and_delete_without_taking_ownership(self):
+        self.client.force_authenticate(self.admin)
+        updated = self.client.patch(
+            f"{self.base}{self.course.pk}/update/",
+            {"title": "Moderated course", "instructor": self.admin.pk}, format="json",
+        )
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.course.refresh_from_db()
+        self.assertEqual((self.course.title, self.course.instructor_id), ("Moderated course", self.alice.pk))
+
+        for route in (f"lessons/{self.lesson.pk}/", f"sections/{self.module.pk}/"):
+            with self.subTest(route=route):
+                self.assertEqual(self.client.get(self.base + route).status_code, 200)
+                self.assertEqual(self.client.patch(self.base + route, {"title": "Moderated"}, format="json").status_code, 200)
+                self.assertEqual(self.client.delete(self.base + route).status_code, 204)
+        self.assertFalse(Module.objects.filter(pk=self.module.pk).exists())
+        self.assertFalse(Lesson.objects.filter(pk=self.lesson.pk).exists())
+        self.assertEqual(self.client.delete(f"{self.base}{self.course.pk}/delete/").status_code, 204)
+        self.assertFalse(Course.objects.filter(pk=self.course.pk).exists())
+
+    def test_admin_can_create_content_through_both_parent_routes(self):
+        self.client.force_authenticate(self.admin)
+        parents = (
+            (f"{self.course.pk}/modules/", {}),
+            ("modules/create/", {"course": self.course.pk}),
+        )
+        for route, fields in parents:
+            created = self.client.post(self.base + route, {"title": "Admin module", **fields}, format="json")
+            self.assertEqual(created.status_code, 201, created.data)
+            self.assertEqual(created.data["course"], self.course.pk)
+
+        parents = (
+            (f"sections/{self.module.pk}/lessons/", {}),
+            ("lessons/create/", {"module": self.module.pk}),
+        )
+        for route, fields in parents:
+            created = self.client.post(
+                self.base + route, {"title": "Admin lesson", "content_type": "text", **fields}, format="json",
+            )
+            self.assertEqual(created.status_code, 201, created.data)
+            self.assertEqual(created.data["module"], self.module.pk)
+
+    def test_admin_moderation_still_checks_course_state_and_parent_assignments(self):
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.patch(
+            f"{self.base}sections/{self.module.pk}/", {"course": self.bob_course.pk}, format="json",
+        ).status_code, 400)
+        self.assertEqual(self.client.patch(
+            f"{self.base}lessons/{self.lesson.pk}/", {"module": self.bob_module.pk}, format="json",
+        ).status_code, 400)
+
+        Lesson.objects.create(module=self.alice_module2, title="Second draft lesson")
+        response = self.client.post(f"{self.base}{self.course.pk}/submit/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "under_review")
+        self.assertEqual(self.client.delete(f"{self.base}{self.course.pk}/delete/").status_code, 400)
+        self.assertEqual(self.client.post(f"{self.base}{self.course.pk}/publish/").status_code, 200)
+        self.assertEqual(self.client.delete(f"{self.base}sections/{self.module.pk}/").status_code, 400)
+        self.assertEqual(self.client.delete(f"{self.base}lessons/{self.lesson.pk}/").status_code, 400)
+        self.assertEqual(self.client.patch(
+            f"{self.base}{self.course.pk}/update/", {"title": "Past the edit window"}, format="json",
+        ).status_code, 400)
 
 
 class LessonAnalyticsCsvTests(Fixture, APITestCase):

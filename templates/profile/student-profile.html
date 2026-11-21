@@ -163,23 +163,9 @@ async function loadProfile() {
             document.getElementById('phone').value = profile.phone || '';
             document.getElementById('location').value = profile.location || '';
             document.getElementById('bio').value = profile.bio || '';
-        }
-        
-        // Get dynamic stats from student dashboard
-        const dashboardData = await apiRequest('/students/dashboard/');
-        if (dashboardData && dashboardData.courses) {
-            const courses = dashboardData.courses;
-            
-            // Count enrolled courses
-            const enrolledCount = courses.length;
-            
-            // Count certificates earned
-            const certificatesCount = courses.filter(course => 
-                course.has_certificate === true
-            ).length;
-            
-            document.getElementById('stats-enrolled').textContent = enrolledCount;
-            document.getElementById('stats-certificates').textContent = certificatesCount;
+            const student = profileResponse.student_profile || {};
+            document.getElementById('stats-enrolled').textContent = student.total_courses_enrolled ?? 0;
+            document.getElementById('stats-certificates').textContent = student.total_certificates_earned ?? 0;
         }
         
         // Member since

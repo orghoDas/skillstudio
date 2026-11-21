@@ -1,9 +1,10 @@
 from django.contrib import admin
+from core.admin import ReadOnlyAdmin
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 
 
 @admin.register(QuestionBank)
-class QuestionBankAdmin(admin.ModelAdmin):
+class QuestionBankAdmin(ReadOnlyAdmin):
     """Admin interface for Question Bank."""
     list_display = ['id', 'question_text_short', 'question_type', 'difficulty', 'marks', 'course', 'created_at']
     list_filter = ['question_type', 'difficulty', 'course', 'created_at']
@@ -28,7 +29,7 @@ class QuestionBankAdmin(admin.ModelAdmin):
 
 
 @admin.register(Exam)
-class ExamAdmin(admin.ModelAdmin):
+class ExamAdmin(ReadOnlyAdmin):
     """Admin interface for Exams."""
     list_display = ['id', 'title', 'course', 'status', 'total_marks', 'duration_minutes', 'question_count_display', 'created_at']
     list_filter = ['status', 'course', 'created_at', 'start_datetime']
@@ -63,7 +64,7 @@ class ExamAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExamAttempt)
-class ExamAttemptAdmin(admin.ModelAdmin):
+class ExamAttemptAdmin(ReadOnlyAdmin):
     """Admin interface for Exam Attempts."""
     list_display = ['id', 'user_email', 'exam_title', 'score', 'percentage', 'passed', 'status', 'started_at', 'completed_at']
     list_filter = ['status', 'passed', 'exam', 'started_at']
@@ -95,7 +96,7 @@ class ExamAttemptAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExamResult)
-class ExamResultAdmin(admin.ModelAdmin):
+class ExamResultAdmin(ReadOnlyAdmin):
     """Admin interface for Exam Results."""
     list_display = ['id', 'attempt_user', 'attempt_exam', 'correct_count', 'incorrect_count', 'unanswered_count', 'created_at']
     list_filter = ['created_at', 'attempt__exam']

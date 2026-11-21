@@ -1,8 +1,12 @@
 import logging
 
-from django.db import transaction, IntegrityError
+from uuid import uuid4
+
+from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
+
+from accounts.utils import is_platform_admin
 
 # Import PDF generation function
 from .pdf import generate_certificate_pdf
@@ -11,63 +15,44 @@ logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
-def issue_certificate(user, course, schedule_pdf=True):
-    """
-    Issue a certificate for a completed course.
-    
-    Args:
-        user: User instance
-        course: Course instance
-    
-    Returns:
-        Certificate instance
-    
-    Raises:
-        ValidationError: If no active enrollment or enrollment not completed
-    """
+def issue_certificate(user, course):
+    """Issue a certificate for a completed enrollment. Render its PDF on demand."""
     from .models import Certificate
-    from .pdf import generate_certificate_pdf
     from enrollments.models import Enrollment
-    
-    # Get enrollment
+
     try:
-        enrollment = Enrollment.objects.get(user=user, course=course)
-    except Enrollment.DoesNotExist:
-        raise ValidationError(f"User is not enrolled in this course")
-    
-    # Validate enrollment is not canceled
+        enrollment = Enrollment.objects.select_for_update().get(user=user, course=course)
+    except Enrollment.DoesNotExist as exc:
+        raise ValidationError("User is not enrolled in this course.") from exc
     if enrollment.status == 'canceled':
-        raise ValidationError("Cannot issue certificate for canceled enrollment")
-    
-    # Validate enrollment is completed
+        raise ValidationError("Cannot issue a certificate for a canceled enrollment.")
     if not enrollment.is_completed:
-        raise ValidationError("Enrollment must be completed to issue certificate")
-    
-    try:
-        certificate, created = Certificate.objects.get_or_create(
-            user=enrollment.user,
-            course=enrollment.course,
-            defaults={
-                'enrollment': enrollment,
-                'completion_date': enrollment.completed_at or timezone.now(),
-                'grade': calculate_course_grade(user, course)
-            }
-        )
-        
-        if schedule_pdf:
-            schedule_certificate_pdf_render(certificate.id, force=False)
-        
+        raise ValidationError("Enrollment must be completed to issue a certificate.")
+
+    certificate = Certificate.objects.filter(user=user, course=course).first()
+    if certificate is not None and not certificate.is_revoked:
         return certificate
-    
-    except IntegrityError:
-        # Another process created it simultaneously
-        certificate = Certificate.objects.get(
-            user=enrollment.user,
-            course=enrollment.course
-        )
-        if schedule_pdf:
-            schedule_certificate_pdf_render(certificate.id, force=False)
-        return certificate
+
+    fields = {
+        'enrollment': enrollment,
+        'completion_date': enrollment.completed_at or timezone.now(),
+        'grade': calculate_course_grade(user, course),
+    }
+    if certificate is None:
+        return Certificate.objects.create(user=user, course=course, **fields)
+
+    previous_name = certificate.pdf.name
+    storage = certificate.pdf.storage
+    fields.update(
+        verification_code=str(uuid4()), issued_at=timezone.now(),
+        revoked_at=None, pdf=None, pdf_verification_url='', pdf_grade=None,
+    )
+    for field, value in fields.items():
+        setattr(certificate, field, value)
+    certificate.save(update_fields=fields)
+    if previous_name:
+        transaction.on_commit(lambda: storage.delete(previous_name), robust=True)
+    return certificate
 
 
 def certificate_has_pdf(certificate):
@@ -85,25 +70,16 @@ def ensure_certificate_pdf(certificate):
 
     Returns None if rendering fails (the error is logged).
     """
-    if certificate_has_pdf(certificate):
+    if (
+        certificate.pdf_verification_url == certificate.verification_url
+        and certificate.pdf_grade == certificate.released_grade
+        and certificate_has_pdf(certificate)
+    ):
         return certificate
-    rendered = safely_render_certificate_pdf(certificate.id, force=True)
+    rendered = safely_render_certificate_pdf(certificate.id)
     if rendered is None or not certificate_has_pdf(rendered):
         return None
     return rendered
-
-
-def schedule_certificate_pdf_render(certificate_id, force=False):
-    """
-    Schedule PDF rendering after the surrounding transaction commits.
-
-    Rendering is deliberately outside certificate issuance so storage/PDF
-    failures cannot roll back course completion or the certificate record.
-    """
-    transaction.on_commit(
-        lambda: safely_render_certificate_pdf(certificate_id, force=force),
-        robust=True
-    )
 
 
 def safely_render_certificate_pdf(certificate_id, force=False):
@@ -114,6 +90,7 @@ def safely_render_certificate_pdf(certificate_id, force=False):
         return None
 
 
+@transaction.atomic
 def render_certificate_pdf(certificate_id, force=False):
     """
     Render and persist a certificate PDF idempotently.
@@ -124,16 +101,28 @@ def render_certificate_pdf(certificate_id, force=False):
     """
     from .models import Certificate
 
-    certificate = Certificate.objects.select_related('user', 'course').get(id=certificate_id)
-    if certificate_has_pdf(certificate) and not force:
+    certificate = Certificate.objects.select_for_update(of=('self',)).select_related(
+        'user__profile', 'course', 'enrollment',
+    ).get(pk=certificate_id)
+    if certificate.is_revoked:
+        raise ValidationError("Revoked certificates cannot be rendered.")
+    verification_url = certificate.verification_url
+    grade = certificate.released_grade
+    if (
+        not force and certificate.pdf_verification_url == verification_url
+        and certificate.pdf_grade == grade and certificate_has_pdf(certificate)
+    ):
         return certificate
 
-    if force and certificate_has_pdf(certificate):
-        certificate.pdf.delete(save=False)
-
+    previous_name = certificate.pdf.name
+    storage = certificate.pdf.storage
     pdf_file = generate_certificate_pdf(certificate)
     certificate.pdf.save(pdf_file.name, pdf_file, save=False)
-    certificate.save(update_fields=['pdf'])
+    certificate.pdf_verification_url = verification_url
+    certificate.pdf_grade = grade
+    certificate.save(update_fields=['pdf', 'pdf_verification_url', 'pdf_grade'])
+    if previous_name and previous_name != certificate.pdf.name:
+        transaction.on_commit(lambda: storage.delete(previous_name), robust=True)
     return certificate
 
 
@@ -142,7 +131,8 @@ def calculate_course_grade(user, course):
     Calculate final course grade from completed, graded assessment evidence.
 
     Current certificate policy:
-    - quiz score: best completed attempt per quiz
+    - best completed attempt per published quiz and exam
+    - each assessment contributes the points earned and possible in that attempt
     - no graded assessment evidence: no grade (`None`)
     
     Args:
@@ -155,6 +145,7 @@ def calculate_course_grade(user, course):
     """
     from decimal import Decimal, ROUND_HALF_UP
     from assessments.models import QuizAttempt
+    from exams.services import graded_course_exam_attempts
     
     quiz_attempts = QuizAttempt.objects.filter(
         user=user,
@@ -182,6 +173,19 @@ def calculate_course_grade(user, course):
         total_score += score
         total_possible += quiz_total
 
+    best_exams = {}
+    for attempt in graded_course_exam_attempts(user, course):
+        possible = attempt.grading_total_marks
+        if possible <= 0:
+            continue
+        score = max(Decimal('0.0'), min(attempt.score, possible))
+        previous = best_exams.get(attempt.exam_id)
+        if previous is None or score / possible > previous[0] / previous[1]:
+            best_exams[attempt.exam_id] = (score, possible)
+    for score, possible in best_exams.values():
+        total_score += score
+        total_possible += possible
+
     if total_possible > 0:
         return ((total_score / total_possible) * 100).quantize(
             Decimal('0.01'),
@@ -208,7 +212,7 @@ def verify_certificate(verification_code):
     
     try:
         return Certificate.objects.select_related(
-            'user', 'course'
+            'user__profile', 'course', 'enrollment'
         ).get(verification_code=verification_code)
     except Certificate.DoesNotExist:
         raise ValidationError(f"Invalid or non-existent verification code")
@@ -220,20 +224,20 @@ def regenerate_certificate_pdf(certificate_id, user):
     
     Args:
         certificate_id: Certificate ID
-        user: User requesting regeneration (must be staff)
+        user: Platform administrator requesting regeneration
     
     Returns:
         Updated Certificate instance
         
     Raises:
-        PermissionDenied: If user is not staff
+        PermissionDenied: If user is not a platform administrator
         ValidationError: If certificate not found
     """
     from .models import Certificate
     
     # Check permission
-    if not user.is_staff:
-        raise PermissionDenied("Only staff can regenerate certificate PDFs")
+    if not is_platform_admin(user):
+        raise PermissionDenied("Only platform administrators can regenerate certificate PDFs")
     
     try:
         return render_certificate_pdf(certificate_id, force=True)

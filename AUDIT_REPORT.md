@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *39 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04; all 2026-11-21); 28 open, of which SEC-01, SEC-03, SEC-09, PAY-04, PAY-05, API-04, ENR-03 are partially done. All P1 and P3 items are resolved.* |
+| *Resolved so far* | *56 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01; all 2026-11-21); 11 open (4 P0 and 7 P2), of which SEC-01, SEC-03, PAY-04, PAY-05, API-04 are partially done. All P1 and P3 items are resolved.* |
 
 ### Fix these first (in order)
 
@@ -176,24 +176,24 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [TEST-01](#test-01) | P1 | ~~Payments tests don't run, and tests write into the real `media/`~~ ✅ resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | ~~No tests cover the frontend↔API contract~~ ✅ resolved 2026-11-21 (contract + browser smoke tests) |
 | [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
-| [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
-| [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext — 🟡 `PaymentGatewayConfig` deleted 2026-11-21; payout details still plaintext |
-| [EXM-03](#exm-03) | P2 | Exam grading and marks integrity (no snapshot, unpassable exams) |
-| [STU-02](#stu-02) | P2 | Dashboard numbers are wrong or never populated |
-| [CRS-02](#crs-02) | P2 | Ownership failures return 400 instead of 403; admins can't moderate content |
-| [CRS-03](#crs-03) | P2 | Course lifecycle and editability rules contradict each other |
-| [CRS-04](#crs-04) | P2 | Category creation is broken (slug never generated) |
-| [CRS-05](#crs-05) | P2 | Course price, free flag and tags aren't validated |
-| [CRS-06](#crs-06) | P2 | Public course endpoints expose instructor emails |
-| [CRS-07](#crs-07) | P2 | Fake or stub features in the course API |
+| [ADM-01](#adm-01) | P2 | ~~Django admin actions and fields bypass the domain logic~~ ✅ resolved 2026-11-21 |
+| [SEC-09](#sec-09) | P2 | ~~Gateway secrets and payout bank details stored in plaintext~~ ✅ resolved in code 2026-11-21 |
+| [EXM-03](#exm-03) | P2 | ~~Exam grading and marks integrity (no snapshot, unpassable exams)~~ ✅ resolved in code 2026-11-21 |
+| [STU-02](#stu-02) | P2 | ~~Dashboard numbers are wrong or never populated~~ ✅ resolved in code 2026-11-21 |
+| [CRS-02](#crs-02) | P2 | ~~Ownership failures return 400 instead of 403; admins can't moderate content~~ ✅ resolved 2026-11-21 |
+| [CRS-03](#crs-03) | P2 | ~~Course lifecycle and editability rules contradict each other~~ ✅ resolved in code 2026-11-21 |
+| [CRS-04](#crs-04) | P2 | ~~Category creation is broken (slug never generated)~~ ✅ resolved in code 2026-11-21 |
+| [CRS-05](#crs-05) | P2 | ~~Course price, free flag and tags aren't validated~~ ✅ resolved in code 2026-11-21 |
+| [CRS-06](#crs-06) | P2 | ~~Public course endpoints expose instructor emails~~ ✅ resolved 2026-11-21 |
+| [CRS-07](#crs-07) | P2 | ~~Fake or stub features in the course API~~ ✅ resolved in code 2026-11-21 |
 | [ENR-01](#enr-01) | P2 | ~~`was_reactivated` is always `true`~~ ✅ resolved 2026-11-21 |
-| [ENR-02](#enr-02) | P2 | Serializer fields silently dropped (`thumbnail_url`, `get_full_name`) |
-| [ENR-03](#enr-03) | P2 | Three different lesson-unlock algorithms — 🟡 locking unified 2026-11-21 |
-| [ERR-01](#err-01) | P2 | Broad `except Exception` leaks internals and hides bugs |
-| [STU-01](#stu-01) | P2 | Bookmarks leak unpublished content; instructors can't see their wallet |
-| [EXM-02](#exm-02) | P2 | Exam settings that do nothing; analytics disagree with grading |
-| [CRT-01](#crt-01) | P2 | Certificate admin, verification and rendering issues |
-| [ACC-01](#acc-01) | P2 | Account-management inconsistencies |
+| [ENR-02](#enr-02) | P2 | ~~Serializer fields silently dropped (`thumbnail_url`, `get_full_name`)~~ ✅ resolved 2026-11-21 |
+| [ENR-03](#enr-03) | P2 | Three different lesson-unlock algorithms — ✅ resolved 2026-11-21 |
+| [ERR-01](#err-01) | P2 | Broad `except Exception` leaks internals and hides bugs — ✅ resolved 2026-11-21 |
+| [STU-01](#stu-01) | P2 | Bookmarks leak unpublished content; instructors can't see their wallet — ✅ resolved 2026-11-21 |
+| [EXM-02](#exm-02) | P2 | Exam settings that do nothing; analytics disagree with grading — ✅ resolved 2026-11-21 |
+| [CRT-01](#crt-01) | P2 | Certificate admin, verification and rendering issues — ✅ resolved 2026-11-21 |
+| [ACC-01](#acc-01) | P2 | Account-management inconsistencies — ✅ resolved 2026-11-21 |
 | [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints |
 | [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes — 🟡 duplicate route names fixed |
 | [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs — re-scoped (deploy items dropped) |
@@ -739,7 +739,7 @@ Document the choice either way.
 > **Resolved 2026-11-21.** Refunds apply to `course_purchase` payments and move money **wallet to wallet**.
 > - **Requesting** (`request_refund`, from the student): locks the payment. Only one open request per payment is allowed. `amount` defaults to everything still refundable, and **cumulative refunds can never exceed the payment**. Top-ups and other users' payments are refused.
 > - **Approving** (`approve_refund`, admin): credits the student's wallet and debits the instructor's **pro-rata share**. That share is cent-exact overall: the final refund takes back exactly what remains, so there's no rounding drift. It records `instructor_debit` on the refund and sets the payment to `partially_refunded` or `refunded`.
-> - **Full refund revokes access:** the enrollment is canceled. Re-buying then charges again. Certificate revocation is still CRT-01.
+> - **Full refund revokes access:** the enrollment is canceled. Re-buying then charges again. Certificate revocation was completed in [CRT-01](#crt-01).
 > - **Instructor already paid out:** if their wallet can't cover the share, approval is refused (`instructor_balance_insufficient`) unless the admin passes `absorb_shortfall=true`. In that case the platform covers the rest, recorded as `platform_absorbed`.
 > - **Rejecting** moves no money.
 > - **Removed:** the webhook-only `process_refund`. Views return `{detail, code}` and no longer echo Python errors.
@@ -1112,7 +1112,11 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 ## 6. P2: Medium
 
 <a id="adm-01"></a>
-### ADM-01: Django admin actions and fields bypass the domain logic
+### ADM-01: Django admin actions and fields bypass the domain logic — ✅ RESOLVED 2026-11-21
+
+> - Enrollment and lesson progress records are view-only in admin. Staff with the corresponding change permission can evaluate enrollment completion, mark lesson progress complete, or cancel an enrollment through the relevant action. Completion checks the lesson and assessment requirements, issues a certificate, and can repair a missing certificate for an eligible legacy completion. Canceled enrollments are excluded.
+> - Admin publishing and archiving use the same row-locked course transition service as the review API. Publishing requires a course under review and archiving requires a published course. The admin form displays the status and review metadata as read-only. The remaining editing and versioning rules are tracked under [CRS-03](#crs-03).
+> - Wallets, wallet transactions, and payments are view-only in admin. [D-01](#d-01) reserves wallet funding for verified Stripe top-ups, so admin has no manual credit or capture action.
 
 **Evidence:**
 - `EnrollmentAdmin.mark_as_completed` ([enrollments/admin.py:163](enrollments/admin.py#L163)) and `LessonProgressAdmin.mark_as_completed` ([:301](enrollments/admin.py#L301)) use `queryset.update(...)`. That skips `evaluate_and_complete_enrollment`, so admin-completed enrollments **never get a certificate**, and lesson completion never re-evaluates the course.
@@ -1126,7 +1130,11 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Add explicit admin actions ("Credit wallet…", "Mark payment captured…") that go through the ledger/fulfilment services and record the acting admin.
 
 <a id="sec-09"></a>
-### SEC-09: Gateway secrets and payout bank details stored in plaintext
+### SEC-09: Gateway secrets and payout bank details stored in plaintext — ✅ RESOLVED IN CODE 2026-11-21
+
+> - The legacy `InstructorPayout` table was already migrated into `payments.Payout`. Migration `payments/0005` encrypts existing destinations with a dedicated Fernet key and removes the plaintext column.
+> - New payout requests encrypt destinations before reserving wallet funds. The API and Django admin show only whether a destination is on file.
+> - Applying the migration to Neon still requires configuring `PAYOUT_DETAILS_ENCRYPTION_KEY`. See [the migration notes](README.md#migrations).
 
 **Evidence:**
 - `payments.PaymentGatewayConfig` has `secret_key` and `webhook_secret` as plain `CharField`s, fully visible and editable in Django admin. No code reads this model; real secrets should come from env vars.
@@ -1137,7 +1145,12 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Store payout destinations as provider tokens (e.g. Stripe Connect account id) instead of raw bank data. If raw data is unavoidable, encrypt the field (`django-fernet-fields` / KMS) and return only a masked summary.
 
 <a id="exm-03"></a>
-### EXM-03: Exam grading and marks integrity
+### EXM-03: Exam grading and marks integrity — ✅ RESOLVED IN CODE 2026-11-21
+
+> - Attempts snapshot bank and custom questions, answer keys, marks, the passing threshold, and timing rules. Students receive the question text and options from their active snapshot. Once an exam has attempts, editing its questions or grading rules requires a new exam. Exam records are view-only in Django admin.
+> - The server derives total marks and validates the passing threshold. The create page saves a draft and uses the publish endpoint to publish it.
+> - Answer changes save to the server and reload restores them with the time remaining. Submit and autosave lock the attempt. On expiry, the next attempt, result, or analytics request finalizes the saved answers. Repeated submissions return the existing grade.
+> - Migration `exams/0004` snapshots open attempts from the question data available at migration time, converts out-of-range legacy passing marks to the equivalent proportion of the actual total, and preserves stored grades for completed attempts. The migration has been tested locally and still needs to be applied to Neon.
 
 **Evidence:** [exams/services.py](exams/services.py), [exams/views.py](exams/views.py)
 - **No snapshot.** `calculate_exam_attempt_score` grades against the *live* `exam.questions` and `custom_questions`. Unlike quizzes ([ASM-01](#asm-01) snapshots), an instructor can edit or remove questions or change correct options on a published exam while attempts are in progress. `ExamDetailView` allows `PUT`/`PATCH` on published exams that have attempts.
@@ -1155,7 +1168,12 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Add an answer-save endpoint so expiry auto-grades saved answers instead of discarding them.
 
 <a id="stu-02"></a>
-### STU-02: Dashboard numbers are wrong or never populated
+### STU-02: Dashboard numbers are wrong or never populated — ✅ RESOLVED IN CODE 2026-11-21
+
+> - The dashboard uses the shared required-lesson completion calculation. Course completion and issued certificates are counted independently, including legacy certificates without an enrollment link.
+> - Lesson watch updates and new completions record daily activity in the browser's timezone. Yesterday keeps a current streak alive. Weekly watch time sums the seconds credited to each day.
+> - Student and instructor profile totals are calculated on read. Instructor revenue uses the same earnings calculation as the wallet ledger, including processed refunds. Instructor verification is informational under the email-domain eligibility policy in [D-02](#d-02).
+> - The migrations recover historical activity dates available in existing progress rows and remove the stale profile counters. Daily watch seconds are recorded from this change forward because historical progress holds cumulative time. Applying these migrations to Neon is pending.
 
 **Evidence:** [students/services.py](students/services.py), [students/models.py](students/models.py), [instructors/models.py](instructors/models.py)
 - `get_student_dashboard_data` counts **all** completed `LessonProgress` (including free lessons) over a total that **excludes** free lessons, so progress can exceed 100%. It also disagrees with `get_lesson_completion_stats`.
@@ -1174,7 +1192,9 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 ---
 
 <a id="crs-02"></a>
-### CRS-02: Ownership failures return 400 instead of 403; admins can't moderate content
+### CRS-02: Ownership failures return 400 instead of 403; admins can't moderate content — ✅ RESOLVED 2026-11-21
+
+> Course, module, and lesson management routes check `can_manage_course` through a shared object mixin or the parent-course check on create. Non-owners without platform admin privileges receive HTTP 403. Admins can edit eligible content through the normal editor, and their changes preserve the assigned instructor. Draft-only deletion rules and cross-course move validation still apply.
 
 **Evidence:**
 - Course, module and lesson update/delete views raise `ValidationError("You don't have permission…")`, which is HTTP 400 ([courses/views.py:193](courses/views.py#L193) and around 12 other places).
@@ -1183,7 +1203,11 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 **Fix approach:** Replace them with `if not can_manage_course(user, course): raise PermissionDenied`. Put the shared check in one mixin (`CourseOwnedObjectMixin.get_object`).
 
 <a id="crs-03"></a>
-### CRS-03: Course lifecycle and editability rules contradict each other
+### CRS-03: Course lifecycle and editability rules contradict each other — ✅ RESOLVED IN CODE 2026-11-21
+
+> - Submission, approval, rejection, and archive use the shared row-locked lifecycle. Changes to a course under review return it to draft in the same transaction. Failed changes preserve its review. The browser editor uses the review actions and Django admin displays course records with service-backed moderation actions.
+> - A published course can have one separate draft revision. Publishing it records a `CourseVersion` snapshot and archives its predecessor. New buyers enroll in the revision at its own slug. Existing learners retain access to their original course and progress. Archived courses leave the public catalog.
+> - Migration `courses/0004` adds the revision link and still needs to be applied to Neon.
 
 **Evidence:**
 - Create and update are allowed in `draft` **and** `under_review`, but delete is allowed only in `draft`.
@@ -1203,7 +1227,11 @@ Rules:
 Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and make every view call it.
 
 <a id="crs-04"></a>
-### CRS-04: Category creation is broken (slug never generated)
+### CRS-04: Category creation is broken (slug never generated) — ✅ RESOLVED IN CODE 2026-11-21
+
+> - Category saves generate a unique slug if the slug is blank. Name collisions receive numbered suffixes, and existing slugs stay stable through renames. A duplicate category name is a validation error.
+> - The category list annotates the published-course count so the query count is fixed across each page.
+> - Migration `courses/0005` repairs legacy blank slugs. Applying it to Neon is pending.
 
 **Evidence:**
 - `CategorySerializer` marks `slug` read-only ([courses/serializers.py:20](courses/serializers.py#L20)), and `Category` has no auto-slug.
@@ -1213,7 +1241,11 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 **Fix approach:** Add a `Category.save()` that slugifies `name` (with uniqueness handling like `Course.save`), and annotate `course_count` in the queryset.
 
 <a id="crs-05"></a>
-### CRS-05: Course price, free flag and tags aren't validated
+### CRS-05: Course price, free flag and tags aren't validated — ✅ RESOLVED IN CODE 2026-11-21
+
+> - The course API and database enforce zero prices for free courses and positive prices for paid courses. The create and edit forms require a positive price in paid mode. A failed edit preserves the price, tags, and review state.
+> - Tag IDs are validated together and duplicates collapse. The tag rows are locked before the course's tag associations are written in bulk within the same transaction.
+> - Migration `courses/0006` normalizes legacy free, zero-cost, and negative-price rows to zero-priced free courses before adding the constraint. Valid paid prices are preserved. Applying the migration to Neon is pending.
 
 **Evidence:** `CourseCreateUpdateSerializer`:
 - Allows negative `price`.
@@ -1223,14 +1255,22 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 **Fix approach:** Validate `price >= 0`. Enforce `is_free ⇔ price == 0` with a serializer check and a DB `CheckConstraint`. Validate `tag_ids` against `Tag.objects.filter(id__in=…)`, and use `bulk_create`.
 
 <a id="crs-06"></a>
-### CRS-06: Public course endpoints expose instructor emails
+### CRS-06: Public course endpoints expose instructor emails — ✅ RESOLVED 2026-11-21
+
+> - Course list and detail return `instructor_id` and a profile display name. Catalog and featured instructor names use a generic fallback when no suitable profile name is set.
+> - The assigned course instructor and platform admins can read review notes. Other viewers receive a course response with the review field omitted.
+> - Instructor dashboard student contact details are scoped to enrollments in the signed-in instructor's own courses.
 
 **Evidence:** `CourseListSerializer` and `CourseDetailSerializer` include `instructor_email` (and the detail view includes `rejection_reason`) on `AllowAny` endpoints ([courses/serializers.py:225](courses/serializers.py#L225)). The instructor dashboard also lists `student_email`s, which is acceptable for owners, but check it against your privacy policy.
 
 **Fix approach:** Drop `instructor_email` from public serializers, and expose `instructor_id` plus the display name instead. Only include `rejection_reason` for the owner or an admin.
 
 <a id="crs-07"></a>
-### CRS-07: Fake or stub features in the course API
+### CRS-07: Fake or stub features in the course API — ✅ RESOLVED IN CODE 2026-11-21
+
+> - Rating order returns HTTP 400. The preview page removed its placeholder rating, the detail API removed the stub `learning_outcomes` field, and the course forms and pages use saved course fields and the real curriculum.
+> - Course lists accept `page_size` (20 by default, 100 maximum). The home and instructor dashboard request three courses. The home page uses real enrollment-based popularity.
+> - The lesson API accepts video, text, and quiz. Migration `courses/0007` converts legacy assignments and resource lessons to text and preserves their content and attachments. Applying the migration to Neon is pending.
 
 **Evidence:**
 - `?ordering=rating` silently sorts by `created_at` (reviews were removed).
@@ -1256,7 +1296,9 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 **Fix approach:** Have the purchase service from [PAY-01](#pay-01) return `(enrollment, outcome)`, where `outcome ∈ {'created','reactivated','already_enrolled'}`. Respond with 201 for created and 200 otherwise.
 
 <a id="enr-02"></a>
-### ENR-02: Serializer fields silently dropped (`thumbnail_url`, `get_full_name`)
+### ENR-02: Serializer fields silently dropped (`thumbnail_url`, `get_full_name`) — ✅ RESOLVED 2026-11-21
+
+> Enrollment lists include `course_thumbnail` from `Course.thumbnail` and `instructor_name`. Exam and question detail include `created_by_name`, and attempt responses include `user_name`. The authenticated name fields use the profile name with an account email fallback. Missing thumbnails and absent exam or question creators are represented as null. Regression tests cover the API responses.
 
 **Evidence (✔ verified):**
 - `Course.thumbnail_url` doesn't exist, and the custom `User` has no `get_full_name`.
@@ -1270,9 +1312,11 @@ Encode it in `courses/services.py` (`transition(course, to_state, actor)`) and m
 - Add a serializer test asserting that these keys are present.
 
 <a id="enr-03"></a>
-### ENR-03: Three different lesson-unlock algorithms — 🟡 LOCKING UNIFIED 2026-11-21
+### ENR-03: Three different lesson-unlock algorithms — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21 (with [LRN-01](#lrn-01)):** the content endpoint and the curriculum now share `lesson_lock_state` / `ordered_course_lessons`. **Still open:** the two "next lesson" helpers (`courses/progression.get_next_lesson`, `enrollments.services.get_next_lesson`) and the course-detail `is_locked` flag (enrollment-based, not progression-based) should be moved onto the same helpers. A `UniqueConstraint(module, position)` is also still missing.
+> **Resolved 2026-11-21.** Course detail, catalog lesson summaries, curriculum, and lesson content share the progression rule in `enrollments.services.lesson_lock_state`. Both resume routes, the next-lesson route, enrollment details, and the student dashboard use the first unlocked, incomplete required lesson. Free previews remain accessible without gating later lessons.
+> - Study order is module position, module ID, lesson position, then lesson ID. Migration `courses.0008` resolves duplicate positions in that order, preserves lesson IDs, and enforces unique positions per module.
+> - Lesson creation assigns the next position when omitted. Explicit duplicates return a field validation error.
 
 *Original finding:*
 
@@ -1286,7 +1330,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 **Fix approach:** Write one `enrollments.services.lesson_lock_state(enrollment)` that returns `{lesson_id: locked}` using `(module.position, module.id, lesson.position, lesson.id)` ordering, and use it in curriculum, lesson detail and resume. Delete `courses/progression.py`, and add `UniqueConstraint(module, position)`.
 
 <a id="err-01"></a>
-### ERR-01: Broad `except Exception` leaks internals and hides bugs
+### ERR-01: Broad `except Exception` leaks internals and hides bugs — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** The shared DRF exception handler returns a structured 400 for Django validation errors and logs unexpected exceptions with their tracebacks before returning a generic 500. Payments and enrollment purchases still handle their typed business errors. The instructor dashboard and certificate regeneration now let unexpected exceptions reach the handler. Regression tests verify field errors, safe 500 responses, and rollback after a failed coupon write.
+
+*Original finding:*
 
 **Evidence:**
 - `payments/views.py` (around 10 times), `payments/webhooks.py` and `enrollments/serializers.py:263` all do `except Exception as e: return {'error': str(e)}` → 400.
@@ -1298,7 +1346,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Add a custom `EXCEPTION_HANDLER` that turns Django `ValidationError` into a DRF 400 with a stable shape ([API-04](#api-04)).
 
 <a id="stu-01"></a>
-### STU-01: Bookmarks leak unpublished content; instructors can't see their wallet
+### STU-01: Bookmarks leak unpublished content; instructors can't see their wallet — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Course and lesson bookmarks follow catalog visibility on create, update, and read. When access ends, saved bookmarks stop appearing in the list or detail and their owner can still delete them. Wallet and transaction reads are already scoped to the signed-in account for every role. The sidebar now shows **My Wallet** under **Account**, including on instructor pages. The dashboards use their DRF role permissions directly.
+
+*Original finding:*
 
 **Evidence:**
 - `create_bookmark` accepts any course or lesson id, and the response includes `course_title` / `lesson_title`, so draft course titles are enumerable.
@@ -1308,7 +1360,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 **Fix approach:** Check `can_view_course_catalog` in `create_bookmark`. Let a wallet's owner of any role read it, or move instructor earnings out of `Wallet` ([PAY-07](#pay-07)). Remove the unused mixins.
 
 <a id="exm-02"></a>
-### EXM-02: Exam settings that do nothing; analytics disagree with grading
+### EXM-02: Exam settings that do nothing; analytics disagree with grading — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Randomized exams store the seed and combined bank/custom question order in each new attempt snapshot. Reloads and resumes use that order. Student question review uses the submitted attempt snapshot and requires both released results and enabled answer review. Completed attempts without snapshots keep their recorded grades. Analytics use the recorded correctness where available and the same matcher as grading otherwise. They include custom questions and zero scores. Exam creation, updates, publication, and attempt start enforce course ownership for question-bank membership. DRF's datetime fields handle timezone conversion.
+
+*Original finding:*
 
 **Evidence:**
 - `randomize_questions` and `show_correct_answers` are stored and editable but never read by any service or serializer.
@@ -1323,7 +1379,14 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Validate `questions` belong to `course`.
 
 <a id="crt-01"></a>
-### CRT-01: Certificate admin, verification and rendering issues
+### CRT-01: Certificate admin, verification and rendering issues — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Regeneration targets a certificate UUID and requires a platform administrator. The API and UI use a single certificate ID. Verification has a public HTML page, and the PDF QR and share link point there. Non-debug startup requires a non-local backend origin.
+> - Certificates are issued without rendering. Authorized downloads render on demand and reuse the cached PDF when its verification URL and released grade match. This fits the local-only deployment and removal of Celery in [DEP-01](#dep-01).
+> - Cancellation and full refunds revoke certificates in the same transaction. Migration `certificates.0002` marks legacy canceled enrollments' certificates revoked. A learner who qualifies again receives a fresh verification link.
+> - Passing published course exams is required for new completion and exam attempts contribute to the grade. The displayed grade follows exam result release settings. PDFs embed shaped Unicode fonts and wrap long names and titles. Download counters use atomic increments.
+
+*Original finding:*
 
 **Evidence:**
 - `regenerate_certificate` ([certificates/views.py:135-143](certificates/views.py#L135)) picks the latest certificate for a **course** (any user), and checks `is_staff` instead of `is_platform_admin`.
@@ -1349,7 +1412,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Expose a single public id.
 
 <a id="acc-01"></a>
-### ACC-01: Account-management inconsistencies
+### ACC-01: Account-management inconsistencies — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Logout accepts expired or missing access tokens, clears the authentication cookies, and blacklists valid refresh tokens. Cookie requests still require CSRF. Removing the admin role clears Django staff access, and migration `accounts.0010` cleans up legacy staff flags before enforcing the rule in the database. Both role endpoints and the Django admin form reject superuser demotion. The current-user API treats account status as read-only. API keys enforce `read` and `write` scopes in addition to the owner's permissions. Existing unscoped keys keep their normal access, and scoped keys cannot create broader credentials.
+
+*Original finding:*
 
 **Evidence:**
 - `LogoutView` requires `IsAuthenticated` ([accounts/views.py:55](accounts/views.py#L55)), but its docstring says "succeeds even without a token". With expired cookies, logout 401s and never clears them.
@@ -1384,7 +1451,7 @@ The UI can show a lesson as unlocked that the server then refuses.
 <a id="api-04"></a>
 ### API-04: No API contract: inconsistent error and pagination shapes — 🟡 DUPLICATE ROUTE NAMES FIXED 2026-11-21
 
-> *Progress 2026-11-21:* the duplicate URL names are gone: `category-list` was removed by the [API-02](#api-02) merge, `instructor-dashboard` was renamed, and `logout` only clashes with the namespaced `admin:logout`. **Still open:** OpenAPI schema, one error envelope, consistent pagination.
+> *Progress 2026-11-21:* the duplicate URL names are gone: `category-list` was removed by the [API-02](#api-02) merge, `instructor-dashboard` was renamed, and `logout` only clashes with the namespaced `admin:logout`. [ERR-01](#err-01) added a shared handler for Django validation errors and unexpected exceptions. **Still open:** OpenAPI schema, a common envelope across all error responses, consistent pagination.
 
 *Original finding:*
 
@@ -1671,10 +1738,10 @@ Move aspirational features to a "Roadmap" section.
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, ~~OPS-03~~ ✅; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, ~~TEST-02~~ ✅ | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09 🟡, ADM-01, ~~TEST-01~~ ✅ | 1–2 weeks |
-| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
-| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, ~~EXM-03~~ ✅, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ~~ENR-03~~ ✅, ~~TEST-02~~ ✅ | 3–5 days |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, ~~SEC-09~~ ✅, ~~ADM-01~~ ✅, ~~TEST-01~~ ✅ | 1–2 weeks |
+| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, FE-02, ~~ERR-01~~ ✅ | 3–5 days |
+| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
 
 ### Definition of done for release

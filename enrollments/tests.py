@@ -6,6 +6,7 @@ from rest_framework import status
 from decimal import Decimal
 from datetime import timedelta
 
+from accounts.models import Profile
 from courses.models import Course, Module, Lesson, Category
 from .models import Enrollment, LessonProgress, Wishlist
 from .services import (
@@ -14,7 +15,6 @@ from .services import (
     auto_complete_lesson,
     evaluate_and_complete_enrollment,
     get_resume_lesson,
-    get_next_lesson,
     update_lesson_watch_progress,
 )
 
@@ -356,12 +356,6 @@ class EnrollmentServicesTest(TestCase):
         next_lesson = get_resume_lesson(self.enrollment)
         self.assertEqual(next_lesson, self.lesson2)
     
-    def test_get_next_lesson(self):
-        """Test getting next lesson after current."""
-        next_lesson = get_next_lesson(self.enrollment, self.lesson1)
-        self.assertEqual(next_lesson, self.lesson2)
-
-
 # ===========================
 # 🌐 API Tests
 # ===========================
@@ -414,6 +408,38 @@ class EnrollmentAPITest(APITestCase):
         )
         
         self.client.force_authenticate(user=self.user)
+
+    def test_enrollment_lists_and_detail_include_thumbnail_and_instructor_name(self):
+        thumbnail = 'https://example.test/enrollment.png'
+        self.course.thumbnail = thumbnail
+        self.course.save(update_fields=['thumbnail'])
+        Profile.objects.update_or_create(user=self.instructor, defaults={'full_name': 'Instructor Display Name'})
+        enrollment = Enrollment.objects.create(user=self.user, course=self.course)
+
+        for url in ('/api/enrollments/', '/api/enrollments/my-enrollments/', '/api/enrollments/my-learning/'):
+            with self.subTest(url=url):
+                result = self.client.get(url)
+                self.assertEqual(result.status_code, 200, result.data)
+                row = result.data['results'][0]
+                self.assertEqual(row['course_thumbnail'], thumbnail)
+                self.assertEqual(row['instructor_name'], 'Instructor Display Name')
+                self.assertEqual(row['course']['thumbnail'], thumbnail)
+
+        result = self.client.get(f'/api/enrollments/enrollments/{enrollment.pk}/')
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertEqual(result.data['course']['instructor']['name'], 'Instructor Display Name')
+
+    def test_completed_course_with_null_thumbnail_and_no_profile_keeps_both_fields(self):
+        Profile.objects.filter(user=self.instructor).delete()
+        Enrollment.objects.create(
+            user=self.user, course=self.course, status='completed', is_completed=True, completed_at=timezone.now(),
+        )
+
+        result = self.client.get('/api/enrollments/completed-courses/')
+        self.assertEqual(result.status_code, 200, result.data)
+        row = result.data['results'][0]
+        self.assertIsNone(row['course_thumbnail'])
+        self.assertEqual(row['instructor_name'], self.instructor.email)
     
     def test_enroll_in_course(self):
         """Test enrolling in a course."""
@@ -540,9 +566,10 @@ class EnrollmentAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            response.data['error'],
+            response.data['detail'],
             'Use watch_time_delta; absolute watch_time updates are not accepted.'
         )
+        self.assertEqual(response.data['code'], 'validation_error')
         self.assertFalse(
             LessonProgress.objects.filter(user=self.user, lesson=self.lesson1).exists()
         )
@@ -579,7 +606,8 @@ class EnrollmentAPITest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('too large for elapsed playback time', response.data['error'])
+        self.assertIn('too large for elapsed playback time', response.data['detail'])
+        self.assertEqual(response.data['fields']['non_field_errors'], [response.data['detail']])
         progress = LessonProgress.objects.get(enrollment=enrollment, lesson=self.lesson1)
         self.assertEqual(progress.watch_time, 60)
 

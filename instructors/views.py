@@ -2,12 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-from django.core.exceptions import ValidationError as DjangoValidationError, PermissionDenied as DjangoPermissionDenied
 from django.db.models import Count, Q
 
-from accounts.mixins import InstructorOnlyMixin
 from accounts.permissions import IsInstructor
+from accounts.utils import public_instructor_name
 from courses.models import Course
 from enrollments.models import Enrollment
 from django.shortcuts import get_object_or_404
@@ -25,33 +23,15 @@ from .services import (
 )
 
 
-class InstructorDashboardView(APIView, InstructorOnlyMixin):
+class InstructorDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsInstructor]
 
     def get(self, request):
         instructor = request.user
 
-        try:
-            courses = get_course_overview(instructor)
-            students = get_student_engagement(instructor)
-            earnings, payouts = get_revenue_summary(instructor)
-        except Exception as e:
-            # Log the error and return default values
-            import traceback
-            print(f"Error in instructor dashboard: {str(e)}")
-            traceback.print_exc()
-            
-            # Return minimal data
-            return Response({
-                "total_courses": Course.objects.filter(instructor=instructor).count(),
-                "total_students": Enrollment.objects.filter(course__instructor=instructor).values('user').distinct().count(),
-                "active_enrollments": Enrollment.objects.filter(course__instructor=instructor, status='active').count(),
-                "total_revenue": 0,
-                "courses": [],
-                "students": [],
-                "revenue": {"total_earned": 0, "platform_fee": 0},
-                "payouts": []
-            })
+        courses = get_course_overview(instructor)
+        students = get_student_engagement(instructor)
+        earnings, payouts = get_revenue_summary(instructor)
 
         # Get total counts for stats
         total_courses = Course.objects.filter(instructor=instructor).count()
@@ -114,26 +94,11 @@ class InstructorProfileView(APIView):
         return Response(serializer.data)
     
     def put(self, request):
-        try:
-            profile = update_instructor_profile(request.user, **request.data)
-            serializer = InstructorProfileSerializer(profile)
-            return Response(serializer.data)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    def patch(self, request):
-        try:
-            profile = update_instructor_profile(request.user, **request.data)
-            serializer = InstructorProfileSerializer(profile)
-            return Response(serializer.data)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        profile = update_instructor_profile(request.user, **request.data)
+        serializer = InstructorProfileSerializer(profile)
+        return Response(serializer.data)
+
+    patch = put
 
 
 class InstructorStudentsView(APIView):
@@ -221,15 +186,10 @@ class FeaturedInstructorsView(APIView):
 
 
 def _featured_instructor_data(user):
-    profile = getattr(user, 'profile', None)
-    name = ''
-    if profile is not None:
-        name = profile.full_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip()
-    name = name or user.username or 'Instructor'
     instructor_profile = getattr(user, 'instructor_profile', None)
     return {
         'id': user.id,
-        'name': name,
+        'name': public_instructor_name(user),
         'headline': (instructor_profile.headline if instructor_profile else '') or '',
         'courses_count': user.courses_count,
         'students_count': user.students_count,

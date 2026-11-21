@@ -12,7 +12,9 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 import sys
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
@@ -50,6 +52,8 @@ JWT_AUTH_COOKIE_SAMESITE = "Lax"
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
+
+PAYOUT_DETAILS_ENCRYPTION_KEY = os.getenv("PAYOUT_DETAILS_ENCRYPTION_KEY", "")
 
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -104,6 +108,7 @@ INSTALLED_APPS = [
 ]
 
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "core.api_exceptions.handle_api_exception",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "accounts.authentication.CookieJWTAuthentication",
         "accounts.authentication.APIKeyAuthentication",
@@ -248,8 +253,34 @@ PLATFORM_FEE_RATE = Decimal(os.getenv("PLATFORM_FEE_RATE", "0.10"))
 WALLET_TOPUP_MIN = Decimal("1.00")
 WALLET_TOPUP_MAX = Decimal("1000.00")
 
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8000')
+BACKEND_URL = os.getenv('BACKEND_URL', '').strip().rstrip('/') or ('http://localhost:8000' if DEBUG else '')
+try:
+    certificate_origin = urlsplit(BACKEND_URL)
+    certificate_origin.port
+except ValueError as exc:
+    raise ImproperlyConfigured("BACKEND_URL must be a valid HTTP(S) origin.") from exc
+if (
+    certificate_origin.scheme not in ('http', 'https')
+    or not certificate_origin.hostname
+    or certificate_origin.path or certificate_origin.query or certificate_origin.fragment
+    or certificate_origin.username is not None
+):
+    raise ImproperlyConfigured("BACKEND_URL must be a valid HTTP(S) origin.")
+if not DEBUG:
+    hostname = certificate_origin.hostname.rstrip('.')
+    local_origin = hostname == 'localhost' or hostname.endswith('.localhost')
+    try:
+        address = ip_address(hostname)
+        local_origin = address.is_loopback or address.is_unspecified
+    except ValueError:
+        pass
+    if local_origin:
+        raise ImproperlyConfigured("BACKEND_URL must use a non-local host when DEBUG=False.")
+verification_host = certificate_origin.hostname
+if ':' in verification_host:
+    verification_host = f'[{verification_host}]'
+if verification_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(verification_host)
 
 
 # Security hardening for running with DEBUG off.

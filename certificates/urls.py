@@ -19,6 +19,6 @@ urlpatterns = [
     path('verify/<str:code>/', VerifyCertificateView.as_view(), name='verify-certificate'),
     
     # Admin operations
-    path('regenerate/<int:course_id>/', regenerate_certificate, name='regenerate-certificate'),
+    path('regenerate/<uuid:certificate_id>/', regenerate_certificate, name='regenerate-certificate'),
 ]
 

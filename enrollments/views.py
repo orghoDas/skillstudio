@@ -12,7 +12,9 @@ import csv
 
 from accounts.permissions import IsInstructor
 from enrollments.constants import ACCESS_STATUSES
+from students.activity import learning_timezone
 from courses.models import Course, Lesson
+from courses.policies import can_view_course_catalog
 from .models import Enrollment, LessonProgress, Wishlist
 from .serializers import (
     EnrollmentListSerializer,
@@ -27,10 +29,11 @@ from .serializers import (
 )
 from .services import (
     mark_lesson_completed,
+    cancel_enrollments,
     check_and_complete_course,
     auto_complete_lesson,
     get_resume_lesson,
-    get_next_lesson,
+    ordered_course_lessons,
     get_lesson_completion_stats,
     update_lesson_watch_progress,
 )
@@ -48,7 +51,7 @@ class EnrollmentListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = Enrollment.objects.filter(
             user=self.request.user
-        ).select_related('course', 'course__instructor').order_by('-enrolled_at')
+        ).select_related('course__instructor__profile').order_by('-enrolled_at')
         
         # Filter by course ID if provided
         course_id = self.request.query_params.get('course')
@@ -76,7 +79,7 @@ class EnrollmentDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return Enrollment.objects.filter(
             user=self.request.user
-        ).select_related('course', 'course__instructor')
+        ).select_related('course__instructor__profile')
 
 
 class EnrollCourseView(generics.CreateAPIView):
@@ -125,19 +128,16 @@ class CancelEnrollmentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, enrollment_id):
-        enrollment = get_object_or_404(
-            Enrollment,
+        canceled = cancel_enrollments(Enrollment.objects.filter(
             id=enrollment_id,
             user=request.user,
-            status='active'
-        )
-
-        enrollment.status = 'canceled'
-        enrollment.save(update_fields=['status'])
+        ))
+        if not canceled:
+            return Response({'error': 'Enrollment not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({
             'message': 'Enrollment canceled successfully.',
-            'enrollment_id': enrollment.id
+            'enrollment_id': enrollment_id
         })
 
 
@@ -150,7 +150,7 @@ class MyLearningView(generics.ListAPIView):
         return Enrollment.objects.filter(
             user=self.request.user,
             status='active'
-        ).select_related('course', 'course__instructor').order_by('-enrolled_at')
+        ).select_related('course__instructor__profile').order_by('-enrolled_at')
 
 
 class CompletedCoursesView(generics.ListAPIView):
@@ -162,7 +162,7 @@ class CompletedCoursesView(generics.ListAPIView):
         return Enrollment.objects.filter(
             user=self.request.user,
             status='completed'
-        ).select_related('course', 'course__instructor').order_by('-completed_at')
+        ).select_related('course__instructor__profile').order_by('-completed_at')
 
 
 # ===========================
@@ -258,39 +258,25 @@ class LessonWatchTimeView(APIView):
         )
 
         if 'watch_time' in request.data and 'watch_time_delta' not in request.data:
-            return Response(
-                {'error': 'Use watch_time_delta; absolute watch_time updates are not accepted.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            raise DjangoValidationError('Use watch_time_delta; absolute watch_time updates are not accepted.')
 
         watch_time_delta = request.data.get('watch_time_delta', 0)
         try:
             watch_time_delta = int(watch_time_delta)
-        except (TypeError, ValueError):
-            return Response(
-                {'error': 'Watch time delta must be an integer number of seconds.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise DjangoValidationError('Watch time delta must be an integer number of seconds.') from exc
 
-        if watch_time_delta < 0:
-            return Response(
-                {'error': 'Watch time delta cannot be negative.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            progress = update_lesson_watch_progress(
-                enrollment=enrollment,
-                lesson=lesson,
-                watch_time_delta=watch_time_delta,
-            )
-        except DjangoValidationError as exc:
-            message = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
-            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        local_zone = learning_timezone(request)
+        progress = update_lesson_watch_progress(
+            enrollment=enrollment,
+            lesson=lesson,
+            watch_time_delta=watch_time_delta,
+            local_zone=local_zone,
+        )
 
         # Auto-complete lesson if threshold reached
         if auto_complete_lesson(progress) and not progress.is_completed:
-            progress = mark_lesson_completed(enrollment, lesson)
+            progress = mark_lesson_completed(enrollment, lesson, local_zone=local_zone)
             check_and_complete_course(enrollment)
 
         max_duration = lesson.duration_seconds
@@ -308,12 +294,14 @@ class ResumeLessonView(APIView):
 
     def get(self, request, course_id):
         enrollment = get_object_or_404(
-            Enrollment,
+            Enrollment.objects.select_related('course'),
             user=request.user,
             course_id=course_id,
             status__in=ACCESS_STATUSES
         )
 
+        if not can_view_course_catalog(request.user, enrollment.course):
+            return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
         lesson = get_resume_lesson(enrollment)
 
         if not lesson:
@@ -337,20 +325,28 @@ class NextLessonView(APIView):
 
     def get(self, request, course_id, lesson_id):
         enrollment = get_object_or_404(
-            Enrollment,
+            Enrollment.objects.select_related('course'),
             user=request.user,
             course_id=course_id,
             status__in=ACCESS_STATUSES
         )
 
-        current_lesson = get_object_or_404(Lesson, id=lesson_id)
-        next_lesson = get_next_lesson(enrollment, current_lesson)
+        if not can_view_course_catalog(request.user, enrollment.course):
+            return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
+        lessons = ordered_course_lessons(enrollment.course)
+        lesson_order = {lesson.pk: index for index, lesson in enumerate(lessons)}
+        if lesson_id not in lesson_order:
+            return Response({'error': 'Lesson not found.'}, status=status.HTTP_404_NOT_FOUND)
+        next_lesson = get_resume_lesson(enrollment, lessons=lessons)
 
         if not next_lesson:
             return Response({
                 'message': 'No more lessons.',
                 'completed': True
             })
+
+        if lesson_order[next_lesson.pk] <= lesson_order[lesson_id]:
+            return Response({'message': 'No unlocked required lesson follows this lesson.', 'completed': False})
 
         return Response({
             'lesson_id': next_lesson.id,
@@ -410,7 +406,7 @@ class CompleteLessonView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        progress = mark_lesson_completed(enrollment, lesson)
+        progress = mark_lesson_completed(enrollment, lesson, local_zone=learning_timezone(request))
         check_and_complete_course(enrollment)
 
         return Response({

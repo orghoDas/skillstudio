@@ -1,4 +1,5 @@
 from django.urls import path
+from certificates.views import certificate_verification_page
 from . import views
 
 urlpatterns = [
@@ -34,6 +35,7 @@ urlpatterns = [
     
     # Payments & Certificates
     path('certificates/', views.certificates_list, name='certificates_list'),
+    path('certificates/verify/<str:code>/', certificate_verification_page, name='certificate-verification-page'),
     path('payments/history/', views.payment_history, name='payment_history'),
     path('wallet/', views.wallet_page, name='wallet_page'),
     

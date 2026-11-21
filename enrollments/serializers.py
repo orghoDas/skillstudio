@@ -2,7 +2,9 @@ from rest_framework import serializers
 from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
 from .models import Enrollment, LessonProgress, Wishlist
 from courses.models import Course, Module, Lesson
-from .services import get_lesson_completion_stats
+from courses.policies import can_view_course_catalog
+from .constants import ACCESS_STATUSES
+from .services import get_lesson_completion_stats, get_resume_lesson
 
 
 # ===========================
@@ -61,7 +63,7 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
     course = serializers.SerializerMethodField()
     course_title = serializers.CharField(source='course.title', read_only=True)
     course_slug = serializers.CharField(source='course.slug', read_only=True)
-    course_thumbnail = serializers.URLField(source='course.thumbnail_url', read_only=True)
+    course_thumbnail = serializers.URLField(source='course.thumbnail', read_only=True, allow_null=True)
     instructor_name = serializers.CharField(source='course.instructor.get_full_name', read_only=True)
     progress_percentage = serializers.SerializerMethodField()
     completed_lessons = serializers.SerializerMethodField()
@@ -119,14 +121,9 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
     
     def get_course(self, obj):
         course = obj.course
-        instructor_name = course.instructor.email  
-        if hasattr(course.instructor, 'profile') and course.instructor.profile.full_name:
-            instructor_name = course.instructor.profile.full_name
-            
-        instructor_bio = ""
-        if hasattr(course.instructor, 'profile') and course.instructor.profile.bio:
-            instructor_bio = course.instructor.profile.bio
-            
+        instructor = course.instructor
+        profile = getattr(instructor, 'profile', None)
+
         return {
             'id': course.id,
             'title': course.title,
@@ -134,9 +131,9 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
             'thumbnail': course.thumbnail,
             'level': course.level,
             'instructor': {
-                'id': course.instructor.id,
-                'name': instructor_name,
-                'bio': instructor_bio,
+                'id': instructor.id,
+                'name': instructor.get_full_name(),
+                'bio': (profile.bio or '') if profile else '',
             }
         }
     
@@ -162,26 +159,18 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
     
     def get_next_lesson(self, obj):
         """Get the next incomplete lesson."""
-        lessons = Lesson.objects.filter(
-            module__course=obj.course,
-            is_free=False
-        ).order_by('module__position', 'position')
-        
-        completed_ids = set(
-            obj.lesson_progress.filter(is_completed=True).values_list('lesson_id', flat=True)
-        )
-        
-        for lesson in lessons:
-            if lesson.id not in completed_ids:
-                return {
-                    'id': lesson.id,
-                    'title': lesson.title,
-                    'module_id': lesson.module.id,
-                    'module_title': lesson.module.title,
-                    'position': lesson.position,
-                }
-        
-        return None
+        if obj.status not in ACCESS_STATUSES or not can_view_course_catalog(obj.user, obj.course):
+            return None
+        lesson = get_resume_lesson(obj)
+        if lesson is None:
+            return None
+        return {
+            'id': lesson.id,
+            'title': lesson.title,
+            'module_id': lesson.module_id,
+            'module_title': lesson.module.title,
+            'position': lesson.position,
+        }
 
 
 class EnrollmentCreateSerializer(serializers.Serializer):

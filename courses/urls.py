@@ -20,6 +20,7 @@ from .views import (
     CourseUpdateView, CourseDeleteView, InstructorCoursesView,
     # Course Submission & Publishing
     SubmitCourseForReviewView, PublishCourseView, RejectCourseView,
+    ArchiveCourseView, NewCourseVersionView,
     # Module CRUD
     ModuleListView, ModuleCreateView, ModuleUpdateView, ModuleDeleteView,
     # Lesson CRUD
@@ -49,6 +50,8 @@ urlpatterns = [
     path('<int:course_id>/submit/', SubmitCourseForReviewView.as_view(), name='submit-course'),
     path('<int:course_id>/publish/', PublishCourseView.as_view(), name='publish-course'),
     path('<int:course_id>/reject/', RejectCourseView.as_view(), name='reject-course'),
+    path('<int:course_id>/archive/', ArchiveCourseView.as_view(), name='archive-course'),
+    path('<int:course_id>/new-version/', NewCourseVersionView.as_view(), name='new-course-version'),
     path('<int:course_id>/curriculum/', CourseCurriculumView.as_view(), name='course-curriculum'),
     path('<int:course_id>/resume/', ResumeLearningView.as_view(), name='resume-learning'),
 

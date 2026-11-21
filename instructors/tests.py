@@ -4,10 +4,11 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
 from decimal import Decimal
 from unittest.mock import patch
+from rest_framework.test import APIClient
 
 from courses.models import Course
 from enrollments.models import Enrollment
-from payments.models import Payment
+from payments.models import Payment, Refund
 from .models import InstructorProfile
 from .services import (
     get_or_create_instructor_profile,
@@ -17,6 +18,24 @@ from .services import (
 User = get_user_model()
 
 
+class InstructorDashboardErrorTests(TestCase):
+    def test_unexpected_failure_returns_500_instead_of_empty_dashboard(self):
+        instructor = User.objects.create_user(email='dashboard-error@example.test', role='instructor')
+        client = APIClient()
+        client.force_authenticate(instructor)
+
+        with (
+            patch('instructors.views.get_course_overview', side_effect=TypeError('Internal analytics failure')),
+            self.assertLogs('core.api_exceptions', level='ERROR') as logs,
+        ):
+            response = client.get('/api/instructors/dashboard/')
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()['code'], 'internal_error')
+        self.assertNotIn('Internal analytics failure', response.content.decode())
+        self.assertIn('TypeError: Internal analytics failure', logs.output[0])
+
+
 class InstructorProfileModelTests(TestCase):
     """Test InstructorProfile model."""
     
@@ -24,7 +43,8 @@ class InstructorProfileModelTests(TestCase):
         self.user = User.objects.create_user(
             username='instructor',
             email='instructor@example.com',
-            password='testpass123'
+            password='testpass123',
+            role='instructor',
         )
     
     def test_profile_creation(self):
@@ -52,9 +72,9 @@ class InstructorProfileModelTests(TestCase):
         self.assertTrue(profile.is_verified)
         self.assertIsNotNone(profile.verified_at)
     
-    def test_update_statistics(self):
-        """Test updating profile statistics."""
+    def test_statistics_follow_new_courses_students_and_refunds(self):
         profile = InstructorProfile.objects.create(user=self.user)
+        self.assertEqual(profile.total_courses, 0)
         
         # Create course
         course = Course.objects.create(
@@ -63,9 +83,26 @@ class InstructorProfileModelTests(TestCase):
             price=Decimal('99.99')
         )
         
-        profile.update_statistics()
-        
-        self.assertEqual(profile.total_courses, 1)
+        second = Course.objects.create(title='Second course', instructor=self.user)
+        student = User.objects.create_user(email='one-student@example.test')
+        for enrolled_course in (course, second):
+            Enrollment.objects.create(user=student, course=enrolled_course)
+        payment = Payment.objects.create(
+            user=student, instructor=self.user, course=course, status='partially_refunded',
+            amount=100, original_amount=100, instructor_earnings=90,
+        )
+        Refund.objects.create(payment=payment, status='processed', amount=50, instructor_debit=45)
+        self.assertEqual((profile.total_courses, profile.total_students, profile.total_revenue), (2, 1, Decimal('45.00')))
+
+        client = APIClient()
+        client.force_authenticate(self.user)
+        response = client.get('/api/instructors/profile/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total_revenue'], '45.00')
+        self.assertEqual(response.data['total_students'], 1)
+        account = client.get('/api/accounts/profile/').data['instructor_profile']
+        self.assertEqual(account['total_courses'], 2)
+        self.assertEqual(account['total_revenue'], '45.00')
 
 
 class InstructorProfileServiceTests(TestCase):

@@ -50,6 +50,7 @@ class PayoutSerializer(serializers.ModelSerializer):
     instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
     instructor_name = serializers.SerializerMethodField()
     payment_count = serializers.IntegerField(read_only=True)
+    account_details = serializers.SerializerMethodField()
     
     class Meta:
         model = Payout
@@ -71,6 +72,9 @@ class PayoutSerializer(serializers.ModelSerializer):
         profile = getattr(obj.instructor, 'profile', None)
         name = profile and (profile.full_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip())
         return name or obj.instructor.email
+
+    def get_account_details(self, obj):
+        return {'provided': True} if obj.account_details_encrypted else {}
 
 
 class PayoutRequestSerializer(serializers.Serializer):

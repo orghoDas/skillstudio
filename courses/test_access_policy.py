@@ -26,8 +26,8 @@ VIEWERS = ("anonymous", "owner", "other_instructor", "admin",
 
 def expected(viewer, status, free):
     manager = viewer in ("owner", "admin")
-    visible = status == "published" or manager
     owns = viewer in ("student_active", "student_completed")
+    visible = status == "published" or manager or (status == "archived" and owns)
     content = visible and (free or manager or owns)
     return {
         "catalog": visible,

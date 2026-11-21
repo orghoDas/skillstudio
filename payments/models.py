@@ -3,6 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+from payments.payout_details import decrypt_payout_details
 
 User = settings.AUTH_USER_MODEL
 
@@ -208,8 +209,7 @@ class Payout(models.Model):
         default="stripe_connect"
     )
     
-    # Account details (encrypted in production)
-    account_details = models.JSONField(default=dict, blank=True)
+    account_details_encrypted = models.TextField(default='', blank=True, editable=False)
     
     # Transaction tracking
     transaction_id = models.CharField(max_length=255, blank=True)
@@ -232,6 +232,10 @@ class Payout(models.Model):
     
     def __str__(self):
         return f"Payout #{self.id} - {self.instructor.email} - ${self.amount} - {self.status}"
+
+    def get_account_details(self):
+        """Retrieve the destination for authorized offline payout processing."""
+        return decrypt_payout_details(self.account_details_encrypted)
 
 
     

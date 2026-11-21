@@ -29,13 +29,6 @@
                 </div>
 
                 <div>
-                    <label for="short_description" class="block text-sm font-medium mb-2">Short Description *</label>
-                    <textarea id="short_description" rows="3" required
-                        class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="A brief summary of your course (max 200 characters)"></textarea>
-                </div>
-
-                <div>
                     <label for="description" class="block text-sm font-medium mb-2">Full Description *</label>
                     <textarea id="description" rows="8" required
                         class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -44,16 +37,10 @@
 
                 <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label for="category" class="block text-sm font-medium mb-2">Category *</label>
-                        <select id="category" required
+                        <label for="category" class="block text-sm font-medium mb-2">Category</label>
+                        <select id="category"
                             class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                            <option value="">Select category...</option>
-                            <option value="programming">Programming</option>
-                            <option value="design">Design</option>
-                            <option value="business">Business</option>
-                            <option value="marketing">Marketing</option>
-                            <option value="data_science">Data Science</option>
-                            <option value="other">Other</option>
+                            <option value="">Uncategorized</option>
                         </select>
                     </div>
 
@@ -69,19 +56,6 @@
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="language" class="block text-sm font-medium mb-2">Language *</label>
-                        <input type="text" id="language" value="English" required
-                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                    </div>
-
-                    <div>
-                        <label for="duration" class="block text-sm font-medium mb-2">Duration (hours)</label>
-                        <input type="number" id="duration" min="0" step="0.5"
-                            class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -98,50 +72,10 @@
 
                 <div id="price-field">
                     <label for="price" class="block text-sm font-medium mb-2">Price (USD)</label>
-                    <input type="number" id="price" min="0" step="0.01"
+                    <input type="number" id="price" min="0.01" max="999999.99" step="0.01" required
                         class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
-        </div>
-
-        <!-- Learning Outcomes -->
-        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-            <h2 class="text-xl font-semibold mb-6">What Students Will Learn</h2>
-            
-            <div id="outcomes-container" class="space-y-3 mb-4">
-                <div class="flex items-center space-x-3">
-                    <input type="text" class="outcome-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Learning outcome 1">
-                    <button type="button" onclick="removeOutcome(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <button type="button" onclick="addOutcome()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
-                + Add Outcome
-            </button>
-        </div>
-
-        <!-- Requirements -->
-        <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-            <h2 class="text-xl font-semibold mb-6">Requirements</h2>
-            
-            <div id="requirements-container" class="space-y-3 mb-4">
-                <div class="flex items-center space-x-3">
-                    <input type="text" class="requirement-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Requirement 1">
-                    <button type="button" onclick="removeRequirement(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <button type="button" onclick="addRequirement()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
-                + Add Requirement
-            </button>
         </div>
 
         <!-- Actions -->
@@ -150,11 +84,8 @@
                 Cancel
             </a>
             <div class="flex space-x-3">
-                <button type="button" onclick="saveDraft()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
-                    Save as Draft
-                </button>
                 <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                    Create & Publish
+                    Create draft
                 </button>
             </div>
         </div>
@@ -167,70 +98,51 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication and role
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.role !== 'instructor') {
+    if (!['instructor', 'admin'].includes(user.role)) {
         window.location.href = '/';
         return;
     }
 
     // Handle free course toggle
-    document.getElementById('is_free').addEventListener('change', function() {
-        const priceField = document.getElementById('price-field');
-        if (this.checked) {
-            priceField.style.display = 'none';
-            document.getElementById('price').value = '0';
-        } else {
-            priceField.style.display = 'block';
-        }
-    });
+    document.getElementById('is_free').addEventListener('change', updatePriceInput);
+    updatePriceInput();
+    loadCategories();
 
     // Form submission
     document.getElementById('course-form').addEventListener('submit', function(e) {
         e.preventDefault();
-        createCourse('published');
+        createCourse();
     });
 });
 
-function addOutcome() {
-    const container = document.getElementById('outcomes-container');
-    const div = document.createElement('div');
-    div.className = 'flex items-center space-x-3';
-    div.innerHTML = `
-        <input type="text" class="outcome-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Learning outcome ${escapeHtml(container.children.length + 1)}">
-        <button type="button" onclick="removeOutcome(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-        </button>
-    `;
-    container.appendChild(div);
+async function loadCategories() {
+    const select = document.getElementById('category');
+    try {
+        let page = 1;
+        let hasNext;
+        do {
+            const response = await apiRequest(`/courses/categories/?page=${page}`);
+            if (!response) return;
+            response.results.forEach(category => {
+                select.add(new Option(category.name, category.id));
+            });
+            hasNext = Boolean(response.next);
+            page += 1;
+        } while (hasNext);
+    } catch (error) {
+        showToast(error.message || 'Could not load course categories.', 'error');
+    }
 }
 
-function removeOutcome(btn) {
-    btn.parentElement.remove();
+function updatePriceInput() {
+    const isFree = document.getElementById('is_free').checked;
+    const price = document.getElementById('price');
+    document.getElementById('price-field').hidden = isFree;
+    price.disabled = isFree;
+    price.required = !isFree;
 }
 
-function addRequirement() {
-    const container = document.getElementById('requirements-container');
-    const div = document.createElement('div');
-    div.className = 'flex items-center space-x-3';
-    div.innerHTML = `
-        <input type="text" class="requirement-input flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Requirement ${escapeHtml(container.children.length + 1)}">
-        <button type="button" onclick="removeRequirement(this)" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-        </button>
-    `;
-    container.appendChild(div);
-}
-
-function removeRequirement(btn) {
-    btn.parentElement.remove();
-}
-
-function getFormData(status) {
+function getFormData() {
     const categoryValue = document.getElementById('category').value;
     const isFree = document.getElementById('is_free').checked;
     
@@ -240,14 +152,13 @@ function getFormData(status) {
         category: categoryValue ? parseInt(categoryValue) : null,
         level: document.getElementById('level').value,
         is_free: isFree,
-        price: isFree ? 0 : parseFloat(document.getElementById('price').value) || 0,
-        status: status
+        price: isFree ? '0.00' : document.getElementById('price').value
     };
 }
 
-async function createCourse(status) {
+async function createCourse() {
     try {
-        const courseData = getFormData(status);
+        const courseData = getFormData();
         
         const response = await apiRequest('/courses/create/', {
             method: 'POST',
@@ -263,19 +174,16 @@ async function createCourse(status) {
         
         const courseIdentifier = courseData_response.slug || courseData_response.id;
         
-        showAlert(`Course ${status === 'published' ? 'created and published' : 'saved as draft'} successfully!`, 'success');
+        showToast('Draft course created.', 'success');
         setTimeout(() => {
             window.location.href = `/instructor/courses/${courseIdentifier}/content/`;
         }, 1500);
     } catch (error) {
         console.error('Error creating course:', error);
         console.error('Error details:', error.message);
-        showAlert(error.message || 'Failed to create course', 'error');
+        showToast(error.body?.price?.[0] || error.message || 'Failed to create course', 'error');
     }
 }
 
-function saveDraft() {
-    createCourse('draft');
-}
 </script>
 {% endblock %}

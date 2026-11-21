@@ -2,6 +2,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.urls import reverse
+from django.utils.functional import cached_property
 
 User = settings.AUTH_USER_MODEL
 
@@ -52,6 +54,8 @@ class Certificate(models.Model):
         null=True,
         blank=True
     )
+    pdf_verification_url = models.CharField(max_length=500, blank=True)
+    pdf_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     
     # Metadata
     grade = models.DecimalField(
@@ -67,6 +71,7 @@ class Certificate(models.Model):
         help_text="Date when course was completed"
     )
     issued_at = models.DateTimeField(default=timezone.now)
+    revoked_at = models.DateTimeField(null=True, blank=True)
     
     # Tracking
     download_count = models.IntegerField(default=0)
@@ -95,12 +100,38 @@ class Certificate(models.Model):
     
     @property
     def verification_url(self):
-        """Get the full verification URL."""
-        from django.conf import settings
-        return f"{settings.BACKEND_URL}/api/certificates/verify/{self.verification_code}/"
+        path = reverse('certificate-verification-page', kwargs={'code': self.verification_code})
+        return f"{settings.BACKEND_URL}{path}"
+
+    @property
+    def is_revoked(self):
+        return self.revoked_at is not None or (self.enrollment is not None and self.enrollment.status == 'canceled')
+
+    @staticmethod
+    def unreleased_exam_attempts(user_id, course_id, issued_at):
+        from exams.models import ExamAttempt
+
+        return ExamAttempt.objects.filter(
+            user_id=user_id, exam__course_id=course_id,
+            exam__show_results_immediately=False,
+            status='completed', score__isnull=False,
+        ).filter(
+            models.Q(completed_at__isnull=True) | models.Q(completed_at__lte=issued_at),
+        )
+
+    @cached_property
+    def released_grade(self):
+        if self.grade is None:
+            return None
+        unreleased = getattr(self, 'has_unreleased_exam_grades', None)
+        if unreleased is None:
+            unreleased = self.unreleased_exam_attempts(self.user_id, self.course_id, self.issued_at).exists()
+        return None if unreleased else self.grade
     
     def increment_download_count(self):
         """Increment download counter."""
-        self.download_count += 1
-        self.last_downloaded_at = timezone.now()
-        self.save(update_fields=['download_count', 'last_downloaded_at'])
+        type(self).objects.filter(pk=self.pk).update(
+            download_count=models.F('download_count') + 1,
+            last_downloaded_at=timezone.now(),
+        )
+        self.refresh_from_db(fields=['download_count', 'last_downloaded_at'])

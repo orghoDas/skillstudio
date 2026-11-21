@@ -5,6 +5,7 @@ Django admin interface for payment models
 
 from django.contrib import admin
 from django.utils.html import format_html
+from core.admin import ReadOnlyAdmin
 from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
     PaymentWebhookLog, PaymentDispute
@@ -12,7 +13,7 @@ from payments.models import (
 
 
 @admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
+class PaymentAdmin(ReadOnlyAdmin):
     list_display = [
         'id', 'user_email', 'amount_display', 'status_display',
         'payment_method', 'item_display', 'created_at'
@@ -21,6 +22,7 @@ class PaymentAdmin(admin.ModelAdmin):
     search_fields = ['user__email', 'provider_id', 'billing_email']
     readonly_fields = [
         'id', 'user', 'instructor', 'course',
+        'amount', 'status',
         'platform_fee', 'instructor_earnings', 'provider_id',
         'created_at', 'updated_at', 'completed_at'
     ]
@@ -69,10 +71,14 @@ class PayoutAdmin(admin.ModelAdmin):
     # bypass the wallet ledger. Use the payout API (approve/complete/reject).
     readonly_fields = [
         'id', 'instructor', 'amount', 'status', 'wallet_debited',
-        'created_at', 'updated_at', 'processed_at',
+        'created_at', 'updated_at', 'processed_at', 'destination_on_file',
     ]
     date_hierarchy = 'created_at'
     filter_horizontal = ['payments']
+
+    @admin.display(boolean=True, description='Payout destination on file')
+    def destination_on_file(self, obj):
+        return bool(obj.account_details_encrypted)
     
     def instructor_email(self, obj):
         return obj.instructor.email

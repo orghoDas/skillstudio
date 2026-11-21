@@ -1,7 +1,10 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
 from django.utils.html import format_html
-from django.db.models import Count, Q
+from core.admin import ReadOnlyAdmin
+from .constants import ACCESS_STATUSES
 from .models import Enrollment, LessonProgress, Wishlist
+from .services import cancel_enrollments, evaluate_and_complete_enrollment, mark_lesson_completed
 
 
 # ===========================
@@ -21,8 +24,14 @@ class LessonProgressInline(admin.TabularInline):
         return False
 
 
+class EnrollmentActionAdmin(ReadOnlyAdmin):
+    def has_manage_permission(self, request):
+        opts = self.model._meta
+        return request.user.has_perm(f'{opts.app_label}.change_{opts.model_name}')
+
+
 @admin.register(Enrollment)
-class EnrollmentAdmin(admin.ModelAdmin):
+class EnrollmentAdmin(EnrollmentActionAdmin):
     """Enhanced admin interface for Enrollment model."""
     
     list_display = [
@@ -44,8 +53,9 @@ class EnrollmentAdmin(admin.ModelAdmin):
     
     search_fields = [
         'user__email',
-        'user__first_name',
-        'user__last_name',
+        'user__profile__full_name',
+        'user__profile__first_name',
+        'user__profile__last_name',
         'course__title',
     ]
     
@@ -73,14 +83,14 @@ class EnrollmentAdmin(admin.ModelAdmin):
     
     list_per_page = 25
     
-    actions = ['mark_as_completed', 'mark_as_active', 'mark_as_canceled']
+    actions = ['mark_as_completed', 'mark_as_canceled']
     
     def user_display(self, obj):
         """Display user with link to admin."""
         return format_html(
             '<a href="/admin/accounts/user/{}/change/">{}</a>',
             obj.user.id,
-            obj.user.get_full_name() or obj.user.email
+            getattr(obj.user, 'profile', None) or obj.user.email
         )
     user_display.short_description = 'Student'
     
@@ -117,7 +127,7 @@ class EnrollmentAdmin(admin.ModelAdmin):
         ).count()
         
         if total_lessons == 0:
-            return format_html('<span>No lessons</span>')
+            return 'No lessons'
         
         completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
         progress = round((completed_lessons / total_lessons) * 100, 2)
@@ -159,24 +169,23 @@ class EnrollmentAdmin(admin.ModelAdmin):
     
     # Admin Actions
     
-    @admin.action(description='Mark selected enrollments as completed')
+    @admin.action(permissions=['manage'], description='Evaluate selected enrollments for completion')
     def mark_as_completed(self, request, queryset):
-        from django.utils import timezone
-        updated = queryset.update(
-            status='completed',
-            is_completed=True,
-            completed_at=timezone.now()
-        )
-        self.message_user(request, f'{updated} enrollment(s) marked as completed.')
+        completed = skipped = 0
+        for enrollment_id in queryset.values_list('pk', flat=True):
+            if evaluate_and_complete_enrollment(enrollment_id):
+                completed += 1
+            else:
+                skipped += 1
+        self.message_user(request, f'{completed} enrollment(s) meet completion requirements.')
+        if skipped:
+            self.message_user(
+                request, f'Skipped {skipped} canceled or incomplete enrollment(s).', messages.WARNING
+            )
     
-    @admin.action(description='Mark selected enrollments as active')
-    def mark_as_active(self, request, queryset):
-        updated = queryset.update(status='active', is_completed=False, completed_at=None)
-        self.message_user(request, f'{updated} enrollment(s) marked as active.')
-    
-    @admin.action(description='Mark selected enrollments as canceled')
+    @admin.action(permissions=['manage'], description='Mark selected enrollments as canceled')
     def mark_as_canceled(self, request, queryset):
-        updated = queryset.update(status='canceled')
+        updated = cancel_enrollments(queryset)
         self.message_user(request, f'{updated} enrollment(s) marked as canceled.')
 
 
@@ -185,7 +194,7 @@ class EnrollmentAdmin(admin.ModelAdmin):
 # ===========================
 
 @admin.register(LessonProgress)
-class LessonProgressAdmin(admin.ModelAdmin):
+class LessonProgressAdmin(EnrollmentActionAdmin):
     """Enhanced admin interface for LessonProgress model."""
     
     list_display = [
@@ -206,8 +215,9 @@ class LessonProgressAdmin(admin.ModelAdmin):
     
     search_fields = [
         'user__email',
-        'user__first_name',
-        'user__last_name',
+        'user__profile__full_name',
+        'user__profile__first_name',
+        'user__profile__last_name',
         'lesson__title',
         'enrollment__course__title',
     ]
@@ -243,7 +253,7 @@ class LessonProgressAdmin(admin.ModelAdmin):
         return format_html(
             '<a href="/admin/accounts/user/{}/change/">{}</a>',
             obj.user.id,
-            obj.user.get_full_name() or obj.user.email
+            getattr(obj.user, 'profile', None) or obj.user.email
         )
     user_display.short_description = 'Student'
     
@@ -278,10 +288,12 @@ class LessonProgressAdmin(admin.ModelAdmin):
         """Display completion status with badge."""
         if obj.is_completed:
             return format_html(
-                '<span style="background-color: #28a745; color: white; padding: 3px 10px; border-radius: 3px;">✓ COMPLETED</span>'
+                '<span style="background-color: #28a745; color: white; padding: 3px 10px; border-radius: 3px;">{}</span>',
+                '✓ COMPLETED',
             )
         return format_html(
-            '<span style="background-color: #ffc107; color: black; padding: 3px 10px; border-radius: 3px;">IN PROGRESS</span>'
+            '<span style="background-color: #ffc107; color: black; padding: 3px 10px; border-radius: 3px;">{}</span>',
+            'IN PROGRESS',
         )
     completion_badge.short_description = 'Status'
     
@@ -297,11 +309,28 @@ class LessonProgressAdmin(admin.ModelAdmin):
     
     # Admin Actions
     
-    @admin.action(description='Mark selected lessons as completed')
+    @admin.action(permissions=['manage'], description='Mark selected lessons as completed')
     def mark_as_completed(self, request, queryset):
-        from django.utils import timezone
-        updated = queryset.update(is_completed=True, completed_at=timezone.now())
-        self.message_user(request, f'{updated} lesson(s) marked as completed.')
+        completed = skipped = 0
+        for progress in queryset.select_related('lesson__module'):
+            with transaction.atomic():
+                enrollment = Enrollment.objects.select_for_update().get(pk=progress.enrollment_id)
+                if (
+                    enrollment.status not in ACCESS_STATUSES
+                    or progress.user_id != enrollment.user_id
+                    or progress.lesson.module.course_id != enrollment.course_id
+                ):
+                    skipped += 1
+                    continue
+                mark_lesson_completed(enrollment, progress.lesson, record_activity=False)
+                evaluate_and_complete_enrollment(enrollment.pk)
+                completed += 1
+        self.message_user(request, f'{completed} lesson(s) marked as completed.')
+        if skipped:
+            self.message_user(
+                request, f'Skipped {skipped} lesson(s) without a matching active enrollment.',
+                messages.WARNING,
+            )
 
 
 # ===========================

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from courses.models import Lesson, Course
+from courses.policies import visible_catalog_courses
 
 User = get_user_model()
 
@@ -105,11 +106,19 @@ class StudentBookmarkSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['id', 'user', 'created_at']
-    
+
+    def get_fields(self):
+        fields = super().get_fields()
+        user = getattr(self.context.get('request'), 'user', None)
+        visible_courses = visible_catalog_courses(user)
+        fields['course'].queryset = visible_courses
+        fields['lesson'].queryset = Lesson.objects.filter(module__course__in=visible_courses)
+        return fields
+
     def validate(self, data):
         """Ensure either course or lesson is provided, but not both."""
-        course = data.get('course')
-        lesson = data.get('lesson')
+        course = data.get('course', self.instance.course if self.instance else None)
+        lesson = data.get('lesson', self.instance.lesson if self.instance else None)
         
         if not course and not lesson:
             raise serializers.ValidationError(
@@ -130,6 +139,7 @@ class StudentDashboardSerializer(serializers.Serializer):
     course_id = serializers.IntegerField()
     course_title = serializers.CharField()
     status = serializers.CharField()
+    is_completed = serializers.BooleanField()
     progress_percentage = serializers.FloatField()
     completed_lessons = serializers.IntegerField()
     total_lessons = serializers.IntegerField()

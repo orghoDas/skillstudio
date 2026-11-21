@@ -1,8 +1,11 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 import hashlib
 import secrets
+
+from .utils import profile_display_name
 
 
 class UserManager(BaseUserManager):
@@ -67,34 +70,45 @@ class User(AbstractBaseUser, PermissionsMixin):
                 ),
                 name='superuser_requires_admin_role_staff',
             ),
+            models.CheckConstraint(
+                condition=models.Q(role='admin') | models.Q(is_staff=False),
+                name='non_admin_role_cannot_be_staff',
+            ),
         ]
 
     def __str__(self):
         return f'{self.email} ({self.role})'
+
+    def get_full_name(self):
+        return profile_display_name(self) or self.email
 
     @property
     def is_platform_admin(self):
         return self.role == self.Role.ADMIN or self.is_superuser
 
     def normalize_role_flags(self):
-        if self.is_superuser:
+        if self.is_superuser and self.role != self.Role.ADMIN:
+            if not self._state.adding:
+                raise ValidationError({'role': 'A superuser must retain the admin role.'})
             self.role = self.Role.ADMIN
-            self.is_staff = True
-        elif self.role == self.Role.ADMIN:
-            self.is_staff = True
+        self.is_staff = self.role == self.Role.ADMIN
 
     def save(self, *args, **kwargs):
-        original_role = self.role
-        original_is_staff = self.is_staff
-        self.normalize_role_flags()
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             update_fields = set(update_fields)
-            if self.role != original_role:
-                update_fields.add('role')
-            if self.is_staff != original_is_staff:
-                update_fields.add('is_staff')
             kwargs['update_fields'] = update_fields
+            if not update_fields.intersection({'role', 'is_staff', 'is_superuser'}):
+                return super().save(*args, **kwargs)
+
+        original_role = self.role
+        original_is_staff = self.is_staff
+        self.normalize_role_flags()
+        if update_fields is not None:
+            if self.role != original_role or ('is_superuser' in update_fields and self.is_superuser):
+                update_fields.add('role')
+            if self.is_staff != original_is_staff or 'role' in update_fields:
+                update_fields.add('is_staff')
         super().save(*args, **kwargs)
 
 
@@ -118,6 +132,10 @@ class Profile(models.Model):
     
 
 class APIKey(models.Model):
+    class Scope(models.TextChoices):
+        READ = 'read', 'Read'
+        WRITE = 'write', 'Write'
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     key_hash = models.CharField(max_length=64, unique=True)
     prefix = models.CharField(max_length=16, db_index=True)

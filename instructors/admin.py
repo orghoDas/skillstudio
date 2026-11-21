@@ -84,7 +84,7 @@ class InstructorProfileAdmin(admin.ModelAdmin):
     headline_display.short_description = 'Headline'
     
     def revenue_display(self, obj):
-        return format_html('${:,.2f}', obj.total_revenue)
+        return format_html('${}', f'{obj.total_revenue:,.2f}')
     revenue_display.short_description = 'Revenue'
     
     def verify_instructors(self, request, queryset):

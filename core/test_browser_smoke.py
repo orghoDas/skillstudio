@@ -104,7 +104,7 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.lesson2 = Lesson.objects.create(module=module, title="Second lesson", position=2,
                                              content_type="text", content_text="Body two.")
         self.draft = Course.objects.create(title="Smoke Draft", instructor=self.instructor, category=category,
-                                           status="draft")
+                                           status="draft", price=Decimal("15.00"))
         draft_module = Module.objects.create(course=self.draft, title="Draft module", position=1)
         self.draft_lesson = Lesson.objects.create(module=draft_module, title="Delete me", position=1,
                                                   content_type="text", content_text="x")
@@ -151,8 +151,9 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page.goto(self.live_server_url + path)
         page.wait_for_load_state("networkidle")
 
-    def login(self, page, user):
-        self.visit(page, "/auth/login/")
+    def login(self, page, user, *, next_path=None):
+        path = f"/auth/login/?next={next_path}" if next_path else "/auth/login/"
+        self.visit(page, path)
         page.fill("#email", user.email)
         page.fill("#password", self.password)
         page.click("#login-btn")
@@ -179,6 +180,39 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 self.visit(page, path)
                 self.assert_no_errors(page, path)
 
+    def test_catalog_preview_limits_and_course_creation_use_real_data(self):
+        from courses.models import Course
+
+        for number in range(4):
+            Course.objects.create(
+                title=f"Extra course {number}", status="published", instructor=self.instructor,
+            )
+
+        public_page = self.new_page()
+        self.visit(public_page, "/")
+        self.assertEqual(public_page.locator("#popular-courses > a").count(), 3)
+        self.visit(public_page, f"/courses/{self.course.slug}/")
+        public_page.locator("#course-curriculum summary").click()
+        self.assertTrue(public_page.get_by_text(self.lesson1.title, exact=True).is_visible())
+        self.assert_no_errors(public_page, "public course curriculum")
+
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.assertEqual(page.locator("#my-courses h3").count(), 3)
+        self.visit(page, "/instructor/courses/create/")
+        page.fill("#title", "Actual course details")
+        page.fill("#description", "A short description")
+        page.select_option("#category", str(self.course.category_id))
+        page.select_option("#level", "beginner")
+        page.locator("#is_free").check()
+        with page.expect_response("**/api/courses/create/") as created:
+            page.get_by_role("button", name="Create draft").click()
+        self.assertEqual(created.value.status, 201)
+        course = Course.objects.get(title="Actual course details")
+        self.assertEqual(course.category_id, self.course.category_id)
+        page.wait_for_url(f"**/instructor/courses/{course.slug}/content/")
+        self.assert_no_errors(page, "course creation")
+
     def test_student_pages_render_without_errors(self):
         from enrollments.models import Enrollment
 
@@ -193,6 +227,33 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 self.visit(page, path)
                 self.assert_no_errors(page, path)
 
+    def test_student_dashboard_and_profile_show_completed_courses_separately_from_certificates(self):
+        from django.utils import timezone
+
+        from enrollments.models import Enrollment, LessonProgress
+
+        enrollment = Enrollment.objects.create(
+            user=self.student, course=self.course, status="completed",
+            is_completed=True, completed_at=timezone.now(),
+        )
+        LessonProgress.objects.create(
+            enrollment=enrollment, lesson=self.lesson1, user=self.student,
+            is_completed=True, completed_at=timezone.now(),
+        )
+        page = self.new_page()
+        self.login(page, self.student)
+        self.visit(page, "/dashboard/")
+        self.assertEqual(page.locator("#enrolled-count").inner_text(), "1")
+        self.assertEqual(page.locator("#completed-count").inner_text(), "1")
+        self.assertEqual(page.locator("#certificates-count").inner_text(), "0")
+        self.assertIn("No courses in progress", page.locator("#continue-learning").inner_text())
+        self.assert_no_errors(page, "student dashboard totals")
+
+        self.visit(page, "/profile/")
+        self.assertEqual(page.locator("#stats-enrolled").inner_text(), "1")
+        self.assertEqual(page.locator("#stats-certificates").inner_text(), "0")
+        self.assert_no_errors(page, "student profile totals")
+
     def test_instructor_pages_render_without_errors(self):
         page = self.new_page()
         self.login(page, self.instructor)
@@ -204,6 +265,122 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 page.errors.clear()
                 self.visit(page, path)
                 self.assert_no_errors(page, path)
+
+    def test_certificate_list_download_and_public_verification(self):
+        from certificates.models import Certificate
+        from enrollments.models import Enrollment
+
+        enrollment = Enrollment.objects.create(
+            user=self.student, course=self.course, status='completed', is_completed=True,
+        )
+        certificate = Certificate.objects.create(user=self.student, course=self.course, enrollment=enrollment)
+        page = self.new_page()
+        self.login(page, self.student)
+        self.visit(page, '/certificates/')
+        share = page.locator('button[data-verification-url]')
+        self.assertEqual(share.get_attribute('data-verification-url'), certificate.verification_url)
+        with page.expect_download() as download:
+            page.get_by_role('button', name='Download').click()
+        self.assertTrue(download.value.suggested_filename.endswith('.pdf'))
+        self.assert_no_errors(page, 'certificate list and download')
+
+        visitor = self.new_page()
+        self.visit(visitor, urlparse(certificate.verification_url).path)
+        visitor.get_by_text('Verified certificate').wait_for()
+        self.assert_no_errors(visitor, 'public certificate verification')
+
+    def test_instructor_can_open_wallet_from_sidebar(self):
+        from students.models import Wallet
+
+        wallet, _ = Wallet.objects.get_or_create(user=self.instructor)
+        wallet.add_money(Decimal("45.00"), description="Course earnings")
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.visit(page, "/instructor/dashboard/")
+        page.locator("#sidebar").get_by_role("link", name="My Wallet").click()
+        page.wait_for_url("**/wallet/")
+        page.wait_for_selector("#wallet-balance >> text=$45.00")
+        page.wait_for_selector("#transactions-container >> text=Course earnings")
+        self.assert_no_errors(page, "instructor wallet")
+
+    def test_platform_admin_can_save_another_instructors_course_in_the_editor(self):
+        from accounts.models import User
+
+        moderator = User.objects.create_user(email="moderator@admin.com", password=self.password, role="admin")
+        page = self.new_page()
+        edit_path = f"/instructor/courses/{self.draft.slug}/edit/"
+        self.login(page, moderator, next_path=edit_path)
+        page.wait_for_function(
+            "category => document.querySelector('#category')?.value === category",
+            arg=str(self.draft.category_id),
+            timeout=5000,
+        )
+        page.fill("#title", "Moderated draft title")
+        with page.expect_response(f"**/api/courses/{self.draft.pk}/update/") as edited:
+            page.get_by_role("button", name="Save changes").click()
+        self.assertEqual(edited.value.status, 200)
+        page.wait_for_url(f"**/instructor/courses/{self.draft.slug}/content/")
+        page.wait_for_load_state("networkidle")
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.title, "Moderated draft title")
+        self.assertEqual(self.draft.instructor_id, self.instructor.pk)
+        self.assertEqual(self.draft.category_id, self.course.category_id)
+        self.assertFalse(self.draft.is_free)
+        self.assertEqual(self.draft.price, Decimal("15.00"))
+        self.assert_no_errors(page, "platform admin course moderation")
+
+    def test_paid_course_requires_a_price_and_can_be_changed_to_free(self):
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.visit(page, f"/instructor/courses/{self.draft.slug}/edit/")
+        price = page.locator("#price")
+        price.fill("0")
+        self.assertTrue(price.evaluate("input => input.validity.rangeUnderflow"))
+        page.get_by_role("button", name="Save changes").click()
+        self.assertTrue(page.url.endswith("/edit/"))
+
+        page.locator("#is_free").check()
+        self.assertTrue(price.is_disabled())
+        with page.expect_response(f"**/api/courses/{self.draft.pk}/update/") as edited:
+            page.get_by_role("button", name="Save changes").click()
+        self.assertEqual(edited.value.status, 200)
+        page.wait_for_url(f"**/instructor/courses/{self.draft.slug}/content/")
+        self.draft.refresh_from_db()
+        self.assertTrue(self.draft.is_free)
+        self.assertEqual(self.draft.price, Decimal("0.00"))
+        self.assert_no_errors(page, "course price validation")
+
+    def test_course_revision_can_be_reviewed_while_the_original_remains_available_to_its_student(self):
+        from accounts.models import User
+        from courses.models import Course
+        from enrollments.models import Enrollment
+
+        Enrollment.objects.create(course=self.course, user=self.student)
+        moderator = User.objects.create_user(email="reviewer@admin.com", password=self.password, role="admin")
+        author_page = self.new_page()
+        self.login(author_page, self.instructor)
+        self.visit(author_page, f"/instructor/courses/{self.course.slug}/content/")
+        author_page.get_by_role("button", name="Open draft revision").click()
+        author_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'draft'")
+        revision = Course.objects.get(revision_of=self.course)
+        self.assertEqual(Course.objects.get(pk=self.course.pk).status, "published")
+        author_page.get_by_role("button", name="Submit for review").click()
+        author_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'under review'")
+        self.assert_no_errors(author_page, "revision submission")
+
+        reviewer_page = self.new_page()
+        revision_path = f"/instructor/courses/{revision.slug}/content/"
+        self.login(reviewer_page, moderator, next_path=revision_path)
+        reviewer_page.get_by_role("button", name="Publish course").click()
+        reviewer_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'published'")
+        self.assertEqual(Course.objects.get(pk=self.course.pk).status, "archived")
+        self.assert_no_errors(reviewer_page, "revision approval")
+
+        student_page = self.new_page()
+        self.login(student_page, self.student)
+        self.visit(student_page, f"/learn/{self.course.slug}/")
+        student_page.wait_for_selector("#lesson-content >> text=Body one of the course.")
+        self.assert_no_errors(student_page, "archived course learning")
 
     def test_student_enrolls_learns_and_completes_a_lesson(self):
         from enrollments.models import Enrollment, LessonProgress
@@ -222,6 +399,7 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
 
         self.visit(page, f"/learn/{self.course.slug}/")
         page.wait_for_selector("#lesson-content >> text=Body one of the course.", timeout=10000)
+        self.assertTrue(page.locator("#next-lesson").is_disabled())
         page.click("#mark-complete")
         page.wait_for_selector(f".lesson-item[data-lesson-id='{self.lesson1.id}'] .text-green-400", timeout=10000)
         page.wait_for_load_state("networkidle")
@@ -229,7 +407,77 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
             LessonProgress.objects.filter(lesson=self.lesson1, user=self.student, is_completed=True).exists(),
             "Marking the lesson complete didn't record progress",
         )
+        page.click("#next-lesson")
+        page.wait_for_selector("#lesson-content >> text=Body two.", timeout=10000)
         self.assert_no_errors(page, "learn page")
+
+    def test_exam_publishes_and_resumes_with_saved_answers_and_server_time(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from enrollments.models import Enrollment
+        from exams.models import Exam, ExamAttempt, QuestionBank
+
+        Enrollment.objects.create(user=self.student, course=self.course)
+        question = QuestionBank.objects.create(
+            course=self.course, question_text="Which answer is correct?", marks=3,
+            options=[{"text": "First", "is_correct": True}, {"text": "Second", "is_correct": False}],
+        )
+        other_question = QuestionBank.objects.create(
+            course=self.course, question_text="Which animal barks?", marks=1,
+            options=[{"text": "Dog", "is_correct": True}, {"text": "Cat", "is_correct": False}],
+        )
+        instructor_page = self.new_page()
+        instructor_page.on("dialog", lambda dialog: dialog.accept())
+        self.login(instructor_page, self.instructor)
+        self.visit(instructor_page, "/exams/create/")
+        instructor_page.select_option("#course-select", str(self.course.pk))
+        instructor_page.fill("#title", "Browser exam")
+        instructor_page.fill("#duration", "2")
+        instructor_page.fill("#start-datetime", "2020-01-01T00:00")
+        instructor_page.check("#randomize-questions")
+        instructor_page.check("#show-answers")
+        instructor_page.get_by_role("button", name="Add Questions").click()
+        instructor_page.locator(f'#question-bank-list input[value="{question.pk}"]').check()
+        instructor_page.locator(f'#question-bank-list input[value="{other_question.pk}"]').check()
+        instructor_page.get_by_role("button", name="Add Selected").click()
+        self.assertEqual(instructor_page.input_value("#total-marks"), "4.00")
+        self.assertEqual(instructor_page.input_value("#passing-marks"), "2.00")
+        instructor_page.get_by_role("button", name="Publish Exam").click()
+        instructor_page.wait_for_url("**/exams/")
+        exam = Exam.objects.get(title="Browser exam")
+        self.assertEqual((exam.status, exam.total_marks), ("published", Decimal("4.00")))
+        self.assert_no_errors(instructor_page, "exam publication")
+
+        page = self.new_page()
+        page.on("dialog", lambda dialog: dialog.accept())
+        self.login(page, self.student)
+        self.visit(page, "/exams/")
+        page.get_by_role("button", name="Start Exam").click()
+        page.wait_for_url(f"**/exams/take/{exam.pk}/?attempt=*")
+        with page.expect_response(f"**/api/exams/{exam.pk}/save-answers/") as saved:
+            page.get_by_role("radio", name="First").check()
+        self.assertEqual(saved.value.status, 200)
+        attempt = ExamAttempt.objects.get(exam=exam, user=self.student)
+        self.assertEqual(attempt.answers, {str(question.pk): 0})
+        expected_order = [item["question_text"] for item in attempt.snapshot["questions"]]
+        headings = page.locator("#questions-container h3")
+        self.assertEqual(headings.all_text_contents(), expected_order)
+        ExamAttempt.objects.filter(pk=attempt.pk).update(started_at=timezone.now() - timedelta(seconds=30))
+        page.reload()
+        self.assertTrue(page.get_by_role("radio", name="First").is_checked())
+        self.assertEqual(headings.all_text_contents(), expected_order)
+        self.assertNotEqual(page.locator("#timer").inner_text(), "02:00")
+        page.get_by_role("radio", name="Dog").check()
+        page.get_by_role("button", name="Submit Exam").first.click()
+        page.wait_for_url(f"**/exams/results/{exam.pk}/?attempt=*")
+        page.wait_for_function("document.querySelector('#score-display')?.textContent === '4/4'")
+        page.get_by_text("Correct answer: Dog").wait_for()
+        self.assertEqual(page.locator("#correct-answers").inner_text(), "2")
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.passed)
+        self.assert_no_errors(page, "exam take and results")
 
     def test_instructor_deletes_a_lesson_from_the_content_page(self):
         from courses.models import Lesson

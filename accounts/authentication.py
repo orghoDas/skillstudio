@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import APIKey
@@ -16,6 +17,16 @@ class _EnforcedCsrfCheck(CsrfViewMiddleware):
 
     def _reject(self, request, reason):
         return reason
+
+
+def enforce_cookie_csrf(request):
+    if request.method in (*SAFE_METHODS, "TRACE"):
+        return
+    check = _EnforcedCsrfCheck(lambda req: None)
+    check.process_request(request)
+    reason = check.process_view(request, None, (), {})
+    if reason:
+        raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")
 
 
 class CookieJWTAuthentication(JWTAuthentication):
@@ -42,17 +53,8 @@ class CookieJWTAuthentication(JWTAuthentication):
             return None
 
         validated = self.get_validated_token(raw_token)
-        self._enforce_csrf(request)
+        enforce_cookie_csrf(request)
         return self.get_user(validated), validated
-
-    def _enforce_csrf(self, request):
-        if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
-            return
-        check = _EnforcedCsrfCheck(lambda req: None)
-        check.process_request(request)
-        reason = check.process_view(request, None, (), {})
-        if reason:
-            raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")
 
 
 class APIKeyAuthentication(BaseAuthentication):
@@ -81,6 +83,12 @@ class APIKeyAuthentication(BaseAuthentication):
 
         if not api_key.user.is_active:
             raise AuthenticationFailed("API key user is inactive.")
+
+        scope = APIKey.Scope.READ if request.method in SAFE_METHODS else APIKey.Scope.WRITE
+        scopes = api_key.scopes
+        # Empty lists preserve the access of existing unscoped keys.
+        if not isinstance(scopes, list) or (scopes and scope not in scopes):
+            raise exceptions.PermissionDenied(f"This API key requires the {scope} scope.")
 
         api_key.last_used_at = timezone.now()
         api_key.save(update_fields=["last_used_at"])

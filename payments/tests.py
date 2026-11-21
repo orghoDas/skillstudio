@@ -11,18 +11,24 @@ way for a student to credit their own wallet.
 import importlib
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
+from cryptography.fernet import Fernet
 from django.apps import apps as django_apps
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from courses.models import Category, Course
+from certificates.models import Certificate
+from courses.models import Category, Course, Lesson, Module
 from enrollments.models import Enrollment
+from enrollments.services import evaluate_and_complete_enrollment, mark_lesson_completed
 from payments import serializers as payment_serializers
 from payments import services
 from payments.models import Coupon, CouponRedemption, Payment, Payout, Refund
@@ -312,6 +318,42 @@ class RemovedAndLockedEndpointTests(PaymentsFixtureMixin, APITestCase):
 
 
 class CouponAPITests(PaymentsFixtureMixin, APITestCase):
+    def test_coupon_domain_validation_preserves_field_messages(self):
+        self.client.force_authenticate(self.admin)
+        error = ValidationError({"discount_value": ["Discount is too large."]})
+        with patch("payments.views.services.create_coupon", side_effect=error):
+            response = self.client.post("/api/payments/coupons/create/", {
+                "code": "LIMIT", "discount_type": "fixed", "discount_value": "5.00",
+            }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json(), {
+            "detail": "Invalid input.",
+            "code": "validation_error",
+            "fields": {"discount_value": ["Discount is too large."]},
+        })
+
+    def test_unexpected_coupon_failure_logs_the_exception_and_rolls_back(self):
+        self.client.force_authenticate(self.admin)
+
+        def fail_after_write(**kwargs):
+            self.make_coupon(kwargs["code"])
+            raise TypeError("Internal coupon failure")
+
+        with (
+            patch("payments.views.services.create_coupon", side_effect=fail_after_write),
+            self.assertLogs("core.api_exceptions", level="ERROR") as logs,
+        ):
+            response = self.client.post("/api/payments/coupons/create/", {
+                "code": "ROLLBACK", "discount_type": "fixed", "discount_value": "5.00",
+            }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.json(), {
+            "detail": "An unexpected server error occurred.",
+            "code": "internal_error",
+        })
+        self.assertIn("TypeError: Internal coupon failure", logs.output[0])
+        self.assertFalse(Coupon.objects.filter(code="ROLLBACK").exists())
+
     def test_students_only_see_public_active_coupons(self):
         self.make_coupon("PUBLIC10", is_public=True)
         self.make_coupon("SECRET50")
@@ -516,9 +558,56 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
 
     def test_instructor_can_read_own_wallet(self):
         self.client.force_authenticate(self.instructor)
-        response = self.client.get("/api/students/wallet/")
+        response = self.client.get("/api/students/wallet/", {"user": self.student.pk})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Decimal(response.data["balance"]), Decimal("90.00"))
+        transactions = self.client.get("/api/students/wallet/transactions/", {"user": self.student.pk})
+        self.assertEqual(transactions.status_code, status.HTTP_200_OK)
+        self.assertEqual(transactions.data["count"], 1)
+        self.assertEqual(transactions.data["results"][0]["transaction_type"], "credit")
+        self.assertEqual(Decimal(transactions.data["results"][0]["amount"]), Decimal("90.00"))
+
+    @override_settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode())
+    def test_payout_destinations_are_encrypted_and_responses_are_masked(self):
+        details = {"iban": "TEST-DESTINATION-1234", "account_holder": "Private Name"}
+        self.client.force_authenticate(self.instructor)
+        created = self.client.post(
+            "/api/payments/payouts/request/",
+            {"amount": "10.00", "payout_method": "bank_transfer", "account_details": details},
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        self.assertEqual(created.data["account_details"], {"provided": True})
+        payout = Payout.objects.get(pk=created.data["id"])
+        self.assertTrue(payout.account_details_encrypted)
+        self.assertNotIn(details["iban"], payout.account_details_encrypted)
+        self.assertEqual(payout.get_account_details(), details)
+
+        self.client.force_authenticate(self.admin)
+        listed = self.client.get("/api/payments/payouts/")
+        approved = self.client.post(f"/api/payments/payouts/{payout.pk}/approve/")
+        self.assertEqual(listed.data[0]["account_details"], {"provided": True})
+        self.assertEqual(approved.data["account_details"], {"provided": True})
+
+        self.client.force_login(self.admin)
+        admin_page = self.client.get(reverse("admin:payments_payout_change", args=[payout.pk]), secure=True)
+        self.assertContains(admin_page, "Payout destination on file")
+        self.assertNotContains(admin_page, details["iban"])
+        self.assertNotContains(admin_page, details["account_holder"])
+        self.assertNotContains(admin_page, payout.account_details_encrypted)
+
+    @override_settings(PAYOUT_DETAILS_ENCRYPTION_KEY="")
+    def test_payout_details_without_key_do_not_reserve_funds(self):
+        self.client.force_authenticate(self.instructor)
+        response = self.client.post(
+            "/api/payments/payouts/request/",
+            {"amount": "10.00", "account_details": {"iban": "TEST-DESTINATION-1234"}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data["code"], "payout_details_unavailable")
+        self.assertEqual(self.balance(self.instructor), Decimal("90.00"))
+        self.assertFalse(Payout.objects.filter(instructor=self.instructor).exists())
 
     def test_old_instructor_payout_routes_are_gone(self):
         self.client.force_authenticate(self.instructor)
@@ -533,6 +622,14 @@ class RefundTests(PaymentsFixtureMixin, APITestCase):
         self.payment = services.purchase_course(self.student, self.course.id).payment  # student 50, instructor 90
 
     def test_full_refund_moves_money_back_and_revokes_access(self):
+        enrollment = Enrollment.objects.get(user=self.student, course=self.course)
+        module = Module.objects.create(course=self.course, title="Module")
+        lesson = Lesson.objects.create(module=module, title="Required lesson")
+        mark_lesson_completed(enrollment, lesson)
+        self.assertTrue(evaluate_and_complete_enrollment(enrollment.pk))
+        certificate = Certificate.objects.get(enrollment=enrollment)
+        verification_code = certificate.verification_code
+
         refund = services.request_refund(self.student, self.payment.id, "Not for me")
         self.assertEqual((refund.amount, refund.refund_type), (Decimal("100.00"), "full"))
         services.approve_refund(refund.id, self.admin)
@@ -544,6 +641,15 @@ class RefundTests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(self.balance(self.instructor), Decimal("0.00"))
         self.assertEqual(Enrollment.objects.get(user=self.student, course=self.course).status, "canceled")
         self.assertEqual(services.calculate_instructor_balance(self.instructor)["total_earnings"], Decimal("0.00"))
+        certificate.refresh_from_db()
+        self.assertIsNotNone(certificate.revoked_at)
+        self.assertEqual(self.client.get(f"/api/certificates/verify/{verification_code}/").status_code, 410)
+
+        result = services.purchase_course(self.student, self.course.pk)
+        self.assertEqual(result.enrollment.status, "completed")
+        certificate.refresh_from_db()
+        self.assertIsNone(certificate.revoked_at)
+        self.assertNotEqual(certificate.verification_code, verification_code)
 
     def test_rebuying_after_full_refund_charges_again(self):
         refund = services.request_refund(self.student, self.payment.id, "Changed my mind")
@@ -672,6 +778,7 @@ class ReconcilePayoutLedgerCommandTests(PaymentsFixtureMixin, TestCase):
         self.assertEqual(self.balance(self.instructor), Decimal("90.00"))
 
 
+@override_settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode())
 class LegacyInstructorPayoutMigrationTests(TransactionTestCase):
     """instructors/0003 copies InstructorPayout rows into payments.Payout."""
 
@@ -708,6 +815,25 @@ class LegacyInstructorPayoutMigrationTests(TransactionTestCase):
         self.assertEqual((rows["paid"].amount, rows["paid"].transaction_id), (Decimal("25.00"), "T-1"))
         self.assertEqual(rows["paid"].account_details, {"iban": "TEST"})
         self.assertFalse(any(p.wallet_debited for p in rows.values()))
+
+        encrypt_migration = [("payments", "0005_encrypt_payout_destination")]
+        executor = MigrationExecutor(connection)
+        with override_settings(PAYOUT_DETAILS_ENCRYPTION_KEY=""):
+            with self.assertRaises(ImproperlyConfigured):
+                executor.migrate(encrypt_migration)
+        self.assertEqual(NewPayout.objects.get(pk=rows["paid"].pk).account_details, {"iban": "TEST"})
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(encrypt_migration)
+        paid = Payout.objects.get(pk=rows["paid"].pk)
+        self.assertNotIn("TEST", paid.account_details_encrypted)
+        self.assertEqual(paid.get_account_details(), {"iban": "TEST"})
+        self.assertEqual(Payout.objects.get(pk=rows["pending"].pk).account_details_encrypted, "")
+        with connection.cursor() as cursor:
+            columns = {column.name for column in connection.introspection.get_table_description(
+                cursor, Payout._meta.db_table,
+            )}
+        self.assertNotIn("account_details", columns)
 
 
 class RetireEventCouponsMigrationTests(PaymentsFixtureMixin, TestCase):

@@ -298,9 +298,8 @@ class IssueCertificateTests(TestCase):
         self.assertTrue(Certificate.objects.filter(user=self.user, course=self.course).exists())
 
     @patch('certificates.services.generate_certificate_pdf')
-    def test_issue_certificate_pdf_failure_does_not_block_record(self, mock_pdf_gen):
-        """PDF failures should not roll back certificate issuance."""
-        mock_pdf_gen.side_effect = RuntimeError("storage unavailable")
+    def test_issuance_defers_pdf_rendering_until_download(self, mock_pdf_gen):
+        """Issuing a certificate does not render a PDF inside the request."""
 
         cert = issue_certificate(self.user, self.course)
 
@@ -308,6 +307,7 @@ class IssueCertificateTests(TestCase):
         self.assertTrue(Certificate.objects.filter(user=self.user, course=self.course).exists())
         cert.refresh_from_db()
         self.assertFalse(cert.pdf)
+        mock_pdf_gen.assert_not_called()
     
     def test_issue_certificate_no_enrollment(self):
         """Test certificate issuance without enrollment."""
@@ -417,7 +417,7 @@ class RegenerateCertificatePDFTests(TestCase):
             username='staff',
             email='staff@example.com',
             password='testpass123',
-            is_staff=True
+            role='admin'
         )
         self.course = Course.objects.create(
             title='Test Course',
@@ -438,8 +438,8 @@ class RegenerateCertificatePDFTests(TestCase):
         )
     
     @patch('certificates.services.generate_certificate_pdf')
-    def test_regenerate_pdf_as_staff(self, mock_pdf_gen):
-        """Test PDF regeneration by staff."""
+    def test_regenerate_pdf_as_admin(self, mock_pdf_gen):
+        """Test PDF regeneration by an administrator."""
         from django.core.files.base import ContentFile
         
         # Create a mock PDF file
@@ -494,6 +494,7 @@ class RenderCertificatePDFTests(TestCase):
     def test_render_skips_existing_pdf_without_force(self, mock_pdf):
         from django.core.files.base import ContentFile
 
+        self.cert.pdf_verification_url = self.cert.verification_url
         self.cert.pdf.save('existing.pdf', ContentFile(b'existing'), save=True)
 
         render_certificate_pdf(self.cert.id, force=False)
@@ -528,7 +529,7 @@ class CertificateViewTests(APITestCase):
             username='view-staff',
             email='view-staff@example.com',
             password='testpass123',
-            is_staff=True
+            role='admin'
         )
         self.course = Course.objects.create(
             title='View Course',
@@ -560,16 +561,21 @@ class CertificateViewTests(APITestCase):
         from django.core.files.base import ContentFile
 
         mock_pdf.return_value = ContentFile(b'mock pdf content', name='certificate.pdf')
+        newer = Certificate.objects.create(user=self.staff, course=self.course)
         self.client.force_authenticate(user=self.staff)
 
-        response = self.client.post(f'/api/certificates/regenerate/{self.course.id}/')
+        response = self.client.post(f'/api/certificates/regenerate/{self.cert.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], str(self.cert.pk))
+        newer.refresh_from_db()
+        self.assertFalse(newer.pdf)
         mock_pdf.assert_called_once()
 
-    def test_regenerate_certificate_requires_staff(self):
+    def test_regenerate_certificate_requires_admin(self):
+        self.user.is_staff = True
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.post(f'/api/certificates/regenerate/{self.course.id}/')
+        response = self.client.post(f'/api/certificates/regenerate/{self.cert.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

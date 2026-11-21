@@ -124,57 +124,28 @@ async function loadResults() {
     const resultsContainer = document.getElementById('results-container');
     
     try {
-        console.log('Loading results for exam:', examId, 'attempt:', attemptId);
-        
-        // Load exam details
-        exam = await apiRequest(`/exams/${examId}/`);
-        console.log('Loaded exam:', exam);
-        
-        // Load attempt result
-        if (attemptId) {
-            try {
-                // Try to get detailed result first
-                const resultData = await apiRequest(`/exams/attempt/${attemptId}/result/`);
-                console.log('Loaded result:', resultData);
-                
-                // ExamResult has attempt nested inside
-                if (resultData.attempt) {
-                    currentAttempt = resultData.attempt;
-                } else {
-                    currentAttempt = resultData;
-                }
-            } catch (e) {
-                // Fallback: get attempt data directly from attempts endpoint
-                console.warn('Could not load result, trying attempts endpoint:', e);
-                const response = await apiRequest(`/exams/${examId}/attempts/`);
-                const attempts = Array.isArray(response) ? response : (response.attempts || []);
-                currentAttempt = attempts.find(a => a.id == attemptId) || attempts[0];
-                console.log('Loaded attempt from history:', currentAttempt);
-            }
-        } else {
-            // Get latest attempt
-            const response = await apiRequest(`/exams/${examId}/attempts/`);
-            const attempts = Array.isArray(response) ? response : (response.attempts || []);
-            if (attempts.length > 0) {
-                currentAttempt = attempts[0];
-                console.log('Loaded latest attempt:', currentAttempt);
-            }
+        const [examData, history] = await Promise.all([
+            apiRequest(`/exams/${examId}/`),
+            apiRequest(`/exams/${examId}/attempts/`),
+        ]);
+        exam = examData;
+        const attempts = history.attempts;
+        currentAttempt = attempts.find(attempt =>
+            attemptId ? String(attempt.id) === attemptId : attempt.status === 'completed'
+        );
+        if (!currentAttempt || currentAttempt.status !== 'completed') {
+            throw new Error('No completed attempt found.');
         }
-        
-        if (!currentAttempt) {
-            throw new Error('No attempt found');
+        if (currentAttempt.score == null) {
+            loadingState.textContent = 'Your exam was submitted. Results are not available yet.';
+            return;
         }
-        
-        console.log('Final attempt data:', currentAttempt);
-        console.log('Score:', currentAttempt.score);
-        console.log('Percentage:', currentAttempt.percentage);
-        
+
         loadingState.classList.add('hidden');
         resultsContainer.classList.remove('hidden');
-        
         displayResults();
-        loadAttemptHistory();
-        
+        displayAttemptHistory(attempts);
+
     } catch (error) {
         console.error('Error loading results:', error);
         loadingState.innerHTML = `
@@ -194,12 +165,9 @@ function displayResults() {
     }
     
     const score = parseFloat(currentAttempt.score) || 0;
-    const totalMarks = parseFloat(exam.total_marks) || 100;
-    const passingMarks = parseFloat(exam.passing_marks) || 50;
-    const passed = score >= passingMarks;
-    const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
-    
-    console.log('Displaying results:', { score, totalMarks, passingMarks, passed, percentage });
+    const totalMarks = Number(currentAttempt.total_marks);
+    const passed = currentAttempt.passed === true;
+    const percentage = Number(currentAttempt.percentage);
     
     // Set exam info
     document.getElementById('exam-title').textContent = exam.title || 'Exam';
@@ -233,27 +201,14 @@ function displayResults() {
         `;
     }
     
-    // Set stats from result if available, otherwise from attempt
-    if (currentAttempt.result) {
-        const result = currentAttempt.result;
-        const totalQs = (result.correct_count || 0) + (result.incorrect_count || 0) + (result.unanswered_count || 0);
-        document.getElementById('total-questions').textContent = totalQs;
-        document.getElementById('correct-answers').textContent = result.correct_count || 0;
-        document.getElementById('wrong-answers').textContent = (result.incorrect_count || 0) + (result.unanswered_count || 0);
-        console.log('Using result data:', { totalQs, correct: result.correct_count, wrong: result.incorrect_count, unanswered: result.unanswered_count });
-    } else {
-        // Fallback: calculate from answers only if result is not available
-        const answers = currentAttempt.answers || {};
-        const totalQuestions = Object.keys(answers).length;
-        const answeredQuestions = Object.values(answers).filter(a => a !== null && a !== '').length;
-        const unansweredQuestions = totalQuestions - answeredQuestions;
-        
-        document.getElementById('total-questions').textContent = totalQuestions;
-        document.getElementById('correct-answers').textContent = answeredQuestions;
-        document.getElementById('wrong-answers').textContent = unansweredQuestions;
-        console.log('Using fallback data:', { totalQuestions, answeredQuestions, unansweredQuestions });
+    const result = currentAttempt.result;
+    if (result) {
+        document.getElementById('total-questions').textContent =
+            result.correct_count + result.incorrect_count + result.unanswered_count;
+        document.getElementById('correct-answers').textContent = result.correct_count;
+        document.getElementById('wrong-answers').textContent = result.incorrect_count + result.unanswered_count;
     }
-    
+
     // Calculate and display time taken
     const timeSeconds = currentAttempt.time_spent_seconds || 0;
     const minutes = Math.floor(timeSeconds / 60);
@@ -265,91 +220,78 @@ function displayResults() {
         document.getElementById('retake-btn').classList.remove('hidden');
     }
     
-    // Show question review if enabled
-    if (exam.show_correct_answers && currentAttempt.answers) {
-        displayQuestionReview();
-    }
+    displayQuestionReview(result?.question_results);
 }
 
-async function loadAttemptHistory() {
-    try {
-        const response = await apiRequest(`/exams/${examId}/attempts/`);
-        // Handle both array and object response formats
-        const attempts = Array.isArray(response) ? response : (response.attempts || []);
-        const container = document.getElementById('attempts-list');
-        
-        if (attempts.length === 0) {
-            container.innerHTML = '<p class="text-gray-400 text-sm">No previous attempts</p>';
-            return;
-        }
-        
-        container.innerHTML = attempts.map((attempt, index) => {
-            const passed = attempt.score >= exam.passing_marks;
-            const percentage = (attempt.score / exam.total_marks) * 100;
-            const isCurrent = attempt.id == attemptId || (index === 0 && !attemptId);
-            
-            // Use started_at field (not submitted_at) and format the date
-            const attemptDate = attempt.started_at || attempt.completed_at;
-            const formattedDate = attemptDate ? new Date(attemptDate).toLocaleString() : 'Unknown date';
-            
-            // Calculate attempt number based on index (since model doesn't have attempt_number field)
-            const attemptNumber = index + 1;
-            
-            return `
-                <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${escapeHtml(isCurrent ? 'border-2 border-blue-500' : '')}">
-                    <div class="flex items-center space-x-4">
-                        <div class="w-10 h-10 rounded-full ${escapeHtml(passed ? 'bg-green-900/30' : 'bg-red-900/30')} flex items-center justify-center">
-                            <span class="font-semibold ${escapeHtml(passed ? 'text-green-400' : 'text-red-400')}">#${escapeHtml(attemptNumber)}</span>
-                        </div>
-                        <div>
-                            <div class="font-semibold">${escapeHtml(attempt.score)}/${escapeHtml(exam.total_marks)} (${escapeHtml(percentage.toFixed(1))}%)</div>
-                            <div class="text-sm text-gray-400">${escapeHtml(formattedDate)}</div>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <span class="px-3 py-1 ${escapeHtml(passed ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400')} text-sm rounded-full">
-                            ${escapeHtml(passed ? 'Passed' : 'Failed')}
-                        </span>
-                        ${!isCurrent ? `<button onclick="viewAttempt(${escapeHtml(attempt.id)})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-    } catch (error) {
-        console.error('Error loading attempts:', error);
-    }
-}
+function displayAttemptHistory(attempts) {
+    const container = document.getElementById('attempts-list');
 
-function displayQuestionReview() {
-    const reviewSection = document.getElementById('question-review');
-    const container = document.getElementById('review-container');
-    
-    reviewSection.classList.remove('hidden');
-    
-    if (!currentAttempt.answers || currentAttempt.answers.length === 0) {
-        container.innerHTML = '<p class="text-gray-400">No answer details available</p>';
+    if (attempts.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-sm">No previous attempts</p>';
         return;
     }
-    
-    container.innerHTML = currentAttempt.answers.map((answer, index) => {
-        const isCorrect = answer.is_correct;
+
+    container.innerHTML = attempts.map(attempt => {
+        const passed = attempt.passed === true;
+        const percentage = Number(attempt.percentage);
+        const graded = attempt.status === 'completed' && attempt.score != null;
+        const resultPending = attempt.status === 'completed' && !graded;
+        const scoreText = graded ? `${attempt.score}/${attempt.total_marks} (${percentage.toFixed(1)}%)`
+            : resultPending ? 'Results pending' : 'Not graded';
+        const badgeStyle = !graded ? 'bg-gray-700 text-gray-300'
+            : passed ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400';
+        const statusText = graded ? (passed ? 'Passed' : 'Failed')
+            : resultPending ? 'Submitted' : attempt.status === 'abandoned' ? 'Abandoned' : 'In progress';
+        const isCurrent = attempt.id === currentAttempt.id;
+
+        // Use started_at field (not submitted_at) and format the date
+        const attemptDate = attempt.started_at || attempt.completed_at;
+        const formattedDate = attemptDate ? new Date(attemptDate).toLocaleString() : 'Unknown date';
+        
+        const attemptNumber = attempt.attempt_number;
         
         return `
-            <div class="p-4 bg-dark-bg border-2 ${escapeHtml(isCorrect ? 'border-green-500' : 'border-red-500')} rounded-lg">
-                <div class="flex items-start justify-between mb-3">
-                    <h4 class="font-semibold">Question ${escapeHtml(index + 1)}</h4>
-                    <span class="px-3 py-1 ${escapeHtml(isCorrect ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400')} text-sm rounded-full">
-                        ${escapeHtml(isCorrect ? '✓ Correct' : '✗ Wrong')}
-                    </span>
-                </div>
-                <p class="text-gray-300 mb-3">${escapeHtml(answer.question_text)}</p>
-                <div class="space-y-2">
-                    <div class="text-sm">
-                        <span class="text-gray-400">Your answer:</span>
-                        <span class="${escapeHtml(isCorrect ? 'text-green-400' : 'text-red-400')} ml-2">${escapeHtml(answer.user_answer || 'Not answered')}</span>
+            <div class="flex items-center justify-between p-4 bg-dark-bg rounded-lg ${escapeHtml(isCurrent ? 'border-2 border-blue-500' : '')}">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full ${escapeHtml(badgeStyle)} flex items-center justify-center">
+                        <span class="font-semibold">#${escapeHtml(attemptNumber)}</span>
+                    </div>
+                    <div>
+                        <div class="font-semibold">${escapeHtml(scoreText)}</div>
+                        <div class="text-sm text-gray-400">${escapeHtml(formattedDate)}</div>
                     </div>
                 </div>
+                <div class="flex items-center space-x-3">
+                    <span class="px-3 py-1 ${escapeHtml(badgeStyle)} text-sm rounded-full">
+                        ${escapeHtml(statusText)}
+                    </span>
+                    ${!isCurrent ? `<button onclick="viewAttempt(${escapeHtml(attempt.id)})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function displayQuestionReview(results) {
+    const rows = Object.values(results || {}).filter(row => Array.isArray(row.options))
+        .sort((a, b) => a.position - b.position);
+    if (!rows.length) return;
+
+    document.getElementById('question-review').classList.remove('hidden');
+    document.getElementById('review-container').innerHTML = rows.map(result => {
+        const answer = result.options[result.selected_option] ?? result.answer;
+        const answered = answer != null && answer !== '';
+        const correctAnswer = result.options[result.correct_option];
+        const status = result.correct ? 'Correct' : answered ? 'Incorrect' : 'Unanswered';
+        return `
+            <div class="p-4 bg-dark-bg border border-dark-border rounded-lg">
+                <div class="flex items-start justify-between mb-3">
+                    <h4 class="font-semibold">Question ${escapeHtml(result.position)}</h4>
+                    <span class="text-sm text-gray-300">${escapeHtml(status)}</span>
+                </div>
+                <p class="text-gray-300 mb-3">${escapeHtml(result.question_text)}</p>
+                <div class="text-sm">Your answer: ${escapeHtml(answered ? answer : 'Not answered')}</div>
+                ${correctAnswer == null ? '' : `<div class="text-sm text-green-400">Correct answer: ${escapeHtml(correctAnswer)}</div>`}
             </div>
         `;
     }).join('');

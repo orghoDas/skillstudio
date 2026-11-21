@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import UserChangeForm
 from .models import User, Profile, APIKey
 
 
@@ -18,8 +19,22 @@ class APIKeyAdmin(admin.ModelAdmin):
     readonly_fields = ('prefix', 'key_hash', 'created_at', 'last_used_at', 'revoked_at')
 
 
+class AccountUserChangeForm(UserChangeForm):
+    class Meta(UserChangeForm.Meta):
+        model = User
+        field_classes = {}
+
+    def clean(self):
+        cleaned = super().clean()
+        role = cleaned.get('role')
+        if role and role != User.Role.ADMIN and (self.instance.is_superuser or cleaned.get('is_superuser')):
+            self.add_error('role', 'A superuser must retain the admin role.')
+        return cleaned
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
+    form = AccountUserChangeForm
     list_display = ('email', 'username', 'role', 'is_active', 'is_staff', 'created_at')
     search_fields = ('email', 'username')
     list_filter = ('role', 'is_active', 'is_staff')
@@ -35,7 +50,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'password1', 'password2', 'role', 'is_active', 'is_staff'),
+            'fields': ('email', 'password1', 'password2', 'role', 'is_active'),
         }),
     )
-    readonly_fields = ('created_at', 'last_login')
+    readonly_fields = ('created_at', 'last_login', 'is_staff')

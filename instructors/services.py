@@ -64,7 +64,6 @@ def get_revenue_summary(instructor):
     return earnings, payouts
 
 
-@transaction.atomic
 def get_or_create_instructor_profile(user):
     """
     Get or create instructor profile for a user.
@@ -75,17 +74,7 @@ def get_or_create_instructor_profile(user):
     Returns:
         InstructorProfile instance
     """
-    profile, created = InstructorProfile.objects.get_or_create(
-        user=user,
-        defaults={
-            'is_verified': False,
-        }
-    )
-    
-    if created:
-        # Initialize statistics
-        profile.update_statistics()
-    
+    profile, _ = InstructorProfile.objects.get_or_create(user=user)
     return profile
 
 

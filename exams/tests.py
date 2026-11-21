@@ -4,8 +4,11 @@ from django.utils import timezone
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from decimal import Decimal
+from random import Random
+from unittest.mock import patch
 from datetime import timedelta
 
+from accounts.models import Profile
 from courses.models import Course, Category
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 from .services import start_exam_attempt, submit_exam_attempt
@@ -171,7 +174,8 @@ class ExamServicesTest(TestCase):
         self.exam = Exam.objects.create(
             course=self.course,
             title='Test Exam',
-            total_marks=100,
+            total_marks=10,
+            passing_marks=5,
             duration_minutes=60,
             status='published',
             max_attempts=2,
@@ -241,7 +245,7 @@ class ExamServicesTest(TestCase):
         with self.assertRaises(ValueError):
             start_exam_attempt(self.exam, self.student)
 
-    def test_expired_active_attempt_is_abandoned_and_counts_toward_limit(self):
+    def test_expired_active_attempt_is_graded_and_counts_toward_limit(self):
         first = start_exam_attempt(self.exam, self.student)
         first.started_at = timezone.now() - timedelta(hours=2)
         first.save(update_fields=['started_at'])
@@ -249,7 +253,8 @@ class ExamServicesTest(TestCase):
         second = start_exam_attempt(self.exam, self.student)
 
         first.refresh_from_db()
-        self.assertEqual(first.status, 'abandoned')
+        self.assertEqual(first.status, 'completed')
+        self.assertEqual(first.score, Decimal('0.00'))
         self.assertEqual(second.attempt_number, 2)
 
         second.status = 'completed'
@@ -331,11 +336,17 @@ class ExamAPITest(APITestCase):
         self.exam = Exam.objects.create(
             course=self.course,
             title='Test Exam',
-            total_marks=100,
+            total_marks=1,
+            passing_marks=1,
             duration_minutes=60,
             status='published',
             created_by=self.instructor
         )
+        question = QuestionBank.objects.create(
+            course=self.course, question_text='Q1',
+            options=[{'text': 'A', 'is_correct': True}, {'text': 'B', 'is_correct': False}],
+        )
+        self.exam.questions.add(question)
         
         # Enroll student
         from enrollments.models import Enrollment
@@ -350,6 +361,38 @@ class ExamAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+    def test_creator_name_is_returned_or_null_on_exam_and_question_detail(self):
+        Profile.objects.update_or_create(
+            user=self.instructor, defaults={'first_name': 'Asha', 'last_name': 'Rahman'},
+        )
+        question = self.exam.questions.get()
+        question.created_by = self.instructor
+        question.save(update_fields=['created_by'])
+        self.client.force_authenticate(self.instructor)
+        for url, item in (
+            (f'/api/exams/{self.exam.pk}/', self.exam),
+            (f'/api/exams/questions/{question.pk}/', question),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data['created_by_name'], 'Asha Rahman')
+                item.created_by = None
+                item.save(update_fields=['created_by'])
+                self.assertIsNone(self.client.get(url).data['created_by_name'])
+
+    def test_exam_start_and_instructor_attempt_list_return_student_name(self):
+        Profile.objects.filter(user=self.student).delete()
+        response = self.client.post(f'/api/exams/{self.exam.pk}/start/')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['user_name'], self.student.email)
+
+        Profile.objects.update_or_create(user=self.student, defaults={'full_name': 'Exam Student'})
+        self.client.force_authenticate(self.instructor)
+        response = self.client.get(f'/api/exams/{self.exam.pk}/all-attempts/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['attempts'][0]['user_name'], 'Exam Student')
 
     def test_start_exam_reuses_active_attempt_and_returns_attempt_number(self):
         url = f'/api/exams/{self.exam.id}/start/'
@@ -409,7 +452,8 @@ class ExamAccessControlAPITest(APITestCase):
         self.exam = Exam.objects.create(
             course=self.course,
             title='Secure Final Exam',
-            total_marks=100,
+            total_marks=6,
+            passing_marks=3,
             duration_minutes=60,
             status='published',
             custom_questions=[
@@ -475,6 +519,106 @@ class ExamAccessControlAPITest(APITestCase):
         self.assertNotIn('explanation', custom_question)
         self.assertNotIn('is_correct', custom_question['options'][0])
         self.assertNotIn('is_correct', custom_question['options'][1])
+
+    def test_randomized_order_is_saved_and_reused_for_bank_and_custom_questions(self):
+        self.exam.randomize_questions = True
+        self.exam.save(update_fields=['randomize_questions'])
+        self.client.force_authenticate(self.student)
+        base = f'/api/exams/{self.exam.pk}/'
+        original = [self.question.pk, 'custom_0']
+        seed = next(str(value) for value in range(10) if Random(str(value)).randrange(2) == 0)
+        expected = original[::-1]
+        with patch('exams.services.token_hex', return_value=seed):
+            started = self.client.post(f'{base}start/')
+        self.assertEqual(started.status_code, 201, started.data)
+        attempt = ExamAttempt.objects.get(pk=started.data['id'])
+        self.assertEqual(attempt.snapshot['question_order_seed'], seed)
+        self.assertEqual([q['id'] for q in attempt.snapshot['questions']], expected)
+        with patch('exams.services.token_hex') as new_seed:
+            self.assertEqual(self.client.post(f'{base}start/').data['id'], attempt.pk)
+        new_seed.assert_not_called()
+        for url in (base, f'{base}?attempt={attempt.pk}'):
+            self.assertEqual(self.client.get(url).data['question_order'], expected)
+
+    def test_result_routes_gate_question_review_and_delayed_grades(self):
+        self.client.force_authenticate(self.student)
+        base = f'/api/exams/{self.exam.pk}/'
+        attempt = self.client.post(f'{base}start/').data
+        result_url = f"/api/exams/attempt/{attempt['id']}/result/"
+        submitted = self.client.post(f'{base}submit/', {
+            'attempt_id': attempt['id'], 'answers': {str(self.question.pk): 1},
+        }, format='json')
+        self.assertEqual(submitted.status_code, 200, submitted.data)
+        self.assertEqual(submitted.data['result']['question_results'], {})
+        self.assertEqual(self.client.get(result_url).data['question_results'], {})
+        self.assertEqual(self.client.get(f'{base}attempts/').data['attempts'][0]['result']['question_results'], {})
+
+        self.exam.show_correct_answers = True
+        self.exam.save(update_fields=['show_correct_answers'])
+        detail = self.client.get(result_url).data
+        self.assertEqual(detail['question_results'][str(self.question.pk)]['correct_option'], 1)
+        self.assertEqual(detail['question_results'][str(self.question.pk)]['selected_option'], 1)
+        self.assertEqual(detail['question_results']['custom_0']['correct_option'], 1)
+        history = self.client.get(f'{base}attempts/').data['attempts'][0]
+        self.assertEqual(history['result']['question_results'], detail['question_results'])
+        retried = self.client.post(f'{base}submit/', {
+            'attempt_id': attempt['id'], 'answers': {},
+        }, format='json')
+        self.assertEqual(retried.data['result']['question_results'], detail['question_results'])
+
+        self.exam.show_results_immediately = False
+        self.exam.save(update_fields=['show_results_immediately'])
+        self.assertEqual(self.client.get(result_url).status_code, 403)
+        history = self.client.get(f'{base}attempts/').data['attempts'][0]
+        self.assertIsNone(history['score'])
+        self.assertIsNone(history['result'])
+        retried = self.client.post(f'{base}submit/', {
+            'attempt_id': attempt['id'], 'answers': {},
+        }, format='json')
+        self.assertIsNone(retried.data['score'])
+        self.assertNotIn('result', retried.data)
+        self.client.force_authenticate(self.instructor)
+        self.assertEqual(self.client.get(result_url).data['question_results'], detail['question_results'])
+
+    def test_analytics_use_grades_and_include_custom_questions_and_zero_scores(self):
+        first = start_exam_attempt(self.exam, self.student)
+        submit_exam_attempt(first, {str(self.question.pk): 1, 'custom_0': 'B'})
+        second = start_exam_attempt(self.exam, self.other_student)
+        submit_exam_attempt(second, {str(self.question.pk): '3', 'custom_0': None})
+        self.question.options.reverse()
+        self.question.save(update_fields=['options'])
+        self.client.force_authenticate(self.instructor)
+        response = self.client.get(f'/api/exams/{self.exam.pk}/analytics/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['average_score'], 3)
+        self.assertEqual(response.data['pass_rate'], 50)
+        rows = {row['question_id']: row for row in response.data['question_analytics']}
+        self.assertEqual(rows[self.question.pk]['correct_percentage'], 50)
+        self.assertEqual(rows['custom_0']['correct_percentage'], 100)
+        self.assertEqual(rows['custom_0']['total_attempts'], 1)
+
+    def test_foreign_bank_questions_are_rejected_on_create_update_publish_and_start(self):
+        foreign = QuestionBank.objects.create(
+            course=self.other_course, question_text='Foreign bank question',
+            options=[{'text': 'A', 'is_correct': True}, {'text': 'B', 'is_correct': False}],
+        )
+        base = f'/api/exams/{self.exam.pk}/'
+        self.client.force_authenticate(self.instructor)
+        created = self.client.post('/api/exams/', {
+            'course': self.course.pk, 'title': 'New exam', 'duration_minutes': 10,
+            'questions': [foreign.pk],
+        }, format='json')
+        updated = self.client.patch(base, {'questions': [foreign.pk]}, format='json')
+        for response in (created, updated):
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertIn('questions', response.data)
+
+        self.exam.questions.add(foreign)
+        rejected = self.client.post(f'{base}publish/')
+        self.assertEqual((rejected.status_code, rejected.data['code']), (400, 'invalid_question_course'))
+        self.client.force_authenticate(self.student)
+        rejected = self.client.post(f'{base}start/')
+        self.assertEqual((rejected.status_code, rejected.data['code']), (409, 'invalid_question_course'))
 
     def test_non_enrolled_student_cannot_start_exam(self):
         self.client.force_authenticate(user=self.other_student)

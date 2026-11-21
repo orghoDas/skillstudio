@@ -88,8 +88,8 @@ class SectionAndLessonDeleteTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Module.objects.filter(pk=self.module.pk).exists())
 
-    def test_delete_refused_outside_draft(self):
-        self.course.status = "under_review"
+    def test_delete_refused_on_published_content(self):
+        self.course.status = "published"
         self.course.save()
         for url in (f"/api/courses/lessons/{self.lesson.id}/", f"/api/courses/sections/{self.module.id}/"):
             with self.subTest(url=url):

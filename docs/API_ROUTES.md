@@ -16,7 +16,7 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/accounts/token/` | POST | AllowAny | `accounts.custom_token.CustomTokenObtainPairView` |
 | `/api/accounts/token/refresh/` | POST | AllowAny | `accounts.custom_token.CookieTokenRefreshView` |
 | `/api/accounts/register/` | POST | AllowAny | `accounts.views.RegisterView` |
-| `/api/accounts/logout/` | POST | IsAuthenticated | `accounts.views.LogoutView` |
+| `/api/accounts/logout/` | POST | AllowAny | `accounts.views.LogoutView` |
 | `/api/accounts/change-password/` | POST | IsAuthenticated | `accounts.views.ChangePasswordView` |
 | `/api/accounts/me/` | GET PATCH | IsAuthenticated | `accounts.views.MeView` |
 | `/api/accounts/profile/` | GET PUT PATCH | IsAuthenticated | `accounts.views.ProfileView` |
@@ -54,7 +54,7 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/certificates/<uuid:certificate_id>/download/` | GET | IsAuthenticated | `certificates.views.DownloadCertificateView` |
 | `/api/certificates/download/<int:course_id>/` | GET | IsAuthenticated | `certificates.views.DownloadCertificateView` |
 | `/api/certificates/verify/<str:code>/` | GET | AllowAny | `certificates.views.VerifyCertificateView` |
-| `/api/certificates/regenerate/<int:course_id>/` | POST | IsAuthenticated | `certificates.views.regenerate_certificate` |
+| `/api/certificates/regenerate/<uuid:certificate_id>/` | POST | IsAuthenticated, IsAdmin | `certificates.views.regenerate_certificate` |
 
 ## `/api/courses/`
 
@@ -64,7 +64,7 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/courses/categories/create/` | POST | IsAdmin | `courses.views.CategoryCreateView` |
 | `/api/courses/tags/` | GET POST | IsAuthenticated | `courses.views.TagListCreateView` |
 | `/api/courses/` | GET | AllowAny | `courses.views.CourseListView` |
-| `/api/courses/create/` | POST | IsAuthenticated | `courses.views.CourseCreateView` |
+| `/api/courses/create/` | POST | IsAuthenticated, IsInstructor | `courses.views.CourseCreateView` |
 | `/api/courses/instructor/courses/` | GET | IsAuthenticated, IsInstructor | `courses.views.InstructorCoursesView` |
 | `/api/courses/instructor/dashboard/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorDashboardView` |
 | `/api/courses/admin/course-stats/` | GET | IsAuthenticated, IsAdmin | `courses.views_analytics.AdminCourseStatsView` |
@@ -74,6 +74,8 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/courses/<int:course_id>/submit/` | POST | IsAuthenticated | `courses.views.SubmitCourseForReviewView` |
 | `/api/courses/<int:course_id>/publish/` | POST | IsAuthenticated, IsAdmin | `courses.views.PublishCourseView` |
 | `/api/courses/<int:course_id>/reject/` | POST | IsAuthenticated, IsAdmin | `courses.views.RejectCourseView` |
+| `/api/courses/<int:course_id>/archive/` | POST | IsAuthenticated | `courses.views.ArchiveCourseView` |
+| `/api/courses/<int:course_id>/new-version/` | POST | IsAuthenticated | `courses.views.NewCourseVersionView` |
 | `/api/courses/<int:course_id>/curriculum/` | GET | AllowAny | `courses.views.CourseCurriculumView` |
 | `/api/courses/<int:course_id>/resume/` | GET | IsAuthenticated | `courses.views.ResumeLearningView` |
 | `/api/courses/<int:course_id>/modules/` | GET POST | AllowAny | `courses.views.ModuleListView` |
@@ -129,6 +131,7 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/exams/course/<int:course_id>/` | GET | IsAuthenticated | `exams.views.get_exam_for_course` |
 | `/api/exams/<int:exam_id>/start/` | POST | IsAuthenticated | `exams.views.start_exam` |
 | `/api/exams/<int:exam_id>/submit/` | POST | IsAuthenticated | `exams.views.submit_exam` |
+| `/api/exams/<int:exam_id>/save-answers/` | POST | IsAuthenticated | `exams.views.save_exam_answers` |
 | `/api/exams/<int:exam_id>/attempts/` | GET | IsAuthenticated | `exams.views.exam_attempts_history` |
 | `/api/exams/attempt/<int:attempt_id>/result/` | GET | IsAuthenticated | `exams.views.exam_result_detail` |
 | `/api/exams/<int:exam_id>/analytics/` | GET | IsAuthenticated, IsInstructor | `exams.views.exam_analytics` |

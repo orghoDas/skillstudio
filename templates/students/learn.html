@@ -326,19 +326,13 @@ async function loadLesson(lessonId) {
         renderVideoLesson(data);
     } else if (data.content_type === 'quiz') {
         loadQuizInterface();
-    } else if (data.content_type === 'text' || data.content_type === 'article') {
+    } else {
+        const resources = renderResources(data);
         contentArea.innerHTML = `
             <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
-                <div class="text-gray-300 whitespace-pre-wrap">${escapeHtml(data.content_text || 'No content available')}</div>
-                ${renderResources(data)}
-            </div>
-        `;
-    } else {
-        contentArea.innerHTML = `
-            <div class="max-w-4xl mx-auto">
                 ${data.content_text ? `<div class="text-gray-300 whitespace-pre-wrap mb-6">${escapeHtml(data.content_text)}</div>` : ''}
-                ${renderResources(data)}
-                ${!data.content_text && !(data.resources || []).length ? `<p class="text-gray-400 text-center">This lesson has no content yet.</p>` : ''}
+                ${resources}
+                ${!data.content_text && !resources ? '<p class="text-gray-400 text-center">This lesson has no content yet.</p>' : ''}
             </div>
         `;
     }
@@ -404,7 +398,7 @@ async function markLessonComplete() {
     if (!currentLesson) return;
     const lessonId = currentLesson.id;
     try {
-        await apiRequest(`/enrollments/lessons/${Number(lessonId)}/complete/`, { method: 'POST' });
+        await apiRequest(`/enrollments/lessons/${Number(lessonId)}/complete/?timezone=${learningTimezone}`, { method: 'POST' });
         showAlert('Lesson marked as complete!', 'success');
         await onLessonCompleted(lessonId, true);
     } catch (error) {
@@ -566,8 +560,10 @@ class WatchTracker {
     }
 }
 
+const learningTimezone = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+
 async function sendWatchDelta(lessonId, delta, keepalive) {
-    const url = `/enrollments/lessons/${Number(lessonId)}/watch-time/`;
+    const url = `/enrollments/lessons/${Number(lessonId)}/watch-time/?timezone=${learningTimezone}`;
     const body = JSON.stringify({ watch_time_delta: Math.min(delta, MAX_WATCH_DELTA) });
     if (!keepalive) {
         return apiRequest(url, { method: 'PATCH', body });

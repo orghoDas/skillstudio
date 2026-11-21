@@ -48,12 +48,6 @@ class StudentProfile(models.Model):
         null=True
     )
     
-    # Statistics (denormalized for performance)
-    total_courses_enrolled = models.IntegerField(default=0)
-    total_courses_completed = models.IntegerField(default=0)
-    total_certificates_earned = models.IntegerField(default=0)
-    total_watch_time = models.IntegerField(default=0, help_text="Total watch time in seconds")
-    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -69,27 +63,44 @@ class StudentProfile(models.Model):
     def __str__(self):
         return f"Student Profile: {self.user.email}"
     
-    def update_statistics(self):
-        """Update denormalized statistics from related models."""
+    @property
+    def total_courses_enrolled(self):
         from enrollments.models import Enrollment
+
+        return Enrollment.objects.filter(user_id=self.user_id).count()
+
+    @property
+    def total_courses_completed(self):
+        from enrollments.models import Enrollment
+
+        return Enrollment.objects.filter(user_id=self.user_id, is_completed=True).count()
+
+    @property
+    def total_certificates_earned(self):
         from certificates.models import Certificate
-        from enrollments.models import LessonProgress
-        
-        self.total_courses_enrolled = Enrollment.objects.filter(user=self.user).count()
-        self.total_courses_completed = Enrollment.objects.filter(
-            user=self.user, is_completed=True
+
+        return Certificate.objects.filter(user_id=self.user_id, revoked_at__isnull=True).exclude(
+            enrollment__status='canceled',
         ).count()
-        self.total_certificates_earned = Certificate.objects.filter(user=self.user).count()
-        self.total_watch_time = LessonProgress.objects.filter(user=self.user).aggregate(
-            total=models.Sum('watch_time')
-        )['total'] or 0
-        
-        self.save(update_fields=[
-            'total_courses_enrolled',
-            'total_courses_completed',
-            'total_certificates_earned',
-            'total_watch_time',
-        ])
+
+    @property
+    def total_watch_time(self):
+        from enrollments.models import LessonProgress
+
+        return LessonProgress.objects.filter(user_id=self.user_id).aggregate(total=models.Sum('watch_time', default=0))['total']
+
+
+class LearningActivity(models.Model):
+    """One day of learning activity in the timezone used when recording it."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='learning_activity')
+    date = models.DateField()
+    watch_seconds = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'date'], name='unique_learning_activity_day'),
+        ]
 
 
 class StudentNote(models.Model):

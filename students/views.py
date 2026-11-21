@@ -4,15 +4,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Max
-from django.core.exceptions import ValidationError as DjangoValidationError, PermissionDenied as DjangoPermissionDenied
 from decimal import Decimal
 
-from accounts.mixins import StudentOnlyMixin
 from accounts.permissions import IsStudent
 from enrollments.models import Enrollment, LessonProgress
 from courses.models import Lesson
+from certificates.models import Certificate
 from enrollments.services import get_resume_lesson
-from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
+from .activity import learning_timezone
+from .models import StudentProfile, StudentNote, Wallet, WalletTransaction
 from .serializers import (
     StudentProfileSerializer,
     StudentNoteSerializer,
@@ -41,17 +41,25 @@ from .services import (
 )
 
 
-class StudentDashboardView(APIView, StudentOnlyMixin):
+class StudentDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsStudent]
 
     def get(self, request):
-        streak = get_learning_streak(request.user)
-        weekly = get_weekly_learning_progress(request.user)
+        local_zone = learning_timezone(request)
+        streak = get_learning_streak(request.user, local_zone=local_zone)
+        weekly = get_weekly_learning_progress(request.user, local_zone=local_zone)
         achievements = get_student_achievements(request.user, streak)
         dashboard = get_student_dashboard_data(request.user)
         activity_feed = get_student_activity_feed(request.user, limit=5)
         
         return Response({
+            "summary": {
+                "total_courses_enrolled": len(dashboard),
+                "total_courses_completed": sum(course["is_completed"] for course in dashboard),
+                "total_certificates_earned": Certificate.objects.filter(
+                    user=request.user, revoked_at__isnull=True,
+                ).exclude(enrollment__status='canceled').count(),
+            },
             "streak": streak,
             "weekly_progress": weekly,
             "achievements": achievements,
@@ -79,26 +87,11 @@ class StudentProfileView(APIView):
         return Response(serializer.data)
     
     def put(self, request):
-        try:
-            profile = update_student_profile(request.user, **request.data)
-            serializer = StudentProfileSerializer(profile)
-            return Response(serializer.data)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    def patch(self, request):
-        try:
-            profile = update_student_profile(request.user, **request.data)
-            serializer = StudentProfileSerializer(profile)
-            return Response(serializer.data)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        profile = update_student_profile(request.user, **request.data)
+        serializer = StudentProfileSerializer(profile)
+        return Response(serializer.data)
+
+    patch = put
 
 
 class StudentNoteListCreateView(ListCreateAPIView):
@@ -116,21 +109,15 @@ class StudentNoteListCreateView(ListCreateAPIView):
         )
     
     def post(self, request):
-        try:
-            note = create_student_note(
-                user=request.user,
-                lesson_id=request.data.get('lesson'),
-                content=request.data.get('content'),
-                timestamp=request.data.get('timestamp', 0),
-                tags=request.data.get('tags', [])
-            )
-            serializer = StudentNoteSerializer(note)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        note = create_student_note(
+            user=request.user,
+            lesson_id=request.data.get('lesson'),
+            content=request.data.get('content'),
+            timestamp=request.data.get('timestamp', 0),
+            tags=request.data.get('tags', [])
+        )
+        serializer = StudentNoteSerializer(note)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
@@ -143,36 +130,15 @@ class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
         return StudentNote.objects.filter(user=self.request.user)
     
     def put(self, request, id):
-        try:
-            note = update_student_note(id, request.user, **request.data)
-            serializer = StudentNoteSerializer(note)
-            return Response(serializer.data)
-        except (DjangoValidationError, DjangoPermissionDenied) as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    def patch(self, request, id):
-        try:
-            note = update_student_note(id, request.user, **request.data)
-            serializer = StudentNoteSerializer(note)
-            return Response(serializer.data)
-        except (DjangoValidationError, DjangoPermissionDenied) as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
+        note = update_student_note(id, request.user, **request.data)
+        serializer = StudentNoteSerializer(note)
+        return Response(serializer.data)
+
+    patch = put
+
     def delete(self, request, id):
-        try:
-            delete_student_note(id, request.user)
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except (DjangoValidationError, DjangoPermissionDenied) as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        delete_student_note(id, request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class WalletView(APIView):
     """Read your own wallet (any role: instructors earn into theirs, PAY-07).
@@ -208,37 +174,25 @@ class StudentBookmarkListCreateView(ListCreateAPIView):
         return get_student_bookmarks(self.request.user)
     
     def post(self, request):
-        try:
-            bookmark = create_bookmark(
-                user=request.user,
-                course_id=request.data.get('course'),
-                lesson_id=request.data.get('lesson'),
-                note=request.data.get('note', '')
-            )
-            serializer = StudentBookmarkSerializer(bookmark)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except DjangoValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        bookmark = create_bookmark(
+            user=request.user,
+            course_id=request.data.get('course'),
+            lesson_id=request.data.get('lesson'),
+            note=request.data.get('note', '')
+        )
+        serializer = self.get_serializer(bookmark)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class StudentBookmarkDetailView(RetrieveUpdateDestroyAPIView):
-    """Retrieve or delete a student bookmark."""
+    """Retrieve, update or delete a student bookmark."""
     permission_classes = [IsAuthenticated, IsStudent]
     serializer_class = StudentBookmarkSerializer
     lookup_field = 'id'
     
     def get_queryset(self):
-        return StudentBookmark.objects.filter(user=self.request.user)
+        return get_student_bookmarks(self.request.user)
     
     def delete(self, request, id):
-        try:
-            delete_bookmark(id, request.user)
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except (DjangoValidationError, DjangoPermissionDenied) as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        delete_bookmark(id, request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)

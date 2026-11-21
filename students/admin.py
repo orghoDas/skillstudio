@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
+from core.admin import ReadOnlyAdmin
 from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 
 
@@ -191,7 +192,7 @@ class StudentBookmarkAdmin(admin.ModelAdmin):
 
 
 @admin.register(Wallet)
-class WalletAdmin(admin.ModelAdmin):
+class WalletAdmin(ReadOnlyAdmin):
     list_display = [
         'user_link',
         'balance_display',
@@ -205,6 +206,7 @@ class WalletAdmin(admin.ModelAdmin):
     ]
     readonly_fields = [
         'id',
+        'balance',
         'created_at',
         'updated_at',
     ]
@@ -218,7 +220,7 @@ class WalletAdmin(admin.ModelAdmin):
     )
     
     def user_link(self, obj):
-        url = reverse('admin:auth_user_change', args=[obj.user.id])
+        url = reverse('admin:accounts_user_change', args=[obj.user.id])
         return format_html('<a href="{}">{}</a>', url, obj.user.email)
     user_link.short_description = 'User'
     
@@ -233,7 +235,7 @@ class WalletAdmin(admin.ModelAdmin):
 
 
 @admin.register(WalletTransaction)
-class WalletTransactionAdmin(admin.ModelAdmin):
+class WalletTransactionAdmin(ReadOnlyAdmin):
     list_display = [
         'id',
         'wallet_user',

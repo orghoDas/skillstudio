@@ -20,7 +20,8 @@ from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum, Q, Count, F
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.views.decorators.debug import sensitive_variables
 import logging
 
 from payments.models import (
@@ -28,6 +29,7 @@ from payments.models import (
     PaymentWebhookLog, PaymentDispute
 )
 from accounts.models import User
+from payments.payout_details import encrypt_payout_details
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +184,9 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     from enrollments.models import Enrollment
 
     try:
-        course = Course.objects.select_related("instructor").get(id=course_id, status="published")
+        course = Course.objects.select_for_update(of=("self",)).select_related("instructor").get(
+            id=course_id, status="published",
+        )
     except Course.DoesNotExist:
         raise PurchaseError("Course not found or not published.", "course_unavailable")
 
@@ -249,6 +253,10 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
         enrollment.is_completed = False
         enrollment.completed_at = None
         enrollment.save(update_fields=["status", "is_completed", "completed_at"])
+        from enrollments.services import evaluate_and_complete_enrollment
+
+        if evaluate_and_complete_enrollment(enrollment.pk):
+            enrollment.refresh_from_db()
         outcome = OUTCOME_REACTIVATED
 
     logger.info(
@@ -354,6 +362,7 @@ def approve_refund(refund_id, admin_user, notes="", absorb_shortfall=False):
     rest (recorded on the refund).
     """
     from enrollments.models import Enrollment
+    from enrollments.services import cancel_enrollments
 
     try:
         refund = Refund.objects.select_for_update().select_related("payment").get(pk=refund_id)
@@ -362,7 +371,9 @@ def approve_refund(refund_id, admin_user, notes="", absorb_shortfall=False):
     if refund.status != "requested":
         raise RefundError(f"Cannot approve a refund with status '{refund.status}'.", "invalid_state")
 
-    payment = Payment.objects.select_for_update().select_related("user", "instructor", "course").get(pk=refund.payment_id)
+    payment = Payment.objects.select_for_update(of=("self",)).select_related(
+        "user", "instructor", "course",
+    ).get(pk=refund.payment_id)
     remaining = refundable_amount(payment)
     if refund.amount > remaining:
         raise RefundError(f"Refund exceeds the refundable ${remaining}.", "invalid_amount")
@@ -403,10 +414,7 @@ def approve_refund(refund_id, admin_user, notes="", absorb_shortfall=False):
     payment.save(update_fields=["status", "updated_at"])
 
     if remaining_after == 0 and payment.course_id:
-        # Full refund revokes access. (Certificate revocation: see CRT-01.)
-        Enrollment.objects.filter(
-            user=payment.user, course_id=payment.course_id, status__in=("active", "completed")
-        ).update(status="canceled")
+        cancel_enrollments(Enrollment.objects.filter(user=payment.user, course_id=payment.course_id))
 
     logger.info(
         "Refund processed: refund=%s payment=%s amount=%s instructor_debit=%s absorbed=%s",
@@ -458,23 +466,27 @@ class PayoutError(PaymentsError):
 OPEN_PAYOUT_STATUSES = ("pending", "processing")
 
 
+def get_instructor_net_earnings(instructor_id):
+    """Course-sale earnings net of processed refunds."""
+    gross = Payment.objects.filter(
+        instructor_id=instructor_id,
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+        status__in=("completed", "partially_refunded", "refunded"),
+    ).aggregate(t=Sum("instructor_earnings"))["t"] or Decimal("0.00")
+    reversed_by_refunds = Refund.objects.filter(
+        payment__instructor_id=instructor_id, status="processed"
+    ).aggregate(t=Sum("instructor_debit"))["t"] or Decimal("0.00")
+    return gross - reversed_by_refunds
+
+
 def calculate_instructor_balance(instructor):
     """Instructor money summary, all derived from the wallet ledger + payouts."""
     from students.models import Wallet
 
     wallet, _ = Wallet.objects.get_or_create(user=instructor)
     payouts = Payout.objects.filter(instructor=instructor)
-    gross = Payment.objects.filter(
-        instructor=instructor,
-        purpose=Payment.PURPOSE_COURSE_PURCHASE,
-        status__in=("completed", "partially_refunded", "refunded"),
-    ).aggregate(t=Sum("instructor_earnings"))["t"] or Decimal("0.00")
-    reversed_by_refunds = Refund.objects.filter(
-        payment__instructor=instructor, status="processed"
-    ).aggregate(t=Sum("instructor_debit"))["t"] or Decimal("0.00")
-
     return {
-        "total_earnings": gross - reversed_by_refunds,
+        "total_earnings": get_instructor_net_earnings(instructor.pk),
         "paid_out": payouts.filter(status="paid").aggregate(t=Sum("amount"))["t"] or Decimal("0.00"),
         "pending": payouts.filter(status__in=OPEN_PAYOUT_STATUSES, wallet_debited=True)
                           .aggregate(t=Sum("amount"))["t"] or Decimal("0.00"),
@@ -508,6 +520,7 @@ def _locked_payout(payout_id):
         raise PayoutError("Payout not found.", "not_found")
 
 
+@sensitive_variables('account_details')
 @transaction.atomic
 def create_payout(instructor, amount=None, payout_method="stripe_connect", account_details=None):
     """Instructor requests a payout; the amount is reserved from their wallet now."""
@@ -518,11 +531,16 @@ def create_payout(instructor, amount=None, payout_method="stripe_connect", accou
     if amount > wallet.balance:
         raise PayoutError(f"Insufficient wallet balance. Available: ${wallet.balance}", "insufficient_balance")
 
+    try:
+        encrypted_details = encrypt_payout_details(account_details or {})
+    except ImproperlyConfigured as exc:
+        raise PayoutError("Payout destination storage is unavailable.", "payout_details_unavailable") from exc
+
     payout = Payout.objects.create(
         instructor=instructor,
         amount=amount,
         payout_method=payout_method,
-        account_details=account_details or {},
+        account_details_encrypted=encrypted_details,
         status="pending",
     )
     _reserve_payout_funds(payout)

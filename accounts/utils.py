@@ -19,6 +19,23 @@ def email_domain(email):
     return domain.lower()
 
 
+def profile_display_name(user):
+    """Return a profile name that does not contain the account email."""
+    profile = getattr(user, 'profile', None)
+    if profile is not None:
+        full_name = (profile.full_name or '').strip()
+        parts = ' '.join(part.strip() for part in (profile.first_name, profile.last_name) if part).strip()
+        account_email = (user.email or '').strip().casefold()
+        for name in (full_name, parts):
+            if name and (not account_email or account_email not in name.casefold()):
+                return name
+    return ''
+
+
+def public_instructor_name(user):
+    return profile_display_name(user) or 'Instructor'
+
+
 def signup_role_for_email(email):
     """Role a new self-registered account gets (Decision D-02 / SEC-07).
 

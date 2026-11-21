@@ -109,8 +109,11 @@ class PaymentCancelView(APIView):
 # Refunds of course purchases go back to the student's wallet (PAY-08).
 
 def _payments_error_response(exc):
-    """Map a PaymentsError to a safe 400/404 response (never echoes internals)."""
-    code = status.HTTP_404_NOT_FOUND if exc.code == "not_found" else status.HTTP_400_BAD_REQUEST
+    """Map a PaymentsError to an API error response."""
+    code = {
+        "not_found": status.HTTP_404_NOT_FOUND,
+        "payout_details_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+    }.get(exc.code, status.HTTP_400_BAD_REQUEST)
     return Response({'detail': exc.message, 'code': exc.code}, status=code)
 
 
@@ -323,16 +326,13 @@ class CouponCreateView(APIView):
         discount_type = data.pop('discount_type')
         discount_value = data.pop('discount_value')
 
-        try:
-            coupon = services.create_coupon(
-                code=code,
-                discount_type=discount_type,
-                discount_value=discount_value,
-                created_by=request.user,
-                **data
-            )
-        except DjangoValidationError as exc:
-            return Response({'error': exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
+        coupon = services.create_coupon(
+            code=code,
+            discount_type=discount_type,
+            discount_value=discount_value,
+            created_by=request.user,
+            **data
+        )
 
         if specific_course_ids:
             coupon.specific_courses.set(specific_course_ids)

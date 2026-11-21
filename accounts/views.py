@@ -1,5 +1,10 @@
+from collections.abc import Mapping
+
+from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -15,6 +20,8 @@ from .serializers import (
     UpdateUserRoleSerializer, UnifiedProfileSerializer,
 )
 from .models import Profile, User, APIKey
+from .authentication import enforce_cookie_csrf
+from .cookies import clear_jwt_cookies
 from .permissions import IsInstructor, IsAdmin
 
 
@@ -52,16 +59,18 @@ class RegisterView(generics.CreateAPIView):
 class LogoutView(APIView):
     """Log out: blacklist the refresh token (from body or cookie) and clear the
     auth cookies. Succeeds even without a token so clients can always log out."""
-    permission_classes = [IsAuthenticated]
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        from django.conf import settings
-        from .cookies import clear_jwt_cookies
+        cookie_refresh = request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
+        if cookie_refresh or request.COOKIES.get(settings.JWT_AUTH_COOKIE):
+            enforce_cookie_csrf(request)
 
-        refresh = request.data.get('refresh') or request.COOKIES.get(
-            settings.JWT_AUTH_REFRESH_COOKIE
-        )
-        if refresh:
+        data = request.data
+        body_refresh = data.get('refresh') if isinstance(data, Mapping) else None
+        tokens = (body_refresh, cookie_refresh)
+        for refresh in {value for value in tokens if isinstance(value, str) and value}:
             try:
                 RefreshToken(refresh).blacklist()
             except TokenError:
@@ -90,7 +99,7 @@ class ChangePasswordView(APIView):
 
         # Set new password
         user.set_password(serializer.validated_data['new_password'])
-        user.save()
+        user.save(update_fields=['password'])
 
         # Invalidate outstanding refresh tokens so other sessions can't continue.
         _blacklist_user_refresh_tokens(user)
@@ -160,17 +169,25 @@ class UserDetailView(generics.RetrieveAPIView):
     lookup_field = 'id'
 
 
+@transaction.atomic
+def _update_role(user_id, role):
+    user = get_object_or_404(User.objects.select_for_update(), id=user_id)
+    if user.is_superuser and role != User.Role.ADMIN:
+        raise ValidationError({'role': 'A superuser must retain the admin role.'})
+    user.role = role
+    user.save(update_fields=['role'])
+    return user
+
+
 class UpdateUserRoleView(APIView):
     """Update user role (admin only)"""
     permission_classes = [IsAdmin]
 
     def patch(self, request, user_id):
-        user = get_object_or_404(User, id=user_id)
         serializer = UpdateUserRoleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        user.role = serializer.validated_data['role']
-        user.save()
+        user = _update_role(user_id, serializer.validated_data['role'])
         
         return Response({
             "message": f"User {user.email} role updated to {user.role}.",
@@ -183,9 +200,7 @@ class PromoteToInstructorView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, user_id):
-        user = get_object_or_404(User, id=user_id)
-        user.role = User.Role.INSTRUCTOR
-        user.save()
+        user = _update_role(user_id, User.Role.INSTRUCTOR)
         return Response({
             "message": f"User {user.email} promoted to Instructor.",
             "user": UserSerializer(user).data
@@ -199,7 +214,7 @@ class DeactivateUserView(APIView):
     def post(self, request, user_id):
         user = get_object_or_404(User, id=user_id)
         user.is_active = False
-        user.save()
+        user.save(update_fields=['is_active'])
         return Response({
             "message": f"User {user.email} has been deactivated."
         }, status=status.HTTP_200_OK)
@@ -212,7 +227,7 @@ class ActivateUserView(APIView):
     def post(self, request, user_id):
         user = get_object_or_404(User, id=user_id)
         user.is_active = True
-        user.save()
+        user.save(update_fields=['is_active'])
         return Response({
             "message": f"User {user.email} has been activated."
         }, status=status.HTTP_200_OK)
@@ -233,10 +248,16 @@ class APIKeyListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = CreateAPIKeySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        scopes = serializer.validated_data.get('scopes', [])
+        parent = request.auth
+        if isinstance(parent, APIKey) and parent.scopes:
+            requested = set(scopes or APIKey.Scope.values)
+            if not requested.issubset(parent.scopes):
+                raise PermissionDenied("An API key cannot create a key with broader scopes.")
         api_key, secret = APIKey.create_for_user(
             user=request.user,
             label=serializer.validated_data["label"],
-            scopes=serializer.validated_data.get("scopes", []),
+            scopes=scopes,
         )
         data = APIKeySerializer(api_key).data
         data["key"] = secret

@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
+from django.db.models import Max
+from accounts.utils import public_instructor_name
 from enrollments.constants import ACCESS_STATUSES
+from enrollments.services import get_access_enrollment, lesson_lock_state, ordered_course_lessons
+from .policies import can_access_course_content, can_manage_course
 from .video import parse_video_url
 from .models import (
     Course, Lesson, Module, Category, Tag, CourseTag,
@@ -21,7 +26,17 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['slug']
 
     def get_course_count(self, obj):
+        if hasattr(obj, 'course_count'):
+            return obj.course_count
         return obj.courses.filter(status='published').count()
+
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except IntegrityError as exc:
+            if Category.objects.filter(name=validated_data['name']).exists():
+                raise serializers.ValidationError({'name': ['A category with this name already exists.']}) from exc
+            raise
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -58,7 +73,7 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
     video_url = serializers.URLField(required=False, allow_blank=True, default='')
     duration_seconds = serializers.IntegerField(required=False, allow_null=True, default=0)
     metadata = serializers.JSONField(required=False, allow_null=True, default=None)
-    position = serializers.IntegerField(required=False, default=0)
+    position = serializers.IntegerField(required=False, min_value=0, max_value=2**31 - 1)
     is_free = serializers.BooleanField(required=False, default=False)
     
     class Meta:
@@ -67,6 +82,9 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
             'module', 'title', 'content_type', 'content_text',
             'video_url', 'duration_seconds', 'metadata', 'position', 'is_free'
         ]
+        # The destination module can come from the URL. Check positions when
+        # saving, after the view has resolved the module and locked the course.
+        validators = []
 
     def validate_module(self, value):
         # SEC-05: on update a lesson may only move between modules of its own
@@ -88,9 +106,29 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate(self, attrs):
-        # Content is otherwise optional: instructors can fill lessons in later.
-        return attrs
+    def create(self, validated_data):
+        self._set_position(validated_data, validated_data['module'])
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        module = validated_data.get('module', instance.module)
+        if 'position' in validated_data or module.pk != instance.module_id:
+            self._set_position(validated_data, module)
+        return super().update(instance, validated_data)
+
+    def _set_position(self, validated_data, module):
+        siblings = module.lessons.all()
+        if self.instance is not None:
+            siblings = siblings.exclude(pk=self.instance.pk)
+        if 'position' in validated_data:
+            if siblings.filter(position=validated_data['position']).exists():
+                raise serializers.ValidationError({'position': 'This position is already in use in this module.'})
+            return
+
+        last = siblings.aggregate(last=Max('position', default=-1))['last']
+        if last == self.fields['position'].max_value:
+            raise serializers.ValidationError({'position': 'Specify an unused position in this module.'})
+        validated_data['position'] = last + 1
 
 
 class LessonDataSerializer(serializers.ModelSerializer):
@@ -140,8 +178,6 @@ class CurriculumLessonSerializer(serializers.ModelSerializer):
         return lesson.id in self.context.get('completed_ids', set())
 
     def get_is_locked(self, lesson):
-        if lesson.is_free:
-            return False
         return lesson.id in self.context.get('locked_ids', set())
 
 
@@ -164,7 +200,7 @@ class ModuleCreateUpdateSerializer(serializers.ModelSerializer):
     """Create/update a module.
 
     ``course`` is only meaningful on create; the views check that the caller
-    owns it. On update it can never change (SEC-05): ownership is checked on
+    can manage it. On update it can never change (SEC-05): ownership is checked on
     the module's *current* course, so allowing a new course would let an
     instructor inject their module into someone else's course.
     """
@@ -188,7 +224,7 @@ class CurriculumModuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'position', 'lessons']
 
     def get_lessons(self, module):
-        lessons = module.lessons.order_by('position')
+        lessons = module.lessons.all()
         return CurriculumLessonSerializer(
             lessons,
             many=True,
@@ -207,13 +243,21 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_locked(self, lesson):
-        """Locked = this viewer can't open the lesson's content (CRS-01 policy)."""
-        from django.contrib.auth.models import AnonymousUser
-        from courses.policies import can_access_lesson
-
-        request = self.context.get('request')
-        user = getattr(request, 'user', None) or AnonymousUser()
-        return not can_access_lesson(user, lesson)
+        module = lesson.module
+        locks_by_course = self.context.setdefault('lesson_locks_by_course', {})
+        if module.course_id not in locks_by_course:
+            course = module.course
+            user = getattr(self.context.get('request'), 'user', None)
+            enrollment = None if can_manage_course(user, course) else get_access_enrollment(user, course)
+            if enrollment:
+                locks = lesson_lock_state(enrollment, ordered_course_lessons(course))
+            elif can_access_course_content(user, course):
+                locks = {}
+            else:
+                # A visible paid course still offers its free previews.
+                locks = {item.pk: not item.is_free for item in ordered_course_lessons(course)}
+            locks_by_course[module.course_id] = locks
+        return locks_by_course[module.course_id].get(lesson.pk, False)
 
 
 class CatalogLessonSummarySerializer(CourseDetailLessonSerializer):
@@ -255,7 +299,7 @@ class CatalogModuleSerializer(serializers.ModelSerializer):
 
 class CourseListSerializer(serializers.ModelSerializer):
     instructor_name = serializers.SerializerMethodField()
-    instructor_email = serializers.SerializerMethodField()
+    instructor_id = serializers.IntegerField(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     enrollments_count = serializers.SerializerMethodField()
     module_count = serializers.SerializerMethodField()
@@ -265,7 +309,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
-            'is_free', 'status', 'level', 'instructor_name', 'instructor_email',
+            'is_free', 'status', 'level', 'instructor_id', 'instructor_name',
             'category_name', 'published_at', 'created_at', 'enrollments_count',
             'module_count', 'lesson_count'
         ]
@@ -280,21 +324,12 @@ class CourseListSerializer(serializers.ModelSerializer):
         return Lesson.objects.filter(module__course=obj).count()
     
     def get_instructor_name(self, obj):
-        try:
-            return obj.instructor.profile.full_name or ''
-        except Exception:
-            return obj.instructor.email if hasattr(obj.instructor, 'email') else ''
-
-    def get_instructor_email(self, obj):
-        try:
-            return obj.instructor.email or ''
-        except Exception:
-            return ''
+        return public_instructor_name(obj.instructor)
 
 
 class CourseDetailSerializer(serializers.ModelSerializer):
     instructor_name = serializers.SerializerMethodField()
-    instructor_email = serializers.SerializerMethodField()
+    instructor_id = serializers.IntegerField(read_only=True)
     category = CategorySerializer(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     tags = TagSerializer(many=True, read_only=True)
@@ -303,17 +338,24 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     enrollments_count = serializers.SerializerMethodField()  # Alias for template compatibility
     is_enrolled = serializers.SerializerMethodField()
     total_duration = serializers.SerializerMethodField()
-    learning_outcomes = serializers.SerializerMethodField()
+    version_number = serializers.IntegerField(source='current_version.version_number', read_only=True, default=None)
 
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
-            'is_free', 'status', 'level', 'instructor', 'instructor_name',
-            'instructor_email', 'category', 'category_name', 'tags', 'modules', 'published_at',
+            'is_free', 'status', 'level', 'instructor', 'instructor_id', 'instructor_name',
+            'category', 'category_name', 'tags', 'modules', 'published_at',
             'created_at', 'updated_at', 'enrollment_count', 'enrollments_count', 'is_enrolled',
-            'rejection_reason', 'total_duration', 'learning_outcomes'
+            'rejection_reason', 'total_duration', 'revision_of', 'version_number'
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        user = getattr(self.context.get('request'), 'user', None)
+        if not can_manage_course(user, instance):
+            data.pop('rejection_reason', None)
+        return data
 
     def get_enrollment_count(self, obj):
         return obj.enrollments.filter(status='active').count()
@@ -335,27 +377,13 @@ class CourseDetailSerializer(serializers.ModelSerializer):
                 total += lesson.duration_seconds or 0
         return total
     
-    def get_learning_outcomes(self, obj):
-        # Return empty list for now since field doesn't exist in model
-        # This can be populated when the field is added to the Course model
-        return []
-
     def get_instructor_name(self, obj):
-        try:
-            return obj.instructor.profile.full_name or ''
-        except Exception:
-            return obj.instructor.email if hasattr(obj.instructor, 'email') else ''
-
-    def get_instructor_email(self, obj):
-        try:
-            return obj.instructor.email or ''
-        except Exception:
-            return ''
+        return public_instructor_name(obj.instructor)
 
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):
     tag_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.IntegerField(min_value=1, max_value=2**63 - 1),
         write_only=True,
         required=False
     )
@@ -364,23 +392,50 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
         model = Course
         fields = [
             'id', 'slug', 'title', 'description', 'thumbnail', 'price', 'is_free',
-            'level', 'category', 'tag_ids'
+            'level', 'category', 'tag_ids', 'status'
         ]
-        read_only_fields = ['id', 'slug']
+        read_only_fields = ['id', 'slug', 'status']
 
     def validate(self, attrs):
-        if attrs.get('is_free'):
-            attrs['price'] = 0
+        price = attrs.get('price', getattr(self.instance, 'price', 0))
+        if 'price' not in attrs and attrs.get('is_free') is True:
+            price = attrs['price'] = 0
+
+        is_free = attrs.get('is_free', getattr(self.instance, 'is_free', price == 0))
+        if is_free and price != 0:
+            raise serializers.ValidationError({'price': 'Free courses must have a zero price.'})
+        if not is_free and price <= 0:
+            raise serializers.ValidationError({'price': 'Paid courses must have a positive price.'})
+        if self.instance is None:
+            attrs['is_free'] = is_free
         return attrs
 
+    def validate_tag_ids(self, value):
+        ids = list(dict.fromkeys(value))
+        self._check_tags(ids)
+        return ids
+
+    @staticmethod
+    def _check_tags(tag_ids, *, lock=False):
+        if not tag_ids:
+            return
+        tags = Tag.objects.filter(pk__in=tag_ids).order_by('pk')
+        if lock:
+            tags = tags.select_for_update()
+        missing = set(tag_ids).difference(tags.values_list('pk', flat=True))
+        if missing:
+            raise serializers.ValidationError({'tag_ids': f"Unknown tag IDs: {', '.join(map(str, sorted(missing)))}."})
+
+    @staticmethod
+    def _add_tags(course, tag_ids):
+        CourseTag.objects.bulk_create([CourseTag(course=course, tag_id=tag_id) for tag_id in tag_ids])
+
+    @transaction.atomic
     def create(self, validated_data):
         tag_ids = validated_data.pop('tag_ids', [])
-        course = Course.objects.create(**validated_data)
-        
-        if tag_ids:
-            for tag_id in tag_ids:
-                CourseTag.objects.create(course=course, tag_id=tag_id)
-        
+        self._check_tags(tag_ids, lock=True)
+        course = super().create(validated_data)
+        self._add_tags(course, tag_ids)
         return course
     
     def to_representation(self, instance):
@@ -391,19 +446,16 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
         representation['slug'] = instance.slug
         return representation
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)
-        
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        
+        self._check_tags(tag_ids, lock=True)
+        course = super().update(instance, validated_data)
+
         if tag_ids is not None:
-            CourseTag.objects.filter(course=instance).delete()
-            for tag_id in tag_ids:
-                CourseTag.objects.create(course=instance, tag_id=tag_id)
-        
-        return instance
+            CourseTag.objects.filter(course=course).delete()
+            self._add_tags(course, tag_ids)
+        return course
 
 
 class CourseCurriculumSerializer(serializers.ModelSerializer):
@@ -414,7 +466,7 @@ class CourseCurriculumSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'modules']
 
     def get_modules(self, course):
-        modules = course.modules.order_by('position')
+        modules = course.modules.all()
         return CurriculumModuleSerializer(
             modules,
             many=True,

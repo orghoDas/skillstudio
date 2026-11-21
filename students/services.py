@@ -1,19 +1,18 @@
 from itertools import chain
 from datetime import timedelta
-from decimal import Decimal
-from django.db import models, transaction
-from django.db.models import Value, CharField, Count, Q, Max, Sum
-from django.db.models.functions import TruncDate
+from django.db import transaction
+from django.db.models import Value, CharField, Count, Exists, Max, OuterRef, Q, Sum
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.contrib.auth import get_user_model
 
 from certificates.models import Certificate
 from courses.models import Lesson, Course
+from courses.policies import can_view_course_catalog, visible_catalog_courses
 from enrollments.models import Enrollment, LessonProgress
 from enrollments.constants import ACCESS_STATUSES
-from enrollments.services import get_resume_lesson
-from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
+from enrollments.services import get_lesson_completion_stats, get_required_lessons, get_resume_lesson
+from .models import LearningActivity, StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .constants import (
     ACHIEVEMENTS,
     LESSON_STARTED,
@@ -43,7 +42,7 @@ def get_student_activity_feed(user, limit=20):
                 "course_title": lp.lesson.module.course.title,
                 "lesson_id": lp.lesson.id,
                 "lesson_title": lp.lesson.title,
-                "timestamp": lp.completed_at,
+                "timestamp": lp.completed_at or lp.updated_at,
             })
         else:
             activities.append({
@@ -58,7 +57,7 @@ def get_student_activity_feed(user, limit=20):
     # 2️⃣ Course completed
     completed_courses = (
         Enrollment.objects
-        .filter(user=user, is_completed=True)
+        .filter(user=user, is_completed=True, completed_at__isnull=False)
         .select_related('course')
         .order_by('-completed_at')
     )
@@ -99,129 +98,80 @@ def get_student_dashboard_data(user):
         .filter(user=user)
         .select_related('course')
         .annotate(
-            completed_lessons=Count(
-                'lesson_progress',
-                filter=Q(lesson_progress__is_completed=True)
-            ),
-            last_activity=Max('lesson_progress__updated_at')
+            has_certificate=Exists(Certificate.objects.filter(
+                course_id=OuterRef('course_id'), user=user, revoked_at__isnull=True,
+            ).exclude(enrollment__status='canceled')),
+            last_activity=Max('lesson_progress__updated_at'),
         )
         .order_by('-enrolled_at')
     )
-
-    # Pre-calc total lessons per course
-    lesson_counts = (
-        Lesson.objects
-        .filter(is_free=False)
-        .values('module__course')
-        .annotate(total=Count('id'))
-    )
-
-    lesson_count_map = {
-        row['module__course']: row['total']
-        for row in lesson_counts
-    }
-
     dashboard = []
-
     for enrollment in enrollments:
-        total_lessons = lesson_count_map.get(enrollment.course_id, 0)
-
-        progress_percentage = (
-            round((enrollment.completed_lessons / total_lessons) * 100, 2)
-            if total_lessons > 0 else 0
+        required_lessons = list(get_required_lessons(enrollment.course).select_related('module'))
+        stats = get_lesson_completion_stats(enrollment, required_lessons=required_lessons)
+        completed_ids = set(stats['completed_lesson_ids'])
+        resume_lesson = get_resume_lesson(
+            enrollment, lessons=required_lessons, completed_ids=completed_ids,
         )
 
-        resume_lesson = get_resume_lesson(enrollment)
-
         resume_context = None
-        if resume_lesson:
+        if resume_lesson and enrollment.status in ACCESS_STATUSES and not enrollment.is_completed:
             resume_context = {
                 "lesson_id": resume_lesson.id,
                 "lesson_title": resume_lesson.title,
                 "module_title": resume_lesson.module.title,
             }
 
-        if enrollment.is_completed:
+        action_target = enrollment.course_id
+        if enrollment.has_certificate:
             primary_action = "view_certificate"
-            action_target = enrollment.course_id
-
-        elif enrollment.completed_lessons == 0:
+        elif enrollment.is_completed or enrollment.status not in ACCESS_STATUSES or not resume_lesson:
+            primary_action = "view_course"
+        elif not stats['completed_lessons']:
             primary_action = "start_course"
-            action_target = enrollment.course_id
-
         else:
             primary_action = "resume_lesson"
-            action_target = resume_lesson.id if resume_lesson else None
+            action_target = resume_lesson.id
 
         dashboard.append({
-            "course_id": enrollment.course.id,
+            "course_id": enrollment.course_id,
             "course_title": enrollment.course.title,
             "status": enrollment.status,
-            "progress_percentage": progress_percentage,
-            "completed_lessons": enrollment.completed_lessons,
-            "total_lessons": total_lessons,
-            "has_certificate": enrollment.is_completed,
-            "resume_lesson_id": resume_lesson.id if resume_lesson else None,
+            "is_completed": enrollment.is_completed,
+            "progress_percentage": stats['progress_percentage'],
+            "completed_lessons": stats['completed_lessons'],
+            "total_lessons": stats['total_lessons'],
+            "has_certificate": enrollment.has_certificate,
+            "resume_lesson_id": resume_context["lesson_id"] if resume_context else None,
             "last_activity": enrollment.last_activity,
             "resume_context": resume_context,
-
-            # ✅ STEP 7 additions
             "primary_action": primary_action,
             "action_target": action_target,
         })
 
     return dashboard
 
-def get_learning_streak(user):
-    """
-    Returns:
-    {
-        current_streak: int,
-        longest_streak: int
-    }
-    """
-    today = timezone.now().date()
 
+def get_learning_streak(user, *, local_zone=None):
+    today = timezone.localdate(timezone=local_zone)
     active_days = (
-        LessonProgress.objects
-        .filter(user=user)
-        .annotate(day=TruncDate('updated_at'))
-        .values_list('day', flat=True)
-        .distinct()
-        .order_by('-day')
+        LearningActivity.objects.filter(user=user, date__lte=today)
+        .order_by('date')
+        .values_list('date', flat=True)
     )
-
-    if not active_days:
-        return {"current_streak": 0, "longest_streak": 0}
-
-    # 🔥 Current streak
-    current_streak = 0
-    expected_day = today
-
-    for day in active_days:
-        if day == expected_day:
-            current_streak += 1
-            expected_day -= timedelta(days=1)
-        else:
-            break
-
-    # 🏆 Longest streak
-    longest_streak = 1
-    temp_streak = 1
-
-    sorted_days = sorted(active_days)
-
-    for i in range(1, len(sorted_days)):
-        if sorted_days[i] == sorted_days[i - 1] + timedelta(days=1):
-            temp_streak += 1
-            longest_streak = max(longest_streak, temp_streak)
-        else:
-            temp_streak = 1
+    one_day = timedelta(days=1)
+    previous = None
+    streak = longest = 0
+    for day in active_days.iterator():
+        streak = streak + 1 if previous and day - previous == one_day else 1
+        longest = max(longest, streak)
+        previous = day
 
     return {
-        "current_streak": current_streak,
-        "longest_streak": longest_streak
+        "current_streak": streak if previous and today - previous <= one_day else 0,
+        "longest_streak": longest,
     }
+
 
 def get_student_achievements(user, streak_data):
     achievements = []
@@ -258,59 +208,17 @@ def get_student_achievements(user, streak_data):
     ]
 
 
-def get_weekly_learning_progress(user):
-    """
-    Returns:
-    {
-        active_days: int,
-        total_watch_time: int
-    }
-    """
-    start_of_week = timezone.now().date() - timedelta(days=timezone.now().weekday())
-
-    weekly_progress = LessonProgress.objects.filter(
-        user=user,
-        updated_at__date__gte=start_of_week
+def get_weekly_learning_progress(user, *, local_zone=None):
+    today = timezone.localdate(timezone=local_zone)
+    start_of_week = today - timedelta(days=today.weekday())
+    return LearningActivity.objects.filter(user=user, date__range=(start_of_week, today)).aggregate(
+        active_days=Count('pk'),
+        total_watch_time=Sum('watch_seconds', default=0),
     )
 
-    active_days = (
-        weekly_progress
-        .annotate(day=TruncDate('updated_at'))
-        .values('day')
-        .distinct()
-        .count()
-    )
 
-    total_watch_time = weekly_progress.aggregate(
-        total=Sum('watch_time')
-    )['total'] or 0
-
-    return {
-        "active_days": active_days,
-        "total_watch_time": total_watch_time
-    }
-
-
-@transaction.atomic
 def get_or_create_student_profile(user):
-    """
-    Get or create student profile for a user.
-    
-    Args:
-        user: User instance
-    
-    Returns:
-        StudentProfile instance
-    """
-    profile, created = StudentProfile.objects.get_or_create(
-        user=user,
-        defaults={}
-    )
-    
-    if created:
-        # Initialize statistics
-        profile.update_statistics()
-    
+    profile, _ = StudentProfile.objects.get_or_create(user=user)
     return profile
 
 
@@ -478,13 +386,17 @@ def create_bookmark(user, course_id=None, lesson_id=None, note=""):
     if course_id:
         try:
             course = Course.objects.get(id=course_id)
-        except Course.DoesNotExist:
+        except (Course.DoesNotExist, TypeError, ValueError, OverflowError) as exc:
+            raise ValidationError("Course not found.") from exc
+        if not can_view_course_catalog(user, course):
             raise ValidationError("Course not found.")
     
     if lesson_id:
         try:
-            lesson = Lesson.objects.get(id=lesson_id)
-        except Lesson.DoesNotExist:
+            lesson = Lesson.objects.select_related('module__course').get(id=lesson_id)
+        except (Lesson.DoesNotExist, TypeError, ValueError, OverflowError) as exc:
+            raise ValidationError("Lesson not found.") from exc
+        if not can_view_course_catalog(user, lesson.module.course):
             raise ValidationError("Lesson not found.")
     
     # Create or update bookmark
@@ -557,7 +469,11 @@ def get_student_bookmarks(user):
     Returns:
         QuerySet of StudentBookmark instances
     """
-    return StudentBookmark.objects.filter(user=user).select_related(
+    visible_courses = visible_catalog_courses(user)
+    return StudentBookmark.objects.filter(user=user).filter(
+        Q(course__in=visible_courses, lesson__isnull=True)
+        | Q(lesson__module__course__in=visible_courses, course__isnull=True)
+    ).select_related(
         'course', 'lesson', 'lesson__module__course'
     ).order_by('-created_at')
 

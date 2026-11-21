@@ -78,19 +78,6 @@
         <div class="grid md:grid-cols-3 gap-8">
             <!-- Main Content -->
             <div class="md:col-span-2 space-y-8">
-                <!-- What You'll Learn -->
-                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-                    <h2 class="text-2xl font-bold mb-4">What you'll learn</h2>
-                    <div id="learning-outcomes" class="grid md:grid-cols-2 gap-3">
-                        <div class="flex items-start space-x-2">
-                            <svg class="w-5 h-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            <span class="text-gray-300">Build real-world projects</span>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Course Curriculum -->
                 <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
                     <h2 class="text-2xl font-bold mb-4">Course Curriculum</h2>
@@ -99,14 +86,6 @@
                     </div>
                 </div>
 
-                <!-- Requirements -->
-                <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
-                    <h2 class="text-2xl font-bold mb-4">Requirements</h2>
-                    <ul id="requirements-list" class="list-disc list-inside space-y-2 text-gray-300">
-                        <li>Basic computer skills</li>
-                        <li>Willingness to learn</li>
-                    </ul>
-                </div>
             </div>
 
             <!-- Sidebar -->
@@ -173,6 +152,7 @@ async function loadCourse(slug) {
         document.getElementById('instructor-name-sidebar').textContent = courseData.instructor_name || 'Instructor';
         document.getElementById('instructor-avatar').textContent = (courseData.instructor_name || 'I').charAt(0).toUpperCase();
         document.getElementById('enrollment-count').textContent = courseData.enrollment_count || 0;
+        renderCurriculum(courseData.modules || []);
         
         // Price
         const price = parseFloat(courseData.price);
@@ -198,6 +178,18 @@ async function loadCourse(slug) {
             </div>
         `;
     }
+}
+
+function renderCurriculum(modules) {
+    const container = document.getElementById('course-curriculum');
+    container.innerHTML = modules.length ? modules.map(module => `
+        <details class="border border-dark-border rounded-lg p-4">
+            <summary class="cursor-pointer font-semibold">${escapeHtml(module.title)}</summary>
+            <ul class="space-y-2 mt-3 text-gray-300">
+                ${module.lessons.map(lesson => `<li>${escapeHtml(lesson.title)}</li>`).join('')}
+            </ul>
+        </details>
+    `).join('') : '<p class="text-gray-400">No curriculum available yet.</p>';
 }
 
 async function checkEnrollmentStatus() {

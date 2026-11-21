@@ -37,6 +37,7 @@
             <span>Progress</span>
             <span id="progress-text">0/0 answered</span>
         </div>
+        <p id="answer-save-status" class="text-sm text-gray-400 mt-2" role="status"></p>
         <div class="w-full bg-dark-surface rounded-full h-2">
             <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
         </div>
@@ -76,9 +77,15 @@ let examId = null;
 let attemptId = null;
 let exam = null;
 let questions = [];
-let answers = {};
+let answers = Object.create(null);
+let pendingAnswers = Object.create(null);
+let saveRequest = null;
+let saveInterval = null;
+let submitting = false;
+let leaving = false;
 let timerInterval = null;
 let timeRemaining = 0;
+let deadline = 0;
 
 // Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
@@ -91,31 +98,30 @@ function getUrlParams() {
 
 async function loadExam() {
     const loadingState = document.getElementById('loading-state');
-    const questionsContainer = document.getElementById('questions-container');
-    
     try {
-        // Load exam details
-        exam = await apiRequest(`/exams/${examId}/`);
+        exam = await apiRequest(`/exams/${examId}/?attempt=${encodeURIComponent(attemptId)}`);
+        if (exam.attempt?.status === 'completed') {
+            showResults();
+            return;
+        }
+        if (exam.questions_hidden || exam.attempt?.status !== 'in_progress') {
+            throw new Error('This attempt is no longer available.');
+        }
         
         document.getElementById('exam-title').textContent = exam.title;
-        document.getElementById('exam-info').textContent = `${exam.course_name} • ${exam.total_marks} marks • ${exam.duration_minutes} minutes`;
-        
-        // Get questions (they include both from QuestionBank and custom questions)
-        questions = exam.questions || [];
-        
-        if (exam.randomize_questions) {
-            questions = shuffleArray(questions);
-        }
+        document.getElementById('exam-info').textContent = `${exam.course_name} • ${exam.attempt.total_marks} marks`;
+        answers = Object.assign(Object.create(null), exam.attempt.answers);
+        const questionsById = new Map(
+            [...exam.questions, ...exam.custom_questions].map(question => [question.id, question])
+        );
+        questions = exam.question_order.map(id => questionsById.get(id));
         
         loadingState.classList.add('hidden');
         renderQuestions();
         
-        // Start timer
-        timeRemaining = exam.duration_minutes * 60;
+        deadline = performance.now() + exam.attempt.time_remaining * 1000;
         startTimer();
-        
-        // Auto-save answers every 30 seconds
-        setInterval(autoSaveAnswers, 30000);
+        saveInterval = setInterval(autoSaveAnswers, 5000);
         
     } catch (error) {
         console.error('Error loading exam:', error);
@@ -164,7 +170,7 @@ function createQuestionCard(question, number) {
                     <input type="radio" 
                         name="question-${escapeHtml(question.id)}" 
                         value="${escapeHtml(optIndex)}"
-                        onchange="selectAnswer(${escapeHtml(question.id)}, ${escapeHtml(optIndex)})"
+                        ${String(answers[question.id]) === String(optIndex) ? 'checked' : ''}
                         class="mt-1 w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500">
                     <span class="ml-3 flex-1 text-gray-200">${escapeHtml(option.text || option)}</span>
                 </label>
@@ -172,20 +178,25 @@ function createQuestionCard(question, number) {
         </div>
     `;
     
+    card.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', () => selectAnswer(question.id, Number(input.value)));
+    });
     return card;
 }
 
 function selectAnswer(questionId, optionIndex) {
     answers[questionId] = optionIndex;
+    pendingAnswers[questionId] = optionIndex;
     updateProgress();
     
     // Visual feedback
     const questionCard = document.getElementById(`question-${questionId}`);
     questionCard.classList.add('border-green-500');
+    autoSaveAnswers();
 }
 
 function updateProgress() {
-    const answered = Object.keys(answers).length;
+    const answered = questions.filter(question => answers[question.id] != null).length;
     const total = questions.length;
     const percentage = total > 0 ? (answered / total) * 100 : 0;
     
@@ -194,21 +205,17 @@ function updateProgress() {
 }
 
 function startTimer() {
-    updateTimerDisplay();
-    
-    timerInterval = setInterval(() => {
-        timeRemaining--;
+    function tick() {
+        timeRemaining = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
         updateTimerDisplay();
-        
         if (timeRemaining <= 0) {
             clearInterval(timerInterval);
-            alert('Time is up! Your exam will be submitted automatically.');
+            timerInterval = null;
             submitExam(true);
-        } else if (timeRemaining <= 300 && timeRemaining % 60 === 0) {
-            // Warning at 5 minutes and every minute after
-            alert(`${Math.floor(timeRemaining / 60)} minute(s) remaining!`);
         }
-    }, 1000);
+    }
+    timerInterval = setInterval(tick, 250);
+    tick();
 }
 
 function updateTimerDisplay() {
@@ -224,14 +231,41 @@ function updateTimerDisplay() {
     }
 }
 
-async function autoSaveAnswers() {
-    // In a real implementation, save answers to server
-    console.log('Auto-saving answers...', answers);
+function autoSaveAnswers() {
+    if (submitting || leaving || saveRequest || !Object.keys(pendingAnswers).length) return;
+    const batch = pendingAnswers;
+    pendingAnswers = Object.create(null);
+    const status = document.getElementById('answer-save-status');
+    status.textContent = 'Saving answers…';
+    saveRequest = apiRequest(`/exams/${examId}/save-answers/`, {
+        method: 'POST',
+        body: JSON.stringify({attempt_id: attemptId, answers: batch})
+    }).then(result => {
+        if (result.status === 'completed') showResults();
+        if (!Object.keys(pendingAnswers).length) status.textContent = 'Answers saved';
+        return true;
+    }).catch(() => {
+        // Keep any newer selections made while the request was in flight.
+        pendingAnswers = Object.assign(Object.create(null), batch, pendingAnswers);
+        status.textContent = 'Answers haven’t saved yet. Retrying…';
+        return false;
+    }).then(saved => {
+        saveRequest = null;
+        if (saved) autoSaveAnswers();
+    });
+}
+
+function showResults() {
+    leaving = true;
+    clearInterval(timerInterval);
+    clearInterval(saveInterval);
+    window.location.href = `/exams/results/${examId}/?attempt=${attemptId}`;
 }
 
 async function submitExam(autoSubmit = false) {
+    if (submitting || leaving) return;
     if (!autoSubmit) {
-        const answered = Object.keys(answers).length;
+        const answered = questions.filter(question => answers[question.id] != null).length;
         const total = questions.length;
         
         if (answered < total) {
@@ -246,51 +280,28 @@ async function submitExam(autoSubmit = false) {
     }
     
     try {
+        submitting = true;
         clearInterval(timerInterval);
-        
-        // Format answers as a dictionary {question_id: selected_option_index}
-        const formattedAnswers = {};
-        questions.forEach(question => {
-            formattedAnswers[question.id] = answers[question.id] !== undefined ? answers[question.id] : null;
-        });
-        
-        const requestBody = {
-            attempt_id: attemptId,
-            answers: formattedAnswers
-        };
-        
-        console.log('Submitting exam with body:', requestBody);
-        
-        const result = await apiRequest(`/exams/${examId}/submit/`, {
+        timerInterval = null;
+        await saveRequest;
+        if (leaving) return;
+        await apiRequest(`/exams/${examId}/submit/`, {
             method: 'POST',
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify({attempt_id: attemptId, answers})
         });
-        
-        // Redirect to results
-        window.location.href = `/exams/results/${examId}/?attempt=${attemptId}`;
-        
+        showResults();
     } catch (error) {
-        console.error('Submit exam error:', error);
+        submitting = false;
         alert(error.message || 'Failed to submit exam. Please try again.');
-        // Restart timer if submission failed
-        if (!autoSubmit) {
+        if (performance.now() < deadline) {
             startTimer();
         }
     }
 }
 
-function shuffleArray(array) {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-}
-
 // Prevent accidental page close
 window.addEventListener('beforeunload', (e) => {
-    if (timerInterval) {
+    if (!leaving && (timerInterval || saveRequest || Object.keys(pendingAnswers).length)) {
         e.preventDefault();
         e.returnValue = 'You have an exam in progress. Are you sure you want to leave?';
         return e.returnValue;

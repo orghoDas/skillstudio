@@ -1,20 +1,20 @@
-from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from django.db.models import F, Q, Count, Prefetch, Sum
 from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
-from accounts.utils import is_platform_admin
-from courses.policies import can_view_course_catalog
-from courses.services import validate_course_for_submission
-from courses.progression import get_next_lesson
+from courses.policies import can_manage_course, can_view_course_catalog
+from courses.services import lock_course_for_edit, lock_draft_for_deletion, start_new_version, transition
 from enrollments.constants import ACCESS_STATUSES
-from enrollments.services import require_active_enrollment
+from enrollments.services import get_resume_lesson, ordered_course_lessons, require_active_enrollment
 
 from .models import Course, Lesson, Module, Category, Tag, LessonResource
 from .serializers import (
@@ -31,7 +31,9 @@ from enrollments.models import Enrollment, LessonProgress
 
 class CategoryListView(generics.ListAPIView):
     """List all categories with course counts"""
-    queryset = Category.objects.all()
+    queryset = Category.objects.annotate(
+        course_count=Count('courses', filter=Q(courses__status='published')),
+    ).order_by('name', 'pk')
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
 
@@ -66,10 +68,16 @@ def _csv_param(value):
     return [part.strip() for part in (value or '').split(',') if part.strip()]
 
 
+class CoursePagination(PageNumberPagination):
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class CourseListView(generics.ListAPIView):
     """List all published courses with search and filtering"""
     serializer_class = CourseListSerializer
     permission_classes = [AllowAny]
+    pagination_class = CoursePagination
 
     def get_queryset(self):
         # Filter by instructor first (including "me" for current user)
@@ -77,7 +85,7 @@ class CourseListView(generics.ListAPIView):
         if instructor == 'me' and self.request.user.is_authenticated:
             # Show all courses (including drafts) for the logged-in instructor
             queryset = Course.objects.filter(instructor=self.request.user).select_related(
-                'instructor', 'category'
+                'instructor', 'instructor__profile', 'category'
             ).prefetch_related('modules', 'enrollments')
         elif instructor and instructor.isdigit():
             # Show only published courses for other instructors
@@ -140,13 +148,15 @@ class CourseListView(generics.ListAPIView):
         # order_by() let anyone sort by e.g. instructor__password (a hash
         # side-channel) or crash the endpoint with an unknown field.
         sort_by = self.request.query_params.get('ordering', '-created_at')
+        if sort_by in ('rating', '-rating'):
+            raise ValidationError({'ordering': 'Course rating order is unavailable.'})
         if sort_by == 'popular':
             queryset = queryset.annotate(
                 enrollment_count=Count('enrollments', filter=Q(enrollments__status__in=ACCESS_STATUSES))
             ).order_by('-enrollment_count', '-id')
         else:
-            if sort_by.lstrip('-') not in COURSE_ORDERING_FIELDS:
-                sort_by = '-created_at'  # includes the old, never-implemented "rating"
+            if sort_by.removeprefix('-') not in COURSE_ORDERING_FIELDS:
+                sort_by = '-created_at'
             queryset = queryset.order_by(sort_by, '-id')
 
         return queryset
@@ -154,7 +164,9 @@ class CourseListView(generics.ListAPIView):
 
 class CourseDetailView(generics.RetrieveAPIView):
     """Get single course details (by id or slug)"""
-    queryset = Course.objects.select_related('instructor', 'instructor__profile', 'category').prefetch_related('tags', 'modules__lessons', 'enrollments')
+    queryset = Course.objects.select_related(
+        'instructor', 'instructor__profile', 'category', 'current_version',
+    ).prefetch_related('tags', 'modules__lessons', 'enrollments')
     serializer_class = CourseDetailSerializer
     permission_classes = [AllowAny]
     lookup_field = 'id'
@@ -177,92 +189,90 @@ class CourseDetailView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         
-        # Only show published courses to public, or drafts to owner/admin
-        if instance.status != 'published':
+        if not can_view_course_catalog(request.user, instance):
             if not request.user.is_authenticated:
                 return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-            # Check if user is the instructor or admin
-            if is_platform_admin(request.user):
-                pass  # Admins can see all courses
-            elif instance.instructor.id != request.user.id:
-                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         serializer = self.get_serializer(instance, context={'request': request})
         return Response(serializer.data)
 
 
-class CourseCreateView(generics.CreateAPIView):
-    """Create new course (instructor/admin only)"""
-    serializer_class = CourseCreateUpdateSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        
-        # Only instructors and admins can create courses
-        if user.role != 'instructor' and not is_platform_admin(user):
-            raise ValidationError("Only instructors can create courses.")
-        
-        serializer.save(instructor=user, status='draft')
+def require_course_manager(user, course):
+    if not can_manage_course(user, course):
+        raise PermissionDenied("You do not have permission to manage this course.")
 
 
-class CourseUpdateView(generics.UpdateAPIView):
-    """Update course (only owner can edit draft courses)"""
-    queryset = Course.objects.all()
-    serializer_class = CourseCreateUpdateSerializer
+def prepare_course_edit(course, user):
+    try:
+        return lock_course_for_edit(course, user)
+    except DjangoValidationError as exc:
+        raise ValidationError(exc.messages[0]) from exc
+
+
+class CourseOwnedObjectMixin:
     permission_classes = [IsAuthenticated]
     lookup_field = 'id'
-    
+    lock_for_mutation = staticmethod(prepare_course_edit)
+
     def get_object(self):
-        course = super().get_object()
-        
-        # Only course owner can update
-        if course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to edit this course.")
+        obj = super().get_object()
+        course = self.get_object_course(obj)
+        require_course_manager(self.request.user, course)
+        if self.request.method in SAFE_METHODS:
+            return obj
 
-        if course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot edit published or archived courses.")
-        
-        return course
+        locked_course = self.lock_for_mutation(course, self.request.user)
+        if obj is course:
+            return locked_course
+        # A previous request can remove the child while this request waits for
+        # the course lock. Read it again before allowing DRF to save or delete.
+        return super().get_object()
 
+    def get_object_course(self, obj):
+        return obj
+
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        self.perform_update(serializer)
-        return Response(serializer.data)
-    
-    def perform_update(self, serializer):
-        # Ensure instructor is set to current user
-        serializer.save(instructor=self.request.user)
+        return super().update(request, *args, **kwargs)
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
 
-class CourseDeleteView(generics.DestroyAPIView):
-    """Delete course (only owner can delete draft courses)"""
+class CourseCreateView(generics.CreateAPIView):
+    """Create new course (instructor/admin only)."""
+    serializer_class = CourseCreateUpdateSerializer
+    permission_classes = [IsAuthenticated, IsInstructor]
+
+    def perform_create(self, serializer):
+        serializer.save(instructor=self.request.user, status='draft')
+
+
+class CourseUpdateView(CourseOwnedObjectMixin, generics.UpdateAPIView):
+    """Update details, returning an edited review to draft."""
     queryset = Course.objects.all()
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        course = super().get_object()
-        
-        if course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to delete this course.")
-        
-        if course.status != 'draft':
-            raise ValidationError("Only draft courses can be deleted.")
-        
-        return course
+    serializer_class = CourseCreateUpdateSerializer
+
+
+class CourseDeleteView(CourseOwnedObjectMixin, generics.DestroyAPIView):
+    """Delete a draft course as its instructor or a platform admin."""
+    queryset = Course.objects.all()
+
+    @staticmethod
+    def lock_for_mutation(course, user):
+        try:
+            return lock_draft_for_deletion(course, user)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
 
 
 class InstructorCoursesView(generics.ListAPIView):
     """List all courses by logged-in instructor"""
     serializer_class = CourseListSerializer
     permission_classes = [IsAuthenticated, IsInstructor]
+    pagination_class = CoursePagination
     
     def get_queryset(self):
         # BUG-02: the old try/except wrappers referenced an un-imported
@@ -298,91 +308,47 @@ class ModuleListView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         course = self.get_course()
-        return Module.objects.filter(course=course).prefetch_related('lessons').order_by('position')
+        return Module.objects.filter(course=course).prefetch_related('lessons')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return ModuleCreateUpdateSerializer
         return CatalogModuleSerializer
     
+    @transaction.atomic
     def perform_create(self, serializer):
-        course = self.get_course()
-        
-        # Check permissions
-        if course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to add modules to this course.")
-        
-        if course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot add modules to published courses.")
-        
+        course = prepare_course_edit(self.get_course(), self.request.user)
         serializer.save(course=course)
 
 
 class ModuleCreateView(generics.CreateAPIView):
-    """Create module (instructor only)"""
+    """Create a module in a manageable course."""
     serializer_class = ModuleCreateUpdateSerializer
     permission_classes = [IsAuthenticated]
-    
+
+    @transaction.atomic
     def perform_create(self, serializer):
         course = serializer.validated_data.get('course')
-        if course is None:  # SEC-05: used to be a KeyError -> 500
+        if course is None:
             raise ValidationError({'course': 'This field is required.'})
-        
-        if course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to add modules to this course.")
-        
-        if course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot add modules to published courses.")
-        
-        serializer.save()
+        course = prepare_course_edit(course, self.request.user)
+        serializer.save(course=course)
 
 
-class ModuleUpdateView(generics.RetrieveUpdateDestroyAPIView):
-    """Get, update or delete one module (owner only).
+class ModuleOwnedObjectMixin(CourseOwnedObjectMixin):
+    queryset = Module.objects.select_related('course')
 
-    API-03: this backs ``sections/<id>/``, which the course-content page calls
-    with DELETE; it used to be update-only (405). Editing is allowed while the
-    course is draft/under review; deleting only while it is a draft (same rule
-    as ModuleDeleteView).
-    """
-    queryset = Module.objects.all()
+    def get_object_course(self, obj):
+        return obj.course
+
+
+class ModuleUpdateView(ModuleOwnedObjectMixin, generics.RetrieveUpdateDestroyAPIView):
+    """Read, update or delete a module through the section editor."""
     serializer_class = ModuleCreateUpdateSerializer
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        module = super().get_object()
-        
-        if module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to edit this module.")
-        
-        if module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot edit modules in published courses.")
-        
-        return module
-
-    def perform_destroy(self, instance):
-        if instance.course.status != 'draft':
-            raise ValidationError("Cannot delete modules in non-draft courses.")
-        instance.delete()
 
 
-class ModuleDeleteView(generics.DestroyAPIView):
-    """Delete module"""
-    queryset = Module.objects.all()
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        module = super().get_object()
-        
-        if module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to delete this module.")
-        
-        if module.course.status != 'draft':
-            raise ValidationError("Cannot delete modules in non-draft courses.")
-        
-        return module
+class ModuleDeleteView(ModuleOwnedObjectMixin, generics.DestroyAPIView):
+    """Delete a module."""
 
 
 # ===== LESSON VIEWS =====
@@ -408,109 +374,53 @@ class LessonListView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         module = self.get_module()
-        return Lesson.objects.filter(module=module).select_related('module__course').order_by('position')
+        return Lesson.objects.filter(module=module).select_related('module__course')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return LessonCreateUpdateSerializer
         return CatalogLessonSummarySerializer
     
+    @transaction.atomic
     def perform_create(self, serializer):
         module = self.get_module()
-        
-        # Check permissions
-        if module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to add lessons to this module.")
-        
-        if module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot add lessons to published courses.")
-        
-        serializer.save(module=module)
+        course = prepare_course_edit(module.course, self.request.user)
+        serializer.save(module=get_object_or_404(Module, pk=module.pk, course=course))
 
 
 class LessonCreateView(generics.CreateAPIView):
-    """Create lesson"""
+    """Create a lesson."""
     serializer_class = LessonCreateUpdateSerializer
     permission_classes = [IsAuthenticated]
-    
+
+    @transaction.atomic
     def perform_create(self, serializer):
         module = serializer.validated_data.get('module')
-        if module is None:  # SEC-05: used to be a KeyError -> 500
+        if module is None:
             raise ValidationError({'module': 'This field is required.'})
-        
-        if module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to add lessons.")
-
-        if module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot add lessons to published courses.")
-        
-        serializer.save()
+        course = prepare_course_edit(module.course, self.request.user)
+        serializer.save(module=get_object_or_404(Module, pk=module.pk, course=course))
 
 
-class LessonUpdateView(generics.UpdateAPIView):
-    """Update lesson"""
-    queryset = Lesson.objects.all()
+class LessonOwnedObjectMixin(CourseOwnedObjectMixin):
+    queryset = Lesson.objects.select_related('module__course')
+
+    def get_object_course(self, obj):
+        return obj.module.course
+
+
+class LessonUpdateView(LessonOwnedObjectMixin, generics.UpdateAPIView):
+    """Update a lesson."""
     serializer_class = LessonCreateUpdateSerializer
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        lesson = super().get_object()
-        
-        if lesson.module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to edit this lesson.")
-        
-        if lesson.module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot edit lessons in published courses.")
-        
-        return lesson
 
 
-class LessonRetrieveUpdateView(generics.RetrieveUpdateDestroyAPIView):
-    """Get, update or delete one lesson in the instructor editor (owner only).
-
-    API-03: the course-content page deletes lessons here; this used to be
-    retrieve/update-only (405). Deleting is only allowed while the course is a
-    draft (same rule as LessonDeleteView).
-    """
-    queryset = Lesson.objects.all()
+class LessonRetrieveUpdateView(LessonOwnedObjectMixin, generics.RetrieveUpdateDestroyAPIView):
+    """Read, update or delete a lesson through the course editor."""
     serializer_class = LessonCreateUpdateSerializer
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        lesson = super().get_object()
-        
-        if lesson.module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to edit this lesson.")
-
-        if lesson.module.course.status not in ['draft', 'under_review']:
-            raise ValidationError("Cannot edit lessons in published courses.")
-        
-        return lesson
-
-    def perform_destroy(self, instance):
-        if instance.module.course.status != 'draft':
-            raise ValidationError("Cannot delete lessons in non-draft courses.")
-        instance.delete()
 
 
-class LessonDeleteView(generics.DestroyAPIView):
-    """Delete lesson"""
-    queryset = Lesson.objects.all()
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
-    
-    def get_object(self):
-        lesson = super().get_object()
-        
-        if lesson.module.course.instructor != self.request.user:
-            raise ValidationError("You don't have permission to delete this lesson.")
-        
-        if lesson.module.course.status != 'draft':
-            raise ValidationError("Cannot delete lessons in non-draft courses.")
-        
-        return lesson
+class LessonDeleteView(LessonOwnedObjectMixin, generics.DestroyAPIView):
+    """Delete a lesson."""
 
 
 class LessonDetailView(APIView):
@@ -526,7 +436,7 @@ class LessonDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, lesson_id):
-        from courses.policies import can_access_lesson, can_manage_course
+        from courses.policies import can_access_lesson
         from enrollments.services import get_access_enrollment, lesson_lock_state
 
         lesson = get_object_or_404(
@@ -567,7 +477,7 @@ class CourseCurriculumView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, course_id):
-        from courses.policies import can_access_course_content, can_manage_course
+        from courses.policies import can_access_course_content
         from enrollments.services import (
             completed_lesson_ids, get_access_enrollment, lesson_lock_state, ordered_course_lessons,
         )
@@ -608,22 +518,13 @@ class SubmitCourseForReviewView(APIView):
     def post(self, request, course_id):
         user = request.user
 
-        course = Course.objects.filter(
-            id=course_id,
-            instructor=user
-        ).first()
+        course = get_object_or_404(Course, id=course_id)
+        require_course_manager(user, course)
 
-        if not course:
-            return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        if course.status != 'draft':
-            raise ValidationError("Only draft courses can be submitted.")
-
-        validate_course_for_submission(course)
-
-        course.status = 'under_review'
-        course.submitted_for_review_at = timezone.now()
-        course.save(update_fields=['status', 'submitted_for_review_at'])
+        try:
+            course = transition(course, 'under_review', user)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
 
         return Response({
             "message": "Course submitted for review.",
@@ -638,22 +539,10 @@ class PublishCourseView(APIView):
     def post(self, request, course_id):
         course = get_object_or_404(Course, id=course_id)
 
-        if course.status != 'under_review':
-            raise ValidationError("Course is not under review.")
-
-        course.status = 'published'
-        course.published_at = timezone.now()
-        course.reviewed_at = timezone.now()
-        course.reviewed_by = request.user
-        course.rejection_reason = ""
-
-        course.save(update_fields=[
-            'status',
-            'published_at',
-            'reviewed_at',
-            'reviewed_by',
-            'rejection_reason'
-        ])
+        try:
+            transition(course, 'published', request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
 
         return Response({
             "message": "Course published successfully."
@@ -666,30 +555,47 @@ class RejectCourseView(APIView):
 
     def post(self, request, course_id):
         course = get_object_or_404(Course, id=course_id)
-        reason = request.data.get('reason', '').strip()
+        raw_reason = request.data.get('reason')
+        reason = raw_reason.strip() if isinstance(raw_reason, str) else ''
 
-        if course.status != 'under_review':
-            raise ValidationError("Course is not under review.")
-
-        if not reason:
-            raise ValidationError("Rejection reason is required.")
-
-        course.status = 'draft'
-        course.rejection_reason = reason
-        course.reviewed_at = timezone.now()
-        course.reviewed_by = request.user
-
-        course.save(update_fields=[
-            'status',
-            'rejection_reason',
-            'reviewed_at',
-            'reviewed_by'
-        ])
+        try:
+            transition(course, 'draft', request.user, reason=reason)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
 
         return Response({
             "message": "Course rejected and returned to draft.",
             "reason": reason
         })
+
+
+class ArchiveCourseView(APIView):
+    """Remove a published course from the catalog, retaining learner access."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, id=course_id)
+        try:
+            course = transition(course, 'archived', request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
+        return Response({'status': course.status, 'message': 'Course archived.'})
+
+
+class NewCourseVersionView(APIView):
+    """Create or resume a private revision of a published course."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, course_id):
+        source = get_object_or_404(Course, id=course_id)
+        try:
+            draft, created = start_new_version(source, request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages[0]) from exc
+        return Response(
+            {'id': draft.pk, 'slug': draft.slug, 'status': draft.status, 'revision_of': source.pk},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class ResumeLearningView(APIView):
@@ -699,8 +605,10 @@ class ResumeLearningView(APIView):
     def get(self, request, course_id):
         user = request.user
         course = get_object_or_404(Course, id=course_id)
+        if not can_view_course_catalog(user, course):
+            return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
         enrollment = require_active_enrollment(user, course)
-        lesson = get_next_lesson(enrollment)
+        lesson = get_resume_lesson(enrollment, lessons=ordered_course_lessons(course))
 
         if not lesson:
             return Response({

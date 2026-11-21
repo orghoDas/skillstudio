@@ -10,6 +10,7 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
     
     user_email = serializers.EmailField(source='user.email', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
+    total_revenue = serializers.DecimalField(max_digits=None, decimal_places=2, read_only=True)
     
     class Meta:
         model = InstructorProfile

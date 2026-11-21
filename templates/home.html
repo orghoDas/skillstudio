@@ -101,7 +101,7 @@
     // Load popular courses
     async function loadPopularCourses() {
         try {
-            const response = await fetch('/api/courses/?status=published&limit=3');
+            const response = await fetch('/api/courses/?ordering=popular&page_size=3');
             const data = await response.json();
             
             const container = document.getElementById('popular-courses');

@@ -160,17 +160,16 @@ function renderContent() {
                 </svg>
                 <span>${escapeHtml(courseData.title)}</span>
             </div>
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 class="text-3xl font-bold mb-2">Course Content</h1>
-                    <p class="text-gray-400">${escapeHtml(sections.length)} sections, ${escapeHtml(getTotalLessons())} lessons</p>
+                    <p class="text-gray-400">
+                        <span id="course-content-status">${escapeHtml(courseData.status.replace('_', ' '))}</span>
+                        · ${escapeHtml(sections.length)} sections, ${escapeHtml(getTotalLessons())} lessons
+                    </p>
+                    ${courseData.status === 'under_review' ? '<p class="text-sm text-gray-400">Saving edits returns this course to draft.</p>' : ''}
                 </div>
-                <button onclick="openModal('section-modal')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                    </svg>
-                    <span>Add Section</span>
-                </button>
+                <div class="flex flex-wrap items-center gap-2">${renderCourseActions()}</div>
             </div>
         </div>
 
@@ -182,13 +181,78 @@ function renderContent() {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
                     <p class="text-gray-400 text-lg mb-4">No sections yet</p>
-                    <button onclick="openModal('section-modal')" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    ${canEditCourseContent() ? `<button onclick="openModal('section-modal')" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                         Add Your First Section
-                    </button>
+                    </button>` : ''}
                 </div>
             `}
         </div>
     `;
+}
+
+function canEditCourseContent() {
+    return ['draft', 'under_review'].includes(courseData.status);
+}
+
+function renderCourseActions() {
+    const style = 'px-4 py-2 bg-dark-hover hover:bg-dark-border text-white rounded-lg';
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const controls = [];
+    if (canEditCourseContent()) {
+        controls.push(
+            `<a class="${style}" href="/instructor/courses/${escapeHtml(courseSlug)}/edit/">Edit details</a>`,
+            `<button class="${style}" onclick="openModal('section-modal')">Add Section</button>`
+        );
+    }
+    if (courseData.status === 'draft') {
+        controls.push(`<button class="${style}" onclick="changeCourseStatus('submit')">Submit for review</button>`);
+    }
+    if (courseData.status === 'under_review' && user.role === 'admin') {
+        controls.push(
+            `<button class="${style}" onclick="changeCourseStatus('publish')">Publish course</button>`,
+            `<button class="${style}" onclick="changeCourseStatus('reject')">Return to draft</button>`
+        );
+    }
+    if (courseData.status === 'published') {
+        controls.push(
+            `<button class="${style}" onclick="changeCourseStatus('new-version')">Open draft revision</button>`,
+            `<button class="${style}" onclick="changeCourseStatus('archive')">Archive course</button>`
+        );
+    }
+    return controls.join('');
+}
+
+let courseActionPending = false;
+
+async function changeCourseStatus(action) {
+    if (courseActionPending) return;
+    const id = courseData.id;
+    let response;
+    try {
+        courseActionPending = true;
+        if (action === 'submit') {
+            response = await apiRequest(`/courses/${id}/submit/`, {method: 'POST'});
+        } else if (action === 'publish') {
+            response = await apiRequest(`/courses/${id}/publish/`, {method: 'POST'});
+        } else if (action === 'reject') {
+            const reason = prompt('Reason for returning this course to draft');
+            if (!reason?.trim()) return;
+            response = await apiRequest(`/courses/${id}/reject/`, {method: 'POST', body: JSON.stringify({reason})});
+        } else if (action === 'archive') {
+            if (!confirm('Remove this course from the catalog? Enrolled students can still access it.')) return;
+            response = await apiRequest(`/courses/${id}/archive/`, {method: 'POST'});
+        } else if (action === 'new-version') {
+            const draft = await apiRequest(`/courses/${id}/new-version/`, {method: 'POST'});
+            window.location.href = `/instructor/courses/${encodeURIComponent(draft.slug)}/content/`;
+            return;
+        }
+        showToast(response.message, 'success');
+        await loadCourseContent();
+    } catch (error) {
+        showToast(error.message || 'Could not update the course.', 'error');
+    } finally {
+        courseActionPending = false;
+    }
 }
 
 function renderSection(section, index) {
@@ -204,14 +268,14 @@ function renderSection(section, index) {
                     </div>
                     <div class="flex items-center space-x-2">
                         <span class="text-sm text-gray-400">${escapeHtml(lessons.length)} lessons</span>
-                        <button onclick="openAddLesson(${escapeHtml(section.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                        ${canEditCourseContent() ? `<button onclick="openAddLesson(${escapeHtml(section.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             + Add Lesson
                         </button>
                         <button onclick="deleteSection(${escapeHtml(section.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
-                        </button>
+                        </button>` : ''}
                     </div>
                 </div>
             </div>
@@ -253,14 +317,14 @@ function renderLesson(lesson, index) {
                     </div>
                 </div>
             </div>
-            <div class="flex items-center space-x-2">
+            ${canEditCourseContent() ? `<div class="flex items-center space-x-2">
                 <a href="/instructor/lessons/${escapeHtml(lesson.id)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                     Edit Content
                 </a>
                 <button onclick="deleteLesson(${escapeHtml(lesson.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
                     Delete
                 </button>
-            </div>
+            </div>` : ''}
         </div>
     `;
 }
@@ -293,7 +357,7 @@ async function handleAddSection(e) {
     const data = {
         title: document.getElementById('section-title').value,
         description: document.getElementById('section-description').value,
-        order: sections.length + 1
+        position: sections.length + 1
     };
 
     try {
@@ -315,15 +379,13 @@ async function handleAddLesson(e) {
     e.preventDefault();
     
     const sectionId = document.getElementById('lesson-section-id').value;
-    const section = sections.find(s => s.id == sectionId);
     
     const data = {
         title: document.getElementById('lesson-title').value,
         content_type: document.getElementById('lesson-type').value,
         content_text: document.getElementById('lesson-content').value,
         duration_seconds: (parseInt(document.getElementById('lesson-duration').value) || 0) * 60, // Convert minutes to seconds
-        is_free: document.getElementById('lesson-is-free').checked,
-        position: (section.lessons?.length || 0) + 1
+        is_free: document.getElementById('lesson-is-free').checked
     };
 
     try {

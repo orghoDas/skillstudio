@@ -1,11 +1,12 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
+from core.admin import ReadOnlyAdmin
 from .models import Certificate
 
 
 @admin.register(Certificate)
-class CertificateAdmin(admin.ModelAdmin):
+class CertificateAdmin(ReadOnlyAdmin):
     list_display = [
         'certificate_id_display',
         'user_link',
@@ -21,7 +22,7 @@ class CertificateAdmin(admin.ModelAdmin):
         'last_downloaded_at',
     ]
     search_fields = [
-        'certificate_id',
+        'id',
         'verification_code',
         'user__email',
         'user__username',
@@ -29,19 +30,18 @@ class CertificateAdmin(admin.ModelAdmin):
     ]
     readonly_fields = [
         'id',
-        'certificate_id',
         'verification_code',
         'verification_url_display',
+        'revoked_at',
         'issued_at',
         'last_downloaded_at',
         'download_count',
-        'pdf_link',
+        'pdf_status',
     ]
     fieldsets = (
         ('Certificate Information', {
             'fields': (
                 'id',
-                'certificate_id',
                 'verification_code',
                 'verification_url_display',
             )
@@ -62,8 +62,8 @@ class CertificateAdmin(admin.ModelAdmin):
         ('Issuance & Downloads', {
             'fields': (
                 'issued_at',
-                'pdf_file',
-                'pdf_link',
+                'revoked_at',
+                'pdf_status',
                 'download_count',
                 'last_downloaded_at',
             )
@@ -74,7 +74,7 @@ class CertificateAdmin(admin.ModelAdmin):
     
     def certificate_id_display(self, obj):
         """Display truncated certificate ID."""
-        return f"{str(obj.certificate_id)[:8]}..."
+        return f"{str(obj.pk)[:8]}..."
     certificate_id_display.short_description = 'Certificate ID'
     
     def user_link(self, obj):
@@ -91,26 +91,22 @@ class CertificateAdmin(admin.ModelAdmin):
     
     def grade_display(self, obj):
         """Display grade with color coding."""
-        if not obj.grade:
+        if obj.grade is None:
             return '-'
         
         color = 'green' if obj.grade >= 70 else 'orange' if obj.grade >= 50 else 'red'
         return format_html(
-            '<span style="color: {};">{:.1f}%</span>',
+            '<span style="color: {};">{}%</span>',
             color,
-            obj.grade
+            f'{obj.grade:.1f}',
         )
     grade_display.short_description = 'Grade'
     
     def pdf_status(self, obj):
         """Show PDF file status."""
-        if obj.pdf_file:
-            return format_html(
-                '<span style="color: green;">✓ Generated</span>'
-            )
-        return format_html(
-            '<span style="color: red;">✗ Missing</span>'
-        )
+        if obj.is_revoked:
+            return 'Revoked'
+        return 'Generated' if obj.pdf and obj.pdf_verification_url == obj.verification_url else 'On demand'
     pdf_status.short_description = 'PDF'
     
     def verification_url_display(self, obj):
@@ -122,17 +118,3 @@ class CertificateAdmin(admin.ModelAdmin):
             url
         )
     verification_url_display.short_description = 'Verification URL'
-    
-    def pdf_link(self, obj):
-        """Display PDF download link."""
-        if obj.pdf_file:
-            return format_html(
-                '<a href="{}" target="_blank">Download PDF</a>',
-                obj.pdf_file.url
-            )
-        return '-'
-    pdf_link.short_description = 'PDF File'
-    
-    def has_add_permission(self, request):
-        """Certificates should only be created via API/services."""
-        return False

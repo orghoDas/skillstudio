@@ -1,8 +1,9 @@
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import MinValueValidator
 from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
+from math import ceil
 
 from accounts.models import User
 from courses.models import Course
@@ -63,7 +64,7 @@ class Exam(models.Model):
     description = models.TextField(blank=True)
     
     # Exam settings
-    total_marks = models.DecimalField(max_digits=6, decimal_places=2, default=100)
+    total_marks = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     passing_marks = models.DecimalField(max_digits=6, decimal_places=2, default=50)
     duration_minutes = models.IntegerField(validators=[MinValueValidator(1)])
     
@@ -131,7 +132,8 @@ class ExamAttempt(models.Model):
     
     # Answers and scoring
     answers = models.JSONField(default=dict)  # {question_id: answer}
-    score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    snapshot = models.JSONField(null=True, editable=False)
+    score = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     passed = models.BooleanField(null=True, blank=True)
     
@@ -157,36 +159,28 @@ class ExamAttempt(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.exam.title} - attempt {self.attempt_number}"
     
-    def is_expired(self):
-        """Check if attempt time has expired."""
-        if self.completed_at:
-            return False
-        if not self.exam.duration_minutes:
-            return False
-        
-        expiry_time = self.started_at + timedelta(minutes=self.exam.duration_minutes)
-        return timezone.now() > expiry_time
+    @property
+    def deadline(self):
+        duration = self.snapshot['duration_minutes'] if self.snapshot is not None else self.exam.duration_minutes
+        return self.started_at + timedelta(minutes=duration)
+
+    @property
+    def grading_total_marks(self):
+        if self.snapshot is not None:
+            return Decimal(self.snapshot['total_marks'])
+        # Preserve the denominator of an already graded legacy attempt.
+        if self.score and self.percentage:
+            return (self.score * 100 / self.percentage).quantize(Decimal('0.01'))
+        return self.exam.total_marks
+
+    def is_expired(self, now=None):
+        return self.status == 'in_progress' and (now or timezone.now()) >= self.deadline
     
     def time_remaining_seconds(self):
         """Calculate remaining time in seconds."""
-        if self.completed_at or not self.exam.duration_minutes:
+        if self.status != 'in_progress':
             return None
-        
-        expiry_time = self.started_at + timedelta(minutes=self.exam.duration_minutes)
-        remaining = (expiry_time - timezone.now()).total_seconds()
-        return max(0, int(remaining))
-    
-    def calculate_score(self):
-        """Calculate and save score from answers."""
-        from .services import calculate_exam_attempt_score
-
-        total_score, total_possible = calculate_exam_attempt_score(self)
-
-        self.score = total_score
-        self.percentage = (total_score / total_possible * 100) if total_possible > 0 else Decimal('0')
-        self.passed = self.score >= self.exam.passing_marks
-        self.auto_graded_at = timezone.now()
-        self.save()
+        return max(0, ceil((self.deadline - timezone.now()).total_seconds()))
 
 
 class ExamResult(models.Model):

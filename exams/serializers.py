@@ -1,7 +1,8 @@
 from rest_framework import serializers
-from django.utils import timezone
+from django.utils.functional import cached_property
+from decimal import Decimal
+from .grading import MAX_EXAM_MARKS, build_questions, legacy_passing_marks, question_marks, total_question_marks
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
-from accounts.serializers import UserBasicSerializer
 
 
 PRIVATE_STUDENT_QUESTION_KEYS = {
@@ -34,7 +35,7 @@ def hide_student_answer_data(value):
 
 class QuestionBankSerializer(serializers.ModelSerializer):
     """Serializer for question bank."""
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, allow_null=True)
     
     class Meta:
         model = QuestionBank
@@ -57,8 +58,7 @@ class QuestionBankSerializer(serializers.ModelSerializer):
         if not isinstance(options, list):
             raise serializers.ValidationError({'options': 'Options must be a list.'})
 
-        required_count = 2 if question_type == 'tf' else 2
-        if len(options) < required_count:
+        if len(options) < 2 or any(not isinstance(option, dict) for option in options):
             raise serializers.ValidationError({'options': 'At least two options are required.'})
 
         if question_type == 'tf' and len(options) != 2:
@@ -67,6 +67,8 @@ class QuestionBankSerializer(serializers.ModelSerializer):
         correct_count = sum(1 for option in options if isinstance(option, dict) and option.get('is_correct'))
         if correct_count != 1:
             raise serializers.ValidationError({'options': 'Exactly one option must be marked correct.'})
+        if not question_marks(attrs.get('marks', getattr(self.instance, 'marks', 1))):
+            raise serializers.ValidationError({'marks': 'Marks must be positive.'})
 
         return attrs
 
@@ -79,23 +81,11 @@ class QuestionBankListSerializer(serializers.ModelSerializer):
         fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'options', 'tags']
 
 
-class StudentExamQuestionSerializer(serializers.ModelSerializer):
-    """Question serializer for students taking an exam."""
-    options = serializers.SerializerMethodField()
-
-    class Meta:
-        model = QuestionBank
-        fields = ['id', 'question_text', 'question_type', 'difficulty', 'marks', 'options', 'tags']
-
-    def get_options(self, obj):
-        return hide_student_answer_data(obj.options or [])
-
-
 class ExamSerializer(serializers.ModelSerializer):
     """Full exam serializer with all details."""
     question_count = serializers.IntegerField(source='get_question_count', read_only=True)
     is_active = serializers.BooleanField(read_only=True)
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, allow_null=True)
     
     class Meta:
         model = Exam
@@ -107,19 +97,52 @@ class ExamSerializer(serializers.ModelSerializer):
             'question_count', 'is_active', 'created_at', 'updated_at',
             'created_by', 'created_by_name'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'created_by']
-    
-    def validate_start_datetime(self, value):
-        """Ensure start_datetime is timezone-aware (UTC)."""
-        if value and not timezone.is_aware(value):
-            return timezone.make_aware(value, timezone.utc)
-        return value
-    
-    def validate_end_datetime(self, value):
-        """Ensure end_datetime is timezone-aware (UTC)."""
-        if value and not timezone.is_aware(value):
-            return timezone.make_aware(value, timezone.utc)
-        return value
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'status', 'total_marks']
+
+    def validate(self, attrs):
+        exam = self.instance
+        course = attrs.get('course', getattr(exam, 'course', None))
+        bank = attrs.get('questions')
+        if bank is None:
+            bank = list(exam.questions.all()) if exam else []
+        custom = attrs.get('custom_questions', getattr(exam, 'custom_questions', []))
+
+        if any(q.course_id != course.pk for q in bank):
+            raise serializers.ValidationError({'questions': 'Select questions from this exam’s course.'})
+        if exam and exam.attempts.exists():
+            if (
+                course.pk != exam.course_id
+                or {q.pk for q in bank} != set(exam.questions.values_list('pk', flat=True))
+                or custom != exam.custom_questions
+                or any(attrs[field] != getattr(exam, field) for field in (
+                    'passing_marks', 'duration_minutes', 'randomize_questions',
+                ) if field in attrs)
+            ):
+                raise serializers.ValidationError("Create a new exam to change questions, scoring or duration after an attempt.")
+            # Avoid re-setting the M2M membership from an identical PUT.
+            attrs.pop('questions', None)
+            return attrs
+
+        questions = build_questions(bank, custom)
+        total = total_question_marks(questions)
+        if total > MAX_EXAM_MARKS or any(Decimal(q['marks']) <= 0 for q in questions):
+            raise serializers.ValidationError({'questions': 'Question marks must be positive and total at most 9999.99.'})
+        if not total and exam and exam.status == 'published':
+            raise serializers.ValidationError({'questions': 'A published exam needs at least one question.'})
+
+        if 'passing_marks' not in attrs:
+            previous = getattr(exam, 'passing_marks', Decimal('0'))
+            declared_total = getattr(exam, 'total_marks', Decimal('0'))
+            attrs['passing_marks'] = legacy_passing_marks(previous, declared_total, total) if total else previous
+        else:
+            passing = attrs['passing_marks']
+            if passing <= 0 or (total and passing > total):
+                raise serializers.ValidationError({
+                    'passing_marks': 'Passing marks must be greater than zero and at most the question total.'
+                })
+
+        attrs['total_marks'] = total
+        return attrs
 
     def validate_custom_questions(self, value):
         if not isinstance(value, list):
@@ -136,7 +159,9 @@ class ExamSerializer(serializers.ModelSerializer):
                 )
 
             options = question.get('options', [])
-            if not isinstance(options, list) or len(options) < 2:
+            if not isinstance(options, list) or len(options) < 2 or any(
+                not isinstance(option, dict) for option in options
+            ):
                 raise serializers.ValidationError(f"Custom question {index + 1} must have at least two options.")
             if question_type == 'tf' and len(options) != 2:
                 raise serializers.ValidationError(
@@ -148,6 +173,8 @@ class ExamSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"Custom question {index + 1} must have exactly one correct option."
                 )
+            if not question_marks(question.get('marks', question.get('max_marks', 1))):
+                raise serializers.ValidationError(f"Custom question {index + 1} needs positive marks with at most two decimals.")
 
         return value
 
@@ -168,45 +195,70 @@ class ExamListSerializer(serializers.ModelSerializer):
 class ExamDetailSerializer(serializers.ModelSerializer):
     """Exam as a student sees it.
 
-    EXM-01: the questions are only included while the student has an attempt
-    in progress (``context["show_questions"]``, decided by the view). Before
-    that — e.g. before the exam window opens — students see the exam's details
-    and when it opens/closes, but not its questions.
+    Questions come only from the student's active attempt.
     """
     questions = serializers.SerializerMethodField()
     course_name = serializers.CharField(source='course.title', read_only=True)
     custom_questions = serializers.SerializerMethodField()
     availability = serializers.SerializerMethodField()
     questions_hidden = serializers.SerializerMethodField()
+    question_order = serializers.SerializerMethodField()
+    attempt = serializers.SerializerMethodField()
     
     class Meta:
         model = Exam
         fields = [
             'id', 'title', 'description', 'course', 'course_name', 'total_marks', 'passing_marks',
             'duration_minutes', 'randomize_questions', 'questions',
-            'custom_questions', 'max_attempts', 'start_datetime', 'end_datetime',
-            'availability', 'questions_hidden',
+            'custom_questions', 'question_order', 'max_attempts', 'start_datetime', 'end_datetime',
+            'availability', 'questions_hidden', 'attempt',
         ]
 
-    def _show_questions(self):
-        return bool(self.context.get('show_questions'))
+    @cached_property
+    def active_questions(self):
+        attempt = self.context.get('attempt')
+        if not attempt or attempt.status != 'in_progress' or attempt.is_expired():
+            return []
+        return attempt.snapshot['questions']
+
+    def _questions(self, custom):
+        return [
+            {**hide_student_answer_data(question), 'options': [
+                {'text': str(option.get('text', '')) if isinstance(option, dict) else str(option)}
+                for option in (question['options'] or [])
+            ]}
+            for question in self.active_questions if question['custom'] == custom
+        ]
 
     def get_questions(self, obj):
-        if not self._show_questions():
-            return []
-        return StudentExamQuestionSerializer(obj.questions.all(), many=True).data
+        return self._questions(custom=False)
 
     def get_custom_questions(self, obj):
-        if not self._show_questions():
-            return []
-        return hide_student_answer_data(obj.custom_questions or [])
+        return self._questions(custom=True)
+
+    def get_question_order(self, obj):
+        return [question['id'] for question in self.active_questions]
 
     def get_availability(self, obj):
         from .services import exam_availability
         return exam_availability(obj)
 
     def get_questions_hidden(self, obj):
-        return not self._show_questions()
+        return not self.active_questions
+
+    def get_attempt(self, obj):
+        attempt = self.context.get('attempt')
+        if not attempt:
+            return None
+        data = {'id': attempt.pk, 'status': attempt.status}
+        if self.active_questions:
+            data.update(
+                answers=attempt.answers,
+                time_remaining=attempt.time_remaining_seconds(),
+                deadline=attempt.deadline.isoformat(),
+                total_marks=attempt.snapshot['total_marks'],
+            )
+        return data
 
 
 class ExamAttemptSerializer(serializers.ModelSerializer):
@@ -214,6 +266,7 @@ class ExamAttemptSerializer(serializers.ModelSerializer):
     exam_title = serializers.CharField(source='exam.title', read_only=True)
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
     time_remaining = serializers.IntegerField(source='time_remaining_seconds', read_only=True)
+    total_marks = serializers.DecimalField(source='grading_total_marks', max_digits=12, decimal_places=2, read_only=True)
     
     class Meta:
         model = ExamAttempt
@@ -221,7 +274,7 @@ class ExamAttemptSerializer(serializers.ModelSerializer):
             'id', 'exam', 'exam_title', 'user', 'user_name', 'attempt_number',
             'started_at', 'completed_at', 'time_spent_seconds', 'answers', 'score',
             'percentage', 'passed', 'status', 'time_remaining',
-            'auto_graded_at'
+            'auto_graded_at', 'total_marks',
         ]
         read_only_fields = [
             'attempt_number', 'started_at', 'score', 'percentage', 'passed',
@@ -233,24 +286,32 @@ class ExamAttemptListSerializer(serializers.ModelSerializer):
     """Simplified serializer for listing attempts."""
     exam_title = serializers.CharField(source='exam.title', read_only=True)
     result = serializers.SerializerMethodField()
+    total_marks = serializers.DecimalField(source='grading_total_marks', max_digits=12, decimal_places=2, read_only=True)
     
     class Meta:
         model = ExamAttempt
         fields = [
             'id', 'exam', 'exam_title', 'attempt_number', 'started_at',
-            'completed_at', 'score', 'percentage', 'passed', 'status', 'result'
+            'completed_at', 'time_spent_seconds', 'score', 'percentage', 'passed', 'status', 'result', 'total_marks',
         ]
-    
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not self.context.get('show_results', False):
+            data.update(score=None, percentage=None, passed=None)
+        return data
+
     def get_result(self, obj):
         """Get result data if it exists."""
-        if hasattr(obj, 'result'):
-            return ExamResultSerializer(obj.result).data
+        if self.context.get('show_results', False) and hasattr(obj, 'result'):
+            return ExamResultSerializer(obj.result, context=self.context).data
         return None
 
 
 class ExamResultSerializer(serializers.ModelSerializer):
     """Serializer for detailed exam results."""
     attempt = ExamAttemptSerializer(read_only=True)
+    question_results = serializers.SerializerMethodField()
     
     class Meta:
         model = ExamResult
@@ -261,9 +322,37 @@ class ExamResultSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at']
 
+    def get_question_results(self, result):
+        from .services import selected_option_index
 
-class SubmitExamSerializer(serializers.Serializer):
-    """Serializer for submitting exam answers."""
+        if not self.context.get('show_question_review', False):
+            return {}
+        attempt = result.attempt
+        if attempt.snapshot is None:
+            # Only the recorded grade is available for these attempts.
+            return result.question_results if self.context.get('manages_exam') else {}
+
+        review = {}
+        for position, question in enumerate(attempt.snapshot['questions'], 1):
+            key = str(question['id'])
+            if key not in result.question_results:
+                continue
+            entry = result.question_results[key]
+            options = question['options']
+            review[key] = {
+                **entry, 'position': position, 'question_text': question['question_text'],
+                'options': [str(option.get('text', '')) if isinstance(option, dict) else str(option) for option in options],
+                'selected_option': selected_option_index(entry.get('answer'), options),
+                'correct_option': next(
+                    (index for index, option in enumerate(options) if isinstance(option, dict) and option.get('is_correct')),
+                    None,
+                ),
+            }
+        return review
+
+
+class ExamAnswersSerializer(serializers.Serializer):
+    """Answer changes for saving or submitting an attempt."""
     attempt_id = serializers.IntegerField()
     answers = serializers.JSONField()
     
@@ -271,4 +360,6 @@ class SubmitExamSerializer(serializers.Serializer):
         """Validate answers format."""
         if not isinstance(value, dict):
             raise serializers.ValidationError("Answers must be a dictionary")
+        if any(answer is not None and type(answer) not in (int, str) for answer in value.values()):
+            raise serializers.ValidationError("Use an option index, text answer, or null.")
         return value
