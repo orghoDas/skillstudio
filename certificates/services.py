@@ -71,10 +71,26 @@ def issue_certificate(user, course, schedule_pdf=True):
 
 
 def certificate_has_pdf(certificate):
+    """True only if the PDF is recorded AND the file really exists in storage
+    (OPS-02: a recorded name whose file was deleted used to 500 on download)."""
     try:
-        return bool(certificate.pdf.name and certificate.pdf.name.strip())
+        name = (certificate.pdf.name or "").strip()
+        return bool(name) and certificate.pdf.storage.exists(name)
     except (ValueError, AttributeError):
         return False
+
+
+def ensure_certificate_pdf(certificate):
+    """Return a certificate whose PDF file exists, rendering it now if missing.
+
+    Returns None if rendering fails (the error is logged).
+    """
+    if certificate_has_pdf(certificate):
+        return certificate
+    rendered = safely_render_certificate_pdf(certificate.id, force=True)
+    if rendered is None or not certificate_has_pdf(rendered):
+        return None
+    return rendered
 
 
 def schedule_certificate_pdf_render(certificate_id, force=False):

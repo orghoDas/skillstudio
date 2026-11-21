@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
@@ -161,9 +162,25 @@ WSGI_APPLICATION = 'skillstudio.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# Defaults to a local SQLite file when DATABASE_URL is unset (used to crash).
 DATABASES = {
-    "default": dj_database_url.parse(os.getenv("DATABASE_URL"), conn_max_age=600),
+    "default": dj_database_url.parse(
+        os.getenv("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+    ),
 }
+
+# OPS-05: `manage.py test` must never touch the database in .env (which may be
+# a hosted one). Tests use TEST_DATABASE_URL if set, otherwise SQLite (Django
+# runs SQLite test databases in memory). The test runner additionally refuses
+# a non-local test database unless ALLOW_REMOTE_TEST_DATABASE=1.
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+if RUNNING_TESTS:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            os.getenv("TEST_DATABASE_URL") or f"sqlite:///{BASE_DIR / 'test-db.sqlite3'}"
+        ),
+    }
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -205,9 +222,22 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-# WhiteNoise configuration
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# OPS-01: Django 5.1+ ignores STATICFILES_STORAGE; storage backends are
+# configured via STORAGES. With DEBUG=True, runserver serves unhashed files
+# from the app/static dirs; with DEBUG=False run `manage.py collectstatic`
+# first so WhiteNoise can serve the compressed, hashed copies.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
+# Tests use a temporary MEDIA_ROOT and plain static storage (no manifest), so
+# they never write into the real media/ folder (OPS-02 / TEST-01).
+TEST_RUNNER = "skillstudio.test_runner.SkillStudioTestRunner"
+
+# Uploaded/generated files (currently only certificate PDFs). They are NOT
+# served publicly at MEDIA_URL; certificates are downloaded only through the
+# authenticated /api/certificates/.../download/ endpoints (OPS-02).
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

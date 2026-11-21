@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from accounts.utils import is_platform_admin
 from enrollments.constants import ACCESS_STATUSES
 from .video import parse_video_url
 from .models import (
@@ -208,19 +207,13 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_locked(self, lesson):
-        if lesson.is_free or lesson.module.course.is_free:
-            return False
+        """Locked = this viewer can't open the lesson's content (CRS-01 policy)."""
+        from django.contrib.auth.models import AnonymousUser
+        from courses.policies import can_access_lesson
 
         request = self.context.get('request')
-        if not request or not request.user.is_authenticated:
-            return True
-
-        user = request.user
-        course = lesson.module.course
-        if is_platform_admin(user) or course.instructor_id == user.id:
-            return False
-
-        return not course.enrollments.filter(user=user, status__in=ACCESS_STATUSES).exists()
+        user = getattr(request, 'user', None) or AnonymousUser()
+        return not can_access_lesson(user, lesson)
 
 
 class CatalogLessonSummarySerializer(CourseDetailLessonSerializer):

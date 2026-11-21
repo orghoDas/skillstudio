@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *25 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-03; all 2026-11-21); 2 not applicable since the project is no longer deployed (OPS-01, OPS-02; [D-03](#d-03)); 40 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, TEST-02, CRS-01, ENR-03, TEST-01, DEP-01 are partially done* |
+| *Resolved so far* | *30 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05; all 2026-11-21); 37 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, TEST-02, ENR-03, DEP-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -131,7 +131,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 **Owner action:** delete the Railway project/service, and disconnect Railway's GitHub app from the repo, so pushes stop triggering deploys. The repo holds no Railway config file, so this can only be done on Railway's side.
 
 **Effect on findings:**
-- [OPS-01](#ops-01) and [OPS-02](#ops-02) are **not applicable** (they only matter for a deployed `DEBUG=False` site).
+- [OPS-01](#ops-01) and [OPS-02](#ops-02) were first marked not applicable, but were then fixed for local use on request (2026-11-21).
 - [OPS-03](#ops-03) is resolved (`gunicorn` removed).
 - [OPS-04](#ops-04) drops its deploy-only items (Procfile, health and readiness checks).
 - [SEC-03](#sec-03)'s Railway secret-key step is no longer needed once the service is deleted. The Neon database password still has to be rotated.
@@ -169,13 +169,13 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [API-03](#api-03) | P1 | ~~Section and lesson delete buttons return 405~~ ✅ resolved 2026-11-21 |
 | [BUG-01](#bug-01) | P1 | ~~Instructor lesson-analytics CSV export always 500s~~ ✅ resolved 2026-11-21 |
 | [BUG-02](#bug-02) | P1 | ~~`InstructorCoursesView` error path raises `NameError`~~ ✅ resolved 2026-11-21 |
-| [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent — 🟡 partial 2026-11-21 |
-| [OPS-01](#ops-01) | P1 | WhiteNoise storage setting is silently ignored on Django 6 — ⏸ not applicable (not deployed) |
-| [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production — ⏸ not applicable (not deployed) |
+| [CRS-01](#crs-01) | P1 | ~~Access policy is fragmented and inconsistent~~ ✅ resolved 2026-11-21 |
+| [OPS-01](#ops-01) | P1 | ~~WhiteNoise storage setting is silently ignored on Django 6~~ ✅ resolved 2026-11-21 |
+| [OPS-02](#ops-02) | P1 | ~~Certificate PDFs live on local disk and aren't served in production~~ ✅ resolved 2026-11-21 (local scope) |
 | [OPS-03](#ops-03) | P1 | ~~`gunicorn==21.2.0` has known request-smuggling CVEs~~ ✅ resolved 2026-11-21 (gunicorn removed) |
-| [TEST-01](#test-01) | P1 | Payments tests don't run, and tests write into the real `media/` — 🟡 payments part resolved 2026-11-21 |
+| [TEST-01](#test-01) | P1 | ~~Payments tests don't run, and tests write into the real `media/`~~ ✅ resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract — 🟡 route + method contract test added 2026-11-21 |
-| [OPS-05](#ops-05) | P1 | Tests and scratch scripts run against the hosted database by default |
+| [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
 | [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
 | [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext |
 | [EXM-03](#exm-03) | P2 | Exam grading and marks integrity (no snapshot, unpassable exams) |
@@ -949,14 +949,19 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 **Fix approach:** Import `logging` at module level with a module `logger`, and delete the try/except wrappers entirely. DRF's exception handler already returns a 500 and logs it.
 
 <a id="crs-01"></a>
-### CRS-01: Access policy is fragmented and inconsistent — 🟡 PARTIAL 2026-11-21
+### CRS-01: Access policy is fragmented and inconsistent — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21:**
-> - `CourseCurriculumView` now enforces catalog visibility; a draft course's curriculum returns 404 to non-owners.
-> - `CanAccessLesson` ignores canceled enrollments.
-> - All access checks use `ACCESS_STATUSES`.
+> **Resolved 2026-11-21.** [courses/policies.py](courses/policies.py) is now the single source of truth. It answers four questions, each built on the previous one:
+> - `can_view_course_catalog`: published, or you're the owner or an admin.
+> - `can_access_course_content`: you can see the course **and** it's free, or you're the owner or an admin, or you have an `active`/`completed` enrollment.
+> - `can_access_lesson`: a free-preview lesson of a visible course is open to anyone.
+> - `can_manage_course`: owner or admin.
 >
-> **Still open:** fold `courses/permissions.py` into `policies.py`, and add the role × course-status × enrollment-status test matrix.
+> **Changes:**
+> - **Bug fixed:** content access used to skip the visibility check for free courses, so a **draft free course was open to anyone**.
+> - `LessonDetailView`, `CourseCurriculumView` and the course-detail `is_locked` flag now call these policies instead of re-implementing them. The progression lock applies to every enrolled non-manager, so it matches the curriculum for free courses too.
+> - `courses/permissions.py` was deleted: `CanAccessLesson` was unused, and `CanEditCourse` was attached to a view that never runs object permissions.
+> - **Tests:** `courses/test_access_policy.py` checks the full matrix: 8 kinds of viewer × 4 course statuses × free/paid, for catalog, content, manage, a paid lesson and a free-preview lesson.
 
 *Original finding:*
 
@@ -972,9 +977,13 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 - Add a policy test matrix: role × course status × enrollment status.
 
 <a id="ops-01"></a>
-### OPS-01: WhiteNoise storage setting is silently ignored on Django 6 — ⏸ NOT APPLICABLE (not deployed, D-03)
+### OPS-01: WhiteNoise storage setting is silently ignored on Django 6 — ✅ RESOLVED 2026-11-21
 
-> *2026-11-21:* only relevant for a deployed `DEBUG=False` site serving static files through WhiteNoise. Local development uses `runserver`'s static serving. If the project is ever deployed again, replace `STATICFILES_STORAGE` with `STORAGES` as described below.
+> **Resolved 2026-11-21** (done on request despite [D-03](#d-03)).
+> - **Setting.** `STATICFILES_STORAGE` was replaced with `STORAGES` (`staticfiles` → `CompressedManifestStaticFilesStorage`).
+> - **Verified with `DEBUG=False`:** `collectstatic` writes the manifest, the admin page links `base.<hash>.css`, and WhiteNoise serves it gzipped with `Cache-Control: max-age=315360000, public, immutable`.
+> - **Tests** use plain static storage (see the test runner under [OPS-02](#ops-02)), because Django runs tests with `DEBUG=False`, where the manifest would require a prior `collectstatic`.
+> - **Local note:** with `DEBUG=True`, `runserver` serves unhashed files as before; for a `DEBUG=False` run, run `collectstatic` first.
 
 *Original finding:*
 
@@ -990,9 +999,13 @@ STORAGES = {
 Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm hashed filenames are served.
 
 <a id="ops-02"></a>
-### OPS-02: Certificate PDFs live on local disk and aren't served in production — ⏸ NOT APPLICABLE (not deployed, D-03)
+### OPS-02: Certificate PDFs live on local disk and aren't served in production — ✅ RESOLVED 2026-11-21 (local scope, D-03)
 
-> *2026-11-21:* certificate PDFs are written to the local `media/` folder and served by Django in development, which is fine for a local-only project. Revisit (object storage) only if it's deployed again.
+> **Resolved 2026-11-21** for a local-only project ([D-03](#d-03)); object storage isn't needed while nothing is deployed.
+> - **Missing files.** `certificate_has_pdf` now checks that the file **exists in storage**, not just that a name is recorded. The new `ensure_certificate_pdf` re-renders a missing PDF on download, so a deleted or never-rendered file downloads normally instead of a `FileNotFoundError` 500. If rendering fails, the view returns a clean 503.
+> - **Not public.** PDFs are **no longer served at `/media/`.** The `DEBUG` media route exposed every certificate to anyone with the URL; now they're only reachable through the authenticated `/api/certificates/.../download/` endpoints. Certificate PDFs are the only stored files.
+> - **Test isolation.** A project test runner (`skillstudio/test_runner.py`, `TEST_RUNNER`) gives each run a temporary `MEDIA_ROOT` (deleted afterwards), which closes [TEST-01](#test-01).
+> - **Tests:** `certificates/test_storage.py`.
 
 *Original finding:*
 
@@ -1015,13 +1028,13 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 **Fix approach:** Bump to `gunicorn>=23.0.0`, and add `pip-audit` to CI ([OPS-04](#ops-04)) so dependency CVEs fail the build.
 
 <a id="test-01"></a>
-### TEST-01: Payments tests don't run, and tests write into the real `media/` — 🟡 PAYMENTS PART RESOLVED 2026-11-21
+### TEST-01: Payments tests don't run, and tests write into the real `media/` — ✅ RESOLVED 2026-11-21
 
 > **Progress 2026-11-21:** `payments/tests.py` was rewritten for the D-01 architecture and runs **38 tests**. The full suite is now **263 tests, all passing**; before, it was 226 with the payments module failing to import.
 >
 > Two account CSRF tests used the removed wallet top-up as their sample mutation; they now use `PATCH /api/accounts/me/`.
 >
-> **Still open:** tests still write certificate PDFs into the real `media/certificates/<year>/<month>/` (override `MEDIA_ROOT`/`STORAGES` for tests).
+> **Closed 2026-11-21:** tests no longer write certificate PDFs into the real `media/`. The project test runner (`skillstudio/test_runner.py`) uses a temporary `MEDIA_ROOT` per run ([OPS-02](#ops-02)); a test asserts this.
 
 *Original finding:*
 
@@ -1051,7 +1064,14 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 2. Add a small Playwright smoke suite (login → course → enroll → learn → complete → certificate; instructor create → submit; exam take) that fails on any console error.
 
 <a id="ops-05"></a>
-### OPS-05: Tests and scratch scripts run against the hosted database by default
+### OPS-05: Tests and scratch scripts run against the hosted database by default — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **Tests can't reach `.env`'s database.** `manage.py test` now ignores `DATABASE_URL`: tests use `TEST_DATABASE_URL` if you set it, otherwise SQLite (in memory). Verified: with `.env` still pointing at the hosted Neon database, a plain `manage.py test` runs on SQLite.
+> - **Remote test databases are refused.** The project test runner refuses a non-local test database host unless `ALLOW_REMOTE_TEST_DATABASE=1`, and refuses *before* any connection. Verified with a fake remote host.
+> - **Scratch scripts deleted:** `scripts/run_enrollment_test.py`, `scripts/run_insufficient_test.py`, `scripts/check_profile_columns.py` and `enrollments/verify_app.py`. They wrote to whatever database was configured (including deleting wallets). Their behaviour is covered by the payments/enrollment tests.
+> - **Missing `DATABASE_URL`.** An unset `DATABASE_URL` now falls back to a local `db.sqlite3` instead of crashing at startup.
+> - **Still your call:** your own local `.env` still points the *dev server* at the hosted database. Point it at a local database (as in `.env.example`) if you don't want local experiments touching it.
 
 **Evidence:**
 - `settings.py` calls `load_dotenv('.env')`, and the tracked `.env` sets `DATABASE_URL` to the hosted Neon Postgres. A plain `python manage.py test` therefore creates and drops a `test_…` database **on the hosted cluster**.
@@ -1570,11 +1590,11 @@ Move aspirational features to a "Roadmap" section.
 
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
-| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
+| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, ~~TEST-01~~ ✅ | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
-| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ⏸, ~~OPS-02~~ ⏸, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
+| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |
 
 ### Definition of done for release

@@ -14,7 +14,7 @@ from .serializers import (
     CertificateListSerializer,
     CertificateVerificationSerializer
 )
-from .services import verify_certificate, regenerate_certificate_pdf
+from .services import ensure_certificate_pdf, verify_certificate, regenerate_certificate_pdf
 
 
 # ===========================
@@ -112,11 +112,13 @@ class DownloadCertificateView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Check if PDF exists
-        if not certificate.pdf:
+        # Make sure the PDF file really exists; regenerate it if it was never
+        # rendered or the file went missing (OPS-02) instead of a 500.
+        certificate = ensure_certificate_pdf(certificate)
+        if certificate is None:
             return Response(
-                {'error': 'Certificate PDF not available'},
-                status=status.HTTP_404_NOT_FOUND
+                {'error': 'The certificate PDF could not be generated right now. Please try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         
         # Increment download count

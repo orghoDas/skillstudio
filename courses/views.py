@@ -11,7 +11,6 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.permissions import IsAdmin, IsInstructor
 from accounts.utils import is_platform_admin
 from courses.policies import can_view_course_catalog
-from courses.permissions import CanEditCourse
 from courses.services import validate_course_for_submission
 from courses.progression import get_next_lesson
 from enrollments.constants import ACCESS_STATUSES
@@ -527,7 +526,7 @@ class LessonDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, lesson_id):
-        from courses.policies import can_manage_course
+        from courses.policies import can_access_lesson, can_manage_course
         from enrollments.services import get_access_enrollment, lesson_lock_state
 
         lesson = get_object_or_404(
@@ -539,15 +538,18 @@ class LessonDetailView(APIView):
         if not can_view_course_catalog(user, course):
             return Response({'error': 'Lesson not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not (lesson.is_free or course.is_free or can_manage_course(user, course)):
+        if not can_access_lesson(user, lesson):
             if not user.is_authenticated:
                 return Response({'error': 'Login required.', 'code': 'login_required'},
                                 status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Enroll in this course to access this lesson.', 'code': 'not_enrolled'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Progression applies to enrolled students (free or paid course alike),
+        # exactly as the curriculum shows it; owners/admins are never locked.
+        if not can_manage_course(user, course):
             enrollment = get_access_enrollment(user, course)
-            if enrollment is None:
-                return Response({'error': 'Enroll in this course to access this lesson.', 'code': 'not_enrolled'},
-                                status=status.HTTP_403_FORBIDDEN)
-            if lesson_lock_state(enrollment).get(lesson.id):
+            if enrollment and lesson_lock_state(enrollment).get(lesson.id):
                 return Response({'error': 'Lesson is locked. Complete the previous lessons first.',
                                  'code': 'lesson_locked'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -565,7 +567,7 @@ class CourseCurriculumView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, course_id):
-        from courses.policies import can_manage_course
+        from courses.policies import can_access_course_content, can_manage_course
         from enrollments.services import (
             completed_lesson_ids, get_access_enrollment, lesson_lock_state, ordered_course_lessons,
         )
@@ -575,11 +577,13 @@ class CourseCurriculumView(APIView):
         if not can_view_course_catalog(user, course):
             return Response({'error': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        enrollment = get_access_enrollment(user, course)
-        if not (course.is_free or enrollment or can_manage_course(user, course)):
+        if not can_access_course_content(user, course):
             if not user.is_authenticated:
                 return Response({'error': 'Login required'}, status=status.HTTP_403_FORBIDDEN)
             return Response({'error': 'Active enrollment required'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Owners/admins see nothing locked; students see their own progression.
+        enrollment = None if can_manage_course(user, course) else get_access_enrollment(user, course)
 
         lessons = ordered_course_lessons(course)
         completed_ids = completed_lesson_ids(enrollment)
@@ -599,7 +603,7 @@ class CourseCurriculumView(APIView):
 
 class SubmitCourseForReviewView(APIView):
     """Submit course for admin review"""
-    permission_classes = [IsAuthenticated, CanEditCourse]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, course_id):
         user = request.user
