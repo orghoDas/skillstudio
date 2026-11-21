@@ -1,7 +1,59 @@
+from datetime import timezone as dt_timezone
+
 from django.utils import timezone
 from django.db import IntegrityError, transaction
 from decimal import Decimal, InvalidOperation
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
+
+
+class ExamUnavailable(ValueError):
+    """An exam action refused for a reason the student should see (EXM-01)."""
+
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+def _fmt(dt):
+    return dt.astimezone(dt_timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def exam_availability(exam, now=None):
+    """'open', 'not_open_yet', 'closed' or 'not_published'."""
+    now = now or timezone.now()
+    if exam.status != 'published':
+        return 'not_published'
+    if exam.start_datetime and now < exam.start_datetime:
+        return 'not_open_yet'
+    if exam.end_datetime and now > exam.end_datetime:
+        return 'closed'
+    return 'open'
+
+
+def ensure_exam_open(exam):
+    """Raise ExamUnavailable unless students may start the exam right now."""
+    availability = exam_availability(exam)
+    if availability == 'not_open_yet':
+        raise ExamUnavailable(f"This exam opens at {_fmt(exam.start_datetime)}.", 'not_open_yet')
+    if availability == 'closed':
+        raise ExamUnavailable(f"This exam closed at {_fmt(exam.end_datetime)}.", 'closed')
+    if availability == 'not_published':
+        raise ExamUnavailable("This exam isn't available.", 'not_published')
+
+
+def attempt_started_within_window(attempt):
+    """An attempt counts only if it was started inside the exam's window.
+
+    (A student who starts near the end may still finish within the attempt's
+    own duration; the window limits when attempts can *start*.)
+    """
+    exam = attempt.exam
+    if exam.start_datetime and attempt.started_at < exam.start_datetime:
+        return False
+    if exam.end_datetime and attempt.started_at > exam.end_datetime:
+        return False
+    return True
 
 
 def _decimal_marks(value, default='0'):
@@ -96,8 +148,7 @@ def start_exam_attempt(exam, user):
     with transaction.atomic():
         locked_exam = Exam.objects.select_for_update().get(pk=exam.pk)
 
-        if not locked_exam.is_active():
-            raise ValueError("Exam is not currently available")
+        ensure_exam_open(locked_exam)
 
         attempts = (
             ExamAttempt.objects
@@ -116,7 +167,9 @@ def start_exam_attempt(exam, user):
 
         used_attempts = attempts.filter(status__in=['completed', 'abandoned']).count()
         if used_attempts >= locked_exam.max_attempts:
-            raise ValueError(f"Maximum attempts ({locked_exam.max_attempts}) exceeded")
+            raise ExamUnavailable(
+                f"You have used all {locked_exam.max_attempts} attempt(s) for this exam.", 'max_attempts'
+            )
 
         next_attempt_number = (
             attempts.order_by('-attempt_number')
@@ -158,6 +211,12 @@ def submit_exam_attempt(attempt, answers):
     """
     if attempt.status == 'completed':
         raise ValueError("Attempt already completed")
+
+    # EXM-01: re-check availability at submit time, not only at start.
+    if attempt.exam.status != 'published':
+        raise ExamUnavailable("This exam is no longer available.", 'not_published')
+    if not attempt_started_within_window(attempt):
+        raise ExamUnavailable("This attempt wasn't started within the exam window.", 'outside_window')
     
     if attempt.is_expired():
         attempt.status = 'abandoned'

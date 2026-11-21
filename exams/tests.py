@@ -457,6 +457,8 @@ class ExamAccessControlAPITest(APITestCase):
 
     def test_student_exam_detail_hides_correct_answer_data(self):
         self.client.force_authenticate(user=self.student)
+        # Questions are only shown during an attempt (EXM-01).
+        self.assertEqual(self.client.post(f'/api/exams/{self.exam.id}/start/').status_code, status.HTTP_201_CREATED)
 
         response = self.client.get(f'/api/exams/{self.exam.id}/')
 

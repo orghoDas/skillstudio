@@ -166,21 +166,47 @@ class ExamListSerializer(serializers.ModelSerializer):
 
 
 class ExamDetailSerializer(serializers.ModelSerializer):
-    """Detailed exam serializer with questions (for students taking exam)."""
-    questions = StudentExamQuestionSerializer(many=True, read_only=True)
+    """Exam as a student sees it.
+
+    EXM-01: the questions are only included while the student has an attempt
+    in progress (``context["show_questions"]``, decided by the view). Before
+    that — e.g. before the exam window opens — students see the exam's details
+    and when it opens/closes, but not its questions.
+    """
+    questions = serializers.SerializerMethodField()
     course_name = serializers.CharField(source='course.title', read_only=True)
     custom_questions = serializers.SerializerMethodField()
+    availability = serializers.SerializerMethodField()
+    questions_hidden = serializers.SerializerMethodField()
     
     class Meta:
         model = Exam
         fields = [
             'id', 'title', 'description', 'course', 'course_name', 'total_marks', 'passing_marks',
             'duration_minutes', 'randomize_questions', 'questions',
-            'custom_questions', 'max_attempts'
+            'custom_questions', 'max_attempts', 'start_datetime', 'end_datetime',
+            'availability', 'questions_hidden',
         ]
 
+    def _show_questions(self):
+        return bool(self.context.get('show_questions'))
+
+    def get_questions(self, obj):
+        if not self._show_questions():
+            return []
+        return StudentExamQuestionSerializer(obj.questions.all(), many=True).data
+
     def get_custom_questions(self, obj):
+        if not self._show_questions():
+            return []
         return hide_student_answer_data(obj.custom_questions or [])
+
+    def get_availability(self, obj):
+        from .services import exam_availability
+        return exam_availability(obj)
+
+    def get_questions_hidden(self, obj):
+        return not self._show_questions()
 
 
 class ExamAttemptSerializer(serializers.ModelSerializer):

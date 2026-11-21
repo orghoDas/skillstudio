@@ -14,7 +14,7 @@ from .serializers import (
     ExamResultSerializer, SubmitExamSerializer
 )
 from .services import (
-    start_exam_attempt, submit_exam_attempt,
+    ExamUnavailable, start_exam_attempt, submit_exam_attempt,
     get_exam_analytics
 )
 from courses.models import Course
@@ -179,6 +179,18 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
             return ExamSerializer
         return ExamDetailSerializer
 
+    def retrieve(self, request, *args, **kwargs):
+        exam = self.get_object()
+        serializer_class = self.get_serializer_class()
+        context = self.get_serializer_context()
+        if serializer_class is ExamDetailSerializer:
+            # EXM-01: students see the questions only while taking the exam.
+            # Attempts can only be started inside the exam window, so this
+            # also keeps questions hidden before the window opens.
+            in_progress = ExamAttempt.objects.filter(exam=exam, user=request.user, status='in_progress')
+            context['show_questions'] = any(not attempt.is_expired() for attempt in in_progress)
+        return Response(serializer_class(exam, context=context).data)
+
 
 # ===========================
 # 🎯 Exam Taking Views (Students)
@@ -213,7 +225,10 @@ def start_exam(request, exam_id):
         serializer = ExamAttemptSerializer(attempt)
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
+
+    except ExamUnavailable as exc:
+        # EXM-01: say why (not open yet / closed / no attempts left).
+        return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_409_CONFLICT)
     except ValueError:
         return Response({
             'error': 'Exam attempt could not be started.'
@@ -257,7 +272,9 @@ def submit_exam(request, exam_id):
                 response_data['result'] = result_serializer.data
         
         return Response(response_data, status=status.HTTP_200_OK)
-        
+
+    except ExamUnavailable as exc:
+        return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_409_CONFLICT)
     except ValueError:
         return Response({
             'error': 'Exam submission could not be processed.'
