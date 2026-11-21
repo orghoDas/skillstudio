@@ -26,9 +26,7 @@ from .views import (
     InstructorLessonAnalyticsCSVView,
 )
 
-# Analytics app removed
 from instructors.views import InstructorDashboardView
-# InstructorCourseComparisonView and InstructorLessonDropoffView removed with analytics app
 
 
 urlpatterns = [
@@ -68,11 +66,9 @@ urlpatterns = [
     path('learning-dashboard/', LearningProgressDashboardView.as_view(), name='learning-dashboard'),
     
     # ===========================
-    # 👨‍🏫 Instructor Analytics (analytics app removed)
+    # 👨‍🏫 Instructor Analytics
     # ===========================
     path('instructor/dashboard/', InstructorDashboardView.as_view(), name='enrollments-instructor-dashboard'),  # alias of /api/instructors/dashboard/
-    # path('instructor/courses/<int:course_id>/analytics/', InstructorCourseComparisonView.as_view(), name='instructor-course-analytics'),
-    # path('instructor/courses/<int:course_id>/lesson-dropoff/', InstructorLessonDropoffView.as_view(), name='instructor-lesson-dropoff'),
     path('instructor/courses/<int:course_id>/lesson-analytics-csv/', InstructorLessonAnalyticsCSVView.as_view(), name='instructor-lesson-analytics-csv'),
 ]
 

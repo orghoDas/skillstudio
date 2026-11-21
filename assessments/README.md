@@ -1,73 +1,26 @@
-# Assessments App
+# assessments
 
-The assessments app now provides lesson-level MCQ quizzes only.
-
-## Features
-
-- Instructor-managed quizzes attached to course lessons
-- Auto-graded multiple-choice questions
-- Timed quiz attempts
-- Single active/completed attempt per user per quiz
-- Quiz score, pass/fail state, and question-option analytics
+Lesson-level quizzes (multiple choice only).
 
 ## Models
+- **`Quiz`**: one per quiz lesson.
+  - A new quiz is a **draft** (`is_published=False`) until the instructor publishes it.
+  - `total_marks` always equals the sum of the questions' marks. `signals.py` recomputes it whenever a question is saved or deleted, from any code path.
+  - `max_attempts` defaults to 3; `null` means unlimited.
+  - `time_limit_minutes` is optional.
+- **`QuizQuestion`** (`difficulty` is `easy`, `medium` or `hard`) and **`QuestionOption`**. Each question has exactly one correct option.
+- **`QuizAttempt`**:
+  - Numbered per user (`attempt_number`), with at most one attempt open at a time (database constraints).
+  - Stores a snapshot of the questions and marks, so later edits never change past grades.
 
-### Quiz
+## Rules: `services.py`
+- Only a published quiz with questions can block lesson completion (`Quiz.counts_for_completion`).
+- `start_quiz_attempt` behaves differently by state:
+  - If an attempt is still open, it resumes that attempt.
+  - If the open attempt has expired, it grades it first.
+  - If the student has passed or used every attempt, it refuses.
+- `submit_quiz_attempt` ignores answers that arrive after the time limit plus `QUIZ_SUBMIT_GRACE_SECONDS`. The server enforces the limit; the browser timer is cosmetic.
+- Questions can't be replaced once any attempt exists. Make a new quiz instead.
+- Analytics (`analytics.py`) count finished attempts only. The course owner or a platform admin can read them.
 
-```python
-quiz = Quiz.objects.create(
-    lesson=lesson,
-    title="Python Basics Quiz",
-    total_marks=100,
-    passing_percentage=60,
-    time_limit_minutes=30,
-)
-```
-
-### QuizQuestion
-
-```python
-question = QuizQuestion.objects.create(
-    quiz=quiz,
-    question_text="What is the output of print(2 ** 3)?",
-    difficulty="medium",
-    marks=5,
-)
-```
-
-### QuestionOption
-
-```python
-QuestionOption.objects.create(
-    question=question,
-    option_text="8",
-    is_correct=True,
-)
-QuestionOption.objects.create(
-    question=question,
-    option_text="6",
-    is_correct=False,
-)
-```
-
-### QuizAttempt
-
-```python
-attempt = QuizAttempt.objects.create(
-    quiz=quiz,
-    user=student,
-    answers={"question_id": "option_id"},
-)
-```
-
-## API Surface
-
-- `GET /api/assessments/quiz/lesson/{lesson_id}/`
-- `POST /api/assessments/quiz/lesson/{lesson_id}/start/`
-- `POST /api/assessments/quiz/attempt/{attempt_id}/submit/`
-- `GET /api/assessments/manage/quiz/lesson/{lesson_id}/`
-- `POST /api/assessments/manage/quiz/lesson/{lesson_id}/`
-- `GET /api/assessments/analytics/course/{course_id}/overview/`
-- `GET /api/assessments/analytics/quiz/{quiz_id}/questions/`
-
-Question payloads may omit `type`; when provided it must be `mcq`.
+Endpoints: see [docs/API_ROUTES.md](../docs/API_ROUTES.md#apiassessments). That file is generated from the URLconf, so it is always current.

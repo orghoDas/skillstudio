@@ -30,7 +30,7 @@ class QuizFixture:
         module = Module.objects.create(course=self.course, title="M", position=1)
         self.lesson = Lesson.objects.create(module=module, title="Quiz lesson", content_type="quiz", position=1)
         Enrollment.objects.create(user=self.student, course=self.course)
-        self.quiz = Quiz.objects.create(lesson=self.lesson, title="Q", passing_percentage=50, max_attempts=2)
+        self.quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title="Q", passing_percentage=50, max_attempts=2)
         self.question = QuizQuestion.objects.create(quiz=self.quiz, question_text="2+2?", marks=1)
         self.right = QuestionOption.objects.create(question=self.question, option_text="4", is_correct=True)
         self.wrong = QuestionOption.objects.create(question=self.question, option_text="5", is_correct=False)

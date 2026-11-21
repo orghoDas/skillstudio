@@ -60,7 +60,7 @@ class QuizModelTest(TestCase):
     
     def test_quiz_creation(self):
         """Test creating a quiz."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Test Quiz',
             total_marks=100,
@@ -73,7 +73,7 @@ class QuizModelTest(TestCase):
     
     def test_quiz_without_time_limit(self):
         """Test quiz without time limit."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Untimed Quiz',
             total_marks=50
@@ -102,7 +102,7 @@ class QuizQuestionModelTest(TestCase):
         
         self.module = Module.objects.create(course=self.course, title='Module 1', position=1)
         self.lesson = Lesson.objects.create(module=self.module, title='Lesson 1', content_type='text', content_text='Lesson content', position=1)
-        self.quiz = Quiz.objects.create(lesson=self.lesson, title='Test Quiz')
+        self.quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title='Test Quiz')
     
     def test_mcq_question_creation(self):
         """Test creating MCQ question."""
@@ -126,7 +126,7 @@ class QuizAttemptModelTest(TestCase):
         self.course = Course.objects.create(title='Course', instructor=self.instructor, category=self.category)
         self.module = Module.objects.create(course=self.course, title='Module', position=1)
         self.lesson = Lesson.objects.create(module=self.module, title='Lesson', content_type='text', content_text='Lesson content', position=1)
-        self.quiz = Quiz.objects.create(lesson=self.lesson, title='Quiz', time_limit_minutes=30)
+        self.quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title='Quiz', time_limit_minutes=30)
     
     def test_quiz_attempt_creation(self):
         """Test creating quiz attempt."""
@@ -170,7 +170,7 @@ class QuizServicesTest(TestCase):
         self.course = Course.objects.create(title='Course', instructor=self.instructor, category=self.category)
         self.module = Module.objects.create(course=self.course, title='Module', position=1)
         self.lesson = Lesson.objects.create(module=self.module, title='Lesson', content_type='text', content_text='Lesson content', position=1)
-        self.quiz = Quiz.objects.create(lesson=self.lesson, title='Quiz', total_marks=10)
+        self.quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title='Quiz', total_marks=10)
         
         # Create questions
         self.q1 = QuizQuestion.objects.create(quiz=self.quiz, question_text='Q1', marks=5)
@@ -253,7 +253,7 @@ class QuizAPITest(APITestCase):
         self.module = Module.objects.create(course=self.course, title='Module', position=1)
         self.lesson = Lesson.objects.create(module=self.module, title='Lesson', content_type='text', content_text='Lesson content', position=1)
         
-        self.quiz = Quiz.objects.create(lesson=self.lesson, title='Test Quiz', total_marks=10)
+        self.quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title='Test Quiz', total_marks=10)
         
         # Create question and options
         self.question = QuizQuestion.objects.create(quiz=self.quiz, question_text='Q1', marks=5)
@@ -340,7 +340,7 @@ class QuizAPITest(APITestCase):
             content_text='Lesson content',
             position=2
         )
-        other_quiz = Quiz.objects.create(lesson=other_lesson, title='Other Quiz')
+        other_quiz = Quiz.objects.create(is_published=True, lesson=other_lesson, title='Other Quiz')
         other_question = QuizQuestion.objects.create(
             quiz=other_quiz,
             question_text='Other Q',
@@ -427,7 +427,7 @@ class QuizAPITest(APITestCase):
             content_text='Lesson content',
             position=2
         )
-        other_quiz = Quiz.objects.create(lesson=other_lesson, title='Other Quiz')
+        other_quiz = Quiz.objects.create(is_published=True, lesson=other_lesson, title='Other Quiz')
         other_question = QuizQuestion.objects.create(
             quiz=other_quiz,
             question_text='Other Q',
@@ -503,7 +503,8 @@ class QuizAPITest(APITestCase):
         QuizAttempt.objects.create(
             quiz=self.quiz,
             user=self.student,
-            answers={str(self.question.id): str(self.opt_wrong.id)}
+            answers={str(self.question.id): str(self.opt_wrong.id)},
+            completed_at=timezone.now(),
         )
         other_student = User.objects.create_user(
             email='other-student@test.com',
@@ -512,12 +513,14 @@ class QuizAPITest(APITestCase):
         QuizAttempt.objects.create(
             quiz=self.quiz,
             user=other_student,
-            answers={str(self.question.id): str(self.opt_correct.id)}
+            answers={str(self.question.id): str(self.opt_correct.id)},
+            completed_at=timezone.now(),
         )
         QuizAttempt.objects.create(
             quiz=self.quiz,
             user=self.instructor,
-            answers={}
+            answers={},
+            completed_at=timezone.now(),
         )
         self.client.force_authenticate(user=self.instructor)
 
@@ -577,7 +580,7 @@ class ManageQuizAPITest(APITestCase):
         self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
 
     def test_manage_quiz_get_returns_existing_quiz(self):
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Existing Quiz',
             passing_percentage=70
@@ -770,7 +773,7 @@ class ManageQuizAPITest(APITestCase):
                 self.assertEqual(QuestionOption.objects.count(), 0)
 
     def test_manage_quiz_post_rejects_invalid_replacement_without_changing_existing_quiz(self):
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Original Quiz',
             passing_percentage=60,
@@ -853,7 +856,7 @@ class ManageQuizAPITest(APITestCase):
         self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
 
     def test_manage_quiz_post_rejects_question_replacement_after_attempts_exist(self):
-        quiz = Quiz.objects.create(lesson=self.lesson, title='Attempted Quiz')
+        quiz = Quiz.objects.create(is_published=True, lesson=self.lesson, title='Attempted Quiz')
         question = QuizQuestion.objects.create(
             quiz=quiz,
             question_text='Original question',
@@ -901,7 +904,7 @@ class ManageQuizAPITest(APITestCase):
         )
 
     def test_manage_quiz_post_allows_settings_update_after_attempts_exist(self):
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Attempted Quiz',
             passing_percentage=50,

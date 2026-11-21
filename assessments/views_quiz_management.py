@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 
 from courses.models import Lesson
+from courses.policies import can_manage_course
 from .models import Quiz, QuizQuestion, QuestionOption
 from .serializers import ManageQuizDetailSerializer
 
@@ -84,6 +85,12 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
     else:
         max_attempts = quiz.max_attempts if quiz else Quiz._meta.get_field('max_attempts').default
 
+    # ASM-04: quizzes start as drafts; publishing is an explicit choice.
+    if 'is_published' in data:
+        is_published = _coerce_bool(data.get('is_published'))
+    else:
+        is_published = quiz.is_published if quiz else False
+
     validated_questions = None
     if replacing_questions:
         questions_data = data.get('questions', [])
@@ -154,6 +161,7 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
         'passing_percentage': passing_percentage,
         'time_limit_minutes': time_limit_minutes,
         'max_attempts': max_attempts,
+        'is_published': is_published,
         'questions': validated_questions,
     }, errors
 
@@ -167,7 +175,7 @@ class ManageQuizView(APIView):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         
         # Check if user is the instructor
-        if lesson.module.course.instructor != request.user:
+        if not can_manage_course(request.user, lesson.module.course):
             return Response(
                 {'error': 'You do not have permission to access this quiz'},
                 status=status.HTTP_403_FORBIDDEN
@@ -188,7 +196,7 @@ class ManageQuizView(APIView):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         
         # Check if user is the instructor
-        if lesson.module.course.instructor != request.user:
+        if not can_manage_course(request.user, lesson.module.course):
             return Response(
                 {'error': 'You do not have permission to manage this quiz'},
                 status=status.HTTP_403_FORBIDDEN
@@ -218,6 +226,7 @@ class ManageQuizView(APIView):
                 passing_percentage=validated_data['passing_percentage'],
                 time_limit_minutes=validated_data['time_limit_minutes'],
                 max_attempts=validated_data['max_attempts'],
+                is_published=validated_data['is_published'],
             )
 
         # Update quiz settings
@@ -225,12 +234,11 @@ class ManageQuizView(APIView):
         quiz.passing_percentage = validated_data['passing_percentage']
         quiz.time_limit_minutes = validated_data['time_limit_minutes']
         quiz.max_attempts = validated_data['max_attempts']
+        quiz.is_published = validated_data['is_published']
 
         if replacing_questions:
             # Replace questions only while there is no attempt history to preserve.
             quiz.questions.all().delete()
-
-            total_marks = 0
 
             for q_data in validated_data['questions']:
                 question = QuizQuestion.objects.create(
@@ -238,7 +246,6 @@ class ManageQuizView(APIView):
                     question_text=q_data['text'],
                     marks=q_data['marks']
                 )
-                total_marks += question.marks
 
                 # Create options
                 for opt_data in q_data['options']:
@@ -248,9 +255,8 @@ class ManageQuizView(APIView):
                         is_correct=opt_data['is_correct']
                     )
 
-            # Update total marks
-            quiz.total_marks = total_marks
-
+        # The question signals already stored the new total; keep this instance in step.
+        quiz.total_marks = quiz.compute_total_marks()
         quiz.save()
 
         return Response({

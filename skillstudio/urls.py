@@ -28,7 +28,6 @@ urlpatterns = [
     path("api/students/", include("students.urls")),
     path("api/certificates/", include("certificates.urls")),
     path('api/instructors/', include('instructors.urls')),
-    # path('api/events/', include('events.urls')),  # Removed
     path('api/payments/', include('payments.urls')),
 ]
 

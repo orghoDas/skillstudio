@@ -142,7 +142,7 @@ class CalculateCourseGradeTests(TestCase):
     
     def test_grade_calculation_with_quizzes_only(self):
         """Test grade calculation with only quizzes."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Quiz 1',
             total_marks=100
@@ -160,7 +160,7 @@ class CalculateCourseGradeTests(TestCase):
 
     def test_grade_calculation_ignores_incomplete_quiz_attempts(self):
         """Incomplete quiz attempts should not contribute certificate grade evidence."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Quiz 1',
             total_marks=100
@@ -172,7 +172,7 @@ class CalculateCourseGradeTests(TestCase):
             content_type='text',
             content_text='Sample lesson content'
         )
-        incomplete_quiz = Quiz.objects.create(
+        incomplete_quiz = Quiz.objects.create(is_published=True,
             lesson=second_lesson,
             title='Quiz 2',
             total_marks=100
@@ -215,7 +215,7 @@ class CalculateCourseGradeTests(TestCase):
     
     def test_grade_calculation_uses_completed_quiz_attempts(self):
         """Test grade calculation with quiz evidence only."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Quiz 1',
             total_marks=100
@@ -233,7 +233,7 @@ class CalculateCourseGradeTests(TestCase):
 
     def test_grade_calculation_uses_attempt_total_snapshot(self):
         """Certificate grades use the quiz total captured for the attempt."""
-        quiz = Quiz.objects.create(
+        quiz = Quiz.objects.create(is_published=True,
             lesson=self.lesson,
             title='Quiz 1',
             total_marks=100

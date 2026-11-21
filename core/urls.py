@@ -44,5 +44,4 @@ urlpatterns = [
     # Search & Discovery
     path('search/', views.search_results, name='search_results'),
     path('browse/', views.browse_courses, name='browse_courses'),
-    path('recommendations/', views.ai_recommendations, name='ai_recommendations'),
 ]

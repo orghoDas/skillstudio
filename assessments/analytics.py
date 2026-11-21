@@ -6,11 +6,16 @@ from .models import (
 )
 
 
+def graded_attempts():
+    """Finished attempts only: an in-progress attempt has no score yet (ASM-04)."""
+    return QuizAttempt.objects.filter(completed_at__isnull=False)
+
+
 def get_course_assessment_overview(course):
     quizzes = Quiz.objects.filter(lesson__module__course=course)
 
     quiz_stats = (
-        QuizAttempt.objects
+        graded_attempts()
         .filter(quiz__in=quizzes)
         .values("quiz_id", "quiz__title")
         .annotate(
@@ -27,7 +32,7 @@ def get_course_assessment_overview(course):
 
 def get_quiz_question_analytics(quiz):
     questions = QuizQuestion.objects.filter(quiz=quiz).prefetch_related("options")
-    attempts = list(QuizAttempt.objects.filter(quiz=quiz).only("answers"))
+    attempts = list(graded_attempts().filter(quiz=quiz).only("answers"))
 
     analytics = []
 

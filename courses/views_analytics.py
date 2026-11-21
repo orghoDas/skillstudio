@@ -1,13 +1,6 @@
-"""Course Analytics Views
+"""Admin-only, platform-wide course statistics (/api/courses/admin/stats/).
 
-NOTE: This module previously contained duplicate analytics views.
-They have been consolidated as follows:
-
-- InstructorDashboardView -> Use instructors.views.InstructorDashboardView
-- CourseAnalyticsView -> Use analytics.views.InstructorCourseAnalyticsView
-- AdminCourseStatsView -> Kept here as it's course-specific admin view
-
-For backward compatibility, we import and re-export the proper views below.
+Instructor analytics live in instructors.views (InstructorDashboardView).
 """
 
 from django.db.models import Count, Sum, Q
@@ -21,11 +14,6 @@ from .models import Course, Lesson
 from enrollments.models import Enrollment, LessonProgress
 from payments.models import Payment
 
-# Import from proper locations
-from instructors.views import InstructorDashboardView  # Main instructor dashboard
-# Analytics app removed - CourseAnalyticsView no longer available
-
-# Only keep admin stats here as it's course-specific
 class AdminCourseStatsView(APIView):
     """Platform-wide course statistics (admin only)"""
     permission_classes = [IsAuthenticated, IsAdmin]

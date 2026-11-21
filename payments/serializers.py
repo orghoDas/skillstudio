@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
-    PaymentGatewayConfig, PaymentWebhookLog, PaymentDispute
+    PaymentWebhookLog, PaymentDispute
 )
 from accounts.models import User
 from courses.models import Course

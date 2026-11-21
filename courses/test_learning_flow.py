@@ -214,7 +214,7 @@ class CompletedCourseStaysAccessibleTests(LearningFlowFixture, APITestCase):
         note = self.client.post("/api/students/notes/", {"lesson": self.lesson1.id, "content": "Review"}, format="json")
         self.assertEqual(note.status_code, status.HTTP_201_CREATED, note.data)
 
-        Quiz.objects.create(lesson=self.lesson1, title="Q", total_marks=1)
+        Quiz.objects.create(is_published=True, lesson=self.lesson1, title="Q", total_marks=1)
         self.assertEqual(self.client.get(f"/api/assessments/quiz/lesson/{self.lesson1.id}/").status_code, 200)
 
         exam = Exam.objects.create(course=self.course, title="Final", duration_minutes=30,

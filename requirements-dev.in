@@ -1,0 +1,7 @@
+# Development / test-only dependencies (not needed to run the app). Regenerate:
+#   pip-compile --generate-hashes --strip-extras requirements-dev.in
+-c requirements.txt
+
+# Browser smoke tests (core/test_browser_smoke.py, AUDIT_REPORT.md TEST-02).
+# They are skipped automatically when Playwright or its browser isn't installed.
+playwright==1.49.1

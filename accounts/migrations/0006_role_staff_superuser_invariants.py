@@ -22,6 +22,7 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             backfill_role_staff_superuser_invariants,
             migrations.RunPython.noop,
+            elidable=True,  # squashed away (REPO-03); only needed for pre-0006 data
         ),
         migrations.AddConstraint(
             model_name="user",

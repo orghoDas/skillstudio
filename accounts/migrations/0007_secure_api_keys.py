@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
             name="revoked_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
-        migrations.RunPython(hash_existing_api_keys, migrations.RunPython.noop),
+        migrations.RunPython(hash_existing_api_keys, migrations.RunPython.noop, elidable=True),
         migrations.RemoveField(
             model_name="apikey",
             name="key",

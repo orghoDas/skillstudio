@@ -85,31 +85,6 @@ class InstructorProfile(models.Model):
             'total_revenue',
         ])
 
-# PostgreSQL equivalent for `instructor_profiles` (db_table):
-# CREATE TABLE IF NOT EXISTS instructor_profiles (
-#     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
-#     bio text NOT NULL DEFAULT '',
-#     headline varchar(255) NOT NULL DEFAULT '',
-#     website varchar(2000) NOT NULL DEFAULT '',
-#     linkedin varchar(2000) NOT NULL DEFAULT '',
-#     twitter varchar(2000) NOT NULL DEFAULT '',
-#     expertise_areas jsonb NOT NULL DEFAULT '[]',
-#     years_of_experience integer NOT NULL DEFAULT 0,
-#     certifications jsonb NOT NULL DEFAULT '[]',
-#     education jsonb NOT NULL DEFAULT '[]',
-#     total_courses integer NOT NULL DEFAULT 0,
-#     total_students integer NOT NULL DEFAULT 0,
-#     total_revenue numeric(10,2) NOT NULL DEFAULT 0,
-#     is_verified boolean NOT NULL DEFAULT false,
-#     verified_at timestamptz NULL,
-#     created_at timestamptz NOT NULL DEFAULT now(),
-#     updated_at timestamptz NOT NULL DEFAULT now()
-# );
-# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_user ON instructor_profiles (user_id);
-# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_is_verified ON instructor_profiles (is_verified);
-# CREATE INDEX IF NOT EXISTS idx_instructor_profiles_total_students ON instructor_profiles (total_students DESC);
-
 
 # InstructorPayout was removed (AUDIT_REPORT.md PAY-07, 2026-11-21): payouts
 # live only in payments.Payout and are paid from the instructor's wallet.

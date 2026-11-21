@@ -35,11 +35,3 @@ def signup_role_for_email(email):
         )
     return settings.SIGNUP_ROLE_BY_EMAIL_DOMAIN.get(domain, settings.SIGNUP_DEFAULT_ROLE)
 
-
-def normalize_role_flags(user):
-    if getattr(user, 'is_superuser', False):
-        user.role = user.Role.ADMIN
-        user.is_staff = True
-    elif getattr(user, 'role', None) == user.Role.ADMIN:
-        user.is_staff = True
-    return user

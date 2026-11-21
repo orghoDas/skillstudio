@@ -247,7 +247,7 @@ function renderQuizEditor() {
             
             <div class="mt-6 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
                 <h3 class="font-semibold text-blue-400 mb-2">Quiz Settings</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label for="quiz-passing-score" class="block text-sm mb-2">Passing Score (%)</label>
                         <input type="number" id="quiz-passing-score" min="0" max="100" value="70" 
@@ -260,8 +260,17 @@ function renderQuizEditor() {
                     </div>
                     <div>
                         <label for="quiz-attempts" class="block text-sm mb-2">Max Attempts</label>
-                        <input type="number" id="quiz-attempts" min="1" value="3" 
+                        <input type="number" id="quiz-attempts" min="0" value="3" 
                             class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
+                        <p class="text-xs text-gray-400 mt-1">0 for unlimited</p>
+                    </div>
+                    <div>
+                        <span class="block text-sm mb-2">Visibility</span>
+                        <label for="quiz-published" class="flex items-center gap-2 py-2">
+                            <input type="checkbox" id="quiz-published" class="w-4 h-4">
+                            <span>Published to students</span>
+                        </label>
+                        <p class="text-xs text-gray-400">Unpublished quizzes are drafts students can't see.</p>
                     </div>
                 </div>
             </div>
@@ -340,8 +349,12 @@ async function loadQuizContent() {
             document.getElementById('quiz-passing-score').value = response.passing_percentage;
         }
         if (response.time_limit_minutes !== undefined) {
-            document.getElementById('quiz-time-limit').value = response.time_limit_minutes;
+            document.getElementById('quiz-time-limit').value = response.time_limit_minutes || 0;
         }
+        if (response.max_attempts !== undefined) {
+            document.getElementById('quiz-attempts').value = response.max_attempts || 0;
+        }
+        document.getElementById('quiz-published').checked = !!response.is_published;
         
         const questions = response.questions || [];
         questions.forEach(q => {
@@ -586,6 +599,8 @@ function collectQuizData() {
         title: document.getElementById('lesson-title').value || 'Quiz',
         passing_percentage: parseInt(document.getElementById('quiz-passing-score').value) || 70,
         time_limit_minutes: parseInt(document.getElementById('quiz-time-limit').value) || 0,
+        max_attempts: parseInt(document.getElementById('quiz-attempts').value) || 0,
+        is_published: document.getElementById('quiz-published').checked,
         questions: questions
     };
 }

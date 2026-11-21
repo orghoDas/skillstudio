@@ -91,8 +91,8 @@ class CourseModelTest(TestCase):
             is_free=True,
             price=Decimal('99.99')
         )
-        course.clean()
-        self.assertEqual(course.price, 0)
+        course.refresh_from_db()
+        self.assertEqual(course.price, 0)  # save() forces free courses to price 0
 
 
 class ModuleLessonModelTest(TestCase):

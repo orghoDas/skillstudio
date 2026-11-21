@@ -4,7 +4,7 @@ from enrollments.constants import ACCESS_STATUSES
 from .video import parse_video_url
 from .models import (
     Course, Lesson, Module, Category, Tag, CourseTag,
-    CourseVersion, LessonResource
+    LessonResource
 )
 
 User = get_user_model()
@@ -420,12 +420,3 @@ class CourseCurriculumSerializer(serializers.ModelSerializer):
             many=True,
             context=self.context
         ).data
-
-
-# ===== COURSE VERSION SERIALIZER =====
-
-class CourseVersionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CourseVersion
-        fields = ['id', 'course', 'version_number', 'data', 'created_at']
-        read_only_fields = ['created_at']

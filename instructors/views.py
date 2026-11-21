@@ -20,7 +20,6 @@ from .services import (
     get_course_overview,
     get_student_engagement,
     get_revenue_summary,
-    get_lesson_dropoff,
     get_or_create_instructor_profile,
     update_instructor_profile,
 )

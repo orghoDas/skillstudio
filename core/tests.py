@@ -126,3 +126,29 @@ class TemplateApiContractTests(SimpleTestCase):
             if not _view_handles(func, method):
                 unsupported.append(f"{where} {method} {raw}")
         self.assertEqual(unsupported, [], "Templates use HTTP methods the views don't support")
+
+
+class ProjectHygieneTests(SimpleTestCase):
+    """DOC-02 / REPO-03: generated docs and migrations must match the code."""
+
+    databases = {"default"}  # makemigrations reads the applied-migrations table
+
+    def test_api_route_reference_is_up_to_date(self):
+        from core.routes import DOC_PATH, render_routes
+
+        self.assertTrue(DOC_PATH.exists(), "Run: python manage.py api_routes --write")
+        self.assertEqual(
+            DOC_PATH.read_text(), render_routes(),
+            "docs/API_ROUTES.md is stale. Run: python manage.py api_routes --write",
+        )
+
+    def test_no_model_changes_without_a_migration(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        try:
+            call_command("makemigrations", "--check", "--dry-run", stdout=out, stderr=out)
+        except SystemExit:
+            self.fail(f"Model changes without a migration. Run makemigrations.\n{out.getvalue()}")

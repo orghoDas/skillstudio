@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *31 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02; all 2026-11-21); 36 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, ENR-03, DEP-01 are partially done* |
+| *Resolved so far* | *39 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04; all 2026-11-21); 28 open, of which SEC-01, SEC-03, SEC-09, PAY-04, PAY-05, API-04, ENR-03 are partially done. All P1 and P3 items are resolved.* |
 
 ### Fix these first (in order)
 
@@ -163,7 +163,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [PAY-09](#pay-09) | P1 | ~~Every active coupon code is listed to every logged-in user~~ ✅ resolved 2026-11-21 |
 | [ASM-01](#asm-01) | P1 | ~~Unpublished or failed quizzes permanently block course completion~~ ✅ resolved 2026-11-21 |
 | [ASM-02](#asm-02) | P1 | ~~Quiz time limit can be bypassed~~ ✅ resolved 2026-11-21 |
-| [EXM-01](#exm-01) | P1 | Exam questions are visible before the exam window opens |
+| [EXM-01](#exm-01) | P1 | ~~Exam questions are visible before the exam window opens~~ ✅ resolved 2026-11-21 |
 | [API-01](#api-01) | P1 | ~~24 frontend calls target endpoints that don't exist~~ ✅ resolved 2026-11-21 (contract test added) |
 | [API-02](#api-02) | P1 | ~~Route shadowing: `tags/`, `search/`, lesson content, numeric slugs~~ ✅ resolved 2026-11-21 |
 | [API-03](#api-03) | P1 | ~~Section and lesson delete buttons return 405~~ ✅ resolved 2026-11-21 |
@@ -177,7 +177,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [TEST-02](#test-02) | P1 | ~~No tests cover the frontend↔API contract~~ ✅ resolved 2026-11-21 (contract + browser smoke tests) |
 | [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
 | [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
-| [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext |
+| [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext — 🟡 `PaymentGatewayConfig` deleted 2026-11-21; payout details still plaintext |
 | [EXM-03](#exm-03) | P2 | Exam grading and marks integrity (no snapshot, unpassable exams) |
 | [STU-02](#stu-02) | P2 | Dashboard numbers are wrong or never populated |
 | [CRS-02](#crs-02) | P2 | Ownership failures return 400 instead of 403; admins can't moderate content |
@@ -201,13 +201,13 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [FE-02](#fe-02) | P2 | Role-based navbar never works; debug logs and stale routes |
 | [ASM-03](#asm-03) | P2 | Quiz editing ignores course lock; error points to a non-existent feature |
 | [INS-01](#ins-01) | P2 | Instructor dashboard swallows errors and returns fake zeros |
-| [REPO-01](#repo-01) | P3 | 5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git |
-| [REPO-02](#repo-02) | P3 | Dead code and stale comments |
-| [REPO-03](#repo-03) | P3 | Migration churn in `accounts` |
-| [DOC-01](#doc-01) | P3 | README advertises features that don't exist and has no setup guide |
-| [DOC-02](#doc-02) | P3 | App READMEs document a different API |
-| [DEP-01](#dep-01) | P3 | Dependencies installed but unused; no lock file — 🟡 gunicorn/daphne removed |
-| [ASM-04](#asm-04) | P3 | Assessment model and analytics gaps |
+| [REPO-01](#repo-01) | P3 | ~~5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git~~ ✅ resolved 2026-11-21 |
+| [REPO-02](#repo-02) | P3 | ~~Dead code and stale comments~~ ✅ resolved 2026-11-21 |
+| [REPO-03](#repo-03) | P3 | ~~Migration churn in `accounts`~~ ✅ resolved 2026-11-21 (squashed 0001–0008) |
+| [DOC-01](#doc-01) | P3 | ~~README advertises features that don't exist and has no setup guide~~ ✅ resolved 2026-11-21 |
+| [DOC-02](#doc-02) | P3 | ~~App READMEs document a different API~~ ✅ resolved 2026-11-21 (generated route reference) |
+| [DEP-01](#dep-01) | P3 | ~~Dependencies installed but unused; no lock file~~ ✅ resolved 2026-11-21 (hash-locked) |
+| [ASM-04](#asm-04) | P3 | ~~Assessment model and analytics gaps~~ ✅ resolved 2026-11-21 |
 
 ---
 
@@ -819,7 +819,15 @@ Document the choice either way.
 **Fix approach:** In `submit_quiz_attempt`, if `quiz.has_time_limit() and attempt.is_expired()`, grade only the answers already saved, set `is_auto_submitted`, and ignore the posted `answers`. Delete the unrouted duplicate `SubmitQuizAttemptView`.
 
 <a id="exm-01"></a>
-### EXM-01: Exam questions are visible before the exam window opens
+### EXM-01: Exam questions are visible before the exam window opens — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **Questions only during an attempt.** For students, `GET /api/exams/<id>/` returns questions and custom questions **only while the student has an in-progress, unexpired attempt**. Otherwise they're empty, with `questions_hidden: true`, plus `availability` (`open` / `not_open_yet` / `closed` / `not_published`) and the `start_datetime`/`end_datetime`, so the page can say when the exam opens. Attempts can only start inside the window, so questions can't leak early. Instructors and admins still see everything.
+> - **Submit re-checks.** `submit_exam_attempt` refuses an attempt that wasn't started inside the window (`outside_window`) or whose exam is no longer published. An attempt started just before the window closes can still be finished within its own duration.
+> - **Clear reasons.** Start and submit return `409 {error, code}` with an explicit reason ("This exam opens at … UTC", "closed at …", "You have used all N attempt(s)") instead of "could not be started". The exam list page already shows that message.
+> - **Tests:** `exams/test_exam_window.py`. The existing answer-hiding test now starts an attempt first.
+
+*Original finding:*
 
 **Evidence:**
 - `start_exam_attempt` ([exams/services.py](exams/services.py)) correctly refuses to start outside `start_datetime`/`end_datetime` via `Exam.is_active()`.
@@ -1125,7 +1133,7 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - `InstructorPayout.payment_details` (bank or account details) is a plaintext `JSONField` echoed back by `InstructorPayoutSerializer`, and so is `payments.Payout.account_details`.
 
 **Fix approach:**
-- Delete `PaymentGatewayConfig` (with a migration) and read gateway keys from environment variables only.
+- Delete `PaymentGatewayConfig` (with a migration) and read gateway keys from environment variables only. *(Done 2026-11-21 with [REPO-02](#repo-02), migration `payments/0004`.)*
 - Store payout destinations as provider tokens (e.g. Stripe Connect account id) instead of raw bank data. If raw data is unavoidable, encrypt the field (`django-fernet-fields` / KMS) and return only a masked summary.
 
 <a id="exm-03"></a>
@@ -1474,9 +1482,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 ## 7. P3: Low
 
 <a id="repo-01"></a>
-### REPO-01: 5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git — 🟡 PARTIALLY DONE 2026-11-21
+### REPO-01: 5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21:** `venv/` (5,965 files) and all 136 tracked `*.pyc` were removed from the whole git history as part of the [SEC-03](#sec-03) scrub. The local `venv/` folder and `.pyc` files are still on disk, ignored. A pre-commit hook now blocks `.env*`. **Still open:**
+> **Resolved 2026-11-21:** the scratch scripts were deleted with [OPS-05](#ops-05). `.pre-commit-config.yaml` now has a `forbid-venv-and-bytecode` hook that blocks `venv/`, `.venv/`, `env/`, `__pycache__/` and `*.py[cod]`, next to the existing `.env` and gitleaks hooks.
+>
+> *Earlier progress:* `venv/` (5,965 files) and all 136 tracked `*.pyc` were removed from the whole git history as part of the [SEC-03](#sec-03) scrub. The local `venv/` folder and `.pyc` files are still on disk, ignored. A pre-commit hook now blocks `.env*`. **Still open:**
 > - Delete the scratch scripts (`scripts/run_*.py`, `scripts/check_profile_columns.py`, `enrollments/verify_app.py`; see [OPS-05](#ops-05)).
 > - Extend the pre-commit hook to block `venv/` and `*.pyc`.
 
@@ -1508,6 +1518,15 @@ The UI can show a lesson as unlocked that the server then refuses.
 
 **Fix approach:** Delete the dead code in one cleanup PR after the P0/P1 work. Git history keeps it.
 
+> **Resolved 2026-11-21:**
+> - Deleted `views_attempt.SubmitQuizAttemptView` (earlier) and `CourseVersionSerializer`. The `CourseVersion` model stays, because `Course.current_version` points at it.
+> - Deleted the no-op `Lesson.clean()/save()`. `Course.clean()`'s "free means price 0" rule moved into `Course.save()`, so it now holds on every save and not only in admin forms.
+> - Deleted `accounts/utils.normalize_role_flags`, `core/templatetags/` (`get_item`), the dead `/recommendations/` page, `instructors.services.get_lesson_dropoff` and its import, and the unused, unpaid wallet helpers in `students/services.py` (`add_funds_to_wallet`, `deduct_funds_from_wallet`, `get_wallet_balance`, `get_wallet_transactions`).
+> - Deleted `PaymentGatewayConfig`, its admin and imports (migration `payments/0004`).
+> - Removed the commented-out event, recommender and dropoff code (settings, root URLconf, payments models and admin, instructors, enrollments). `MeView.get` no longer swallows exceptions.
+> - Removed about 520 lines of hand-written "PostgreSQL equivalent" SQL comments from every `models.py`. They had drifted from the real schema (for example, `auth_user` references); migrations are the schema source of truth.
+> - `views_analytics.py` now has an accurate docstring and no unused re-export.
+
 <a id="repo-03"></a>
 ### REPO-03: Migration churn in `accounts`
 
@@ -1521,8 +1540,20 @@ Several data migrations are **destructive and irreversible** (`reverse = noop`):
 - Once every environment has migrated past `0009`, squash with `squashmigrations accounts 0001 0009` to speed up test DB creation and remove the confusion.
 - Document in the deploy runbook that a DB snapshot is mandatory before applying migrations, and add a `--plan` review step in CI for any migration containing `RunSQL`/`RunPython` deletes.
 
+> **Resolved 2026-11-21:**
+> - New `accounts/0001_squashed_0008.py` is one clean initial migration (`replaces` 0001–0008, including the duplicate `0002`s and the merge). New databases run it plus `0009`. Databases that already applied the old files keep using them.
+> - `0009` stays separate. It depends on `students.0002`, and folding it into the squash creates a dependency cycle (`students` depends on the user model).
+> - The data steps in `0006`, `0007` and `0009` are marked `elidable`.
+> - **Verified:**
+>   - A fresh database migrates cleanly.
+>   - A database built from the previous commit upgrades cleanly (it marks the squash applied).
+>   - Both end with identical `accounts` tables.
+> - Delete the replaced files once no database still needs them.
+> - The README's **Migrations** section makes a backup (`pg_dump`) and a `migrate --plan` review (read every `Raw Python`/`Raw SQL` operation) mandatory, and names the destructive migrations. There is no deploy CI ([D-03](#d-03)). Instead, `core.tests.ProjectHygieneTests` fails when a model changes without a migration.
+> - **Note:** `makemigrations` against the hosted Neon database reports `InconsistentMigrationHistory: certificates.0001_initial is applied before its dependency enrollments.0001_initial`. That history predates this change; the squash doesn't touch it. Fix it on that database only after a backup, or recreate the database from migrations.
+
 <a id="doc-01"></a>
-### DOC-01: README advertises features that don't exist and has no setup guide
+### DOC-01: README advertises features that don't exist and has no setup guide — ✅ RESOLVED 2026-11-21
 
 **Evidence:**
 - [README.md](README.md) lists an AI recommender, badges, streak calendar, content versioning, password reset, an admin panel, fraud detection and more. Several were removed, and others were never built.
@@ -1539,6 +1570,16 @@ Several data migrations are **destructive and irreversible** (`reverse = noop`):
 
 Move aspirational features to a "Roadmap" section.
 
+> **Resolved 2026-11-21:** [README.md](README.md) was rewritten from the code. It covers:
+> - what exists today, per role, and what doesn't exist yet (the Stripe top-up)
+> - an architecture diagram and a table of what each app owns
+> - the rules to know before changing code (one money path, policies, signup roles)
+> - local setup (venv, hash-locked install, `.env.example`, `migrate`, `create_categories`, `createsuperuser`, `runserver`)
+> - how to run tests, including the browser tag
+> - a migrations safety section, secrets hygiene, and the roadmap (which links here)
+>
+> There are no deploy notes, by [D-03](#d-03).
+
 <a id="doc-02"></a>
 ### DOC-02: App READMEs document a different API
 
@@ -1549,10 +1590,23 @@ Move aspirational features to a "Roadmap" section.
 
 **Fix approach:** Once the OpenAPI schema ([API-04](#api-04)) exists, delete the hand-written endpoint lists and keep a short domain/invariants README per app that links to `/api/schema/`.
 
-<a id="dep-01"></a>
-### DEP-01: Dependencies installed but unused; no lock file — 🟡 PARTIAL 2026-11-21
+> **Resolved 2026-11-21** (without waiting for API-04):
+> - The roughly 5,200 lines of hand-written app docs were replaced by short READMEs per app (about 25–50 lines each), checked against the code. Each covers the models, the rules and invariants, and where the logic lives.
+> - `accounts/QUICKSTART.md`, `courses/QUICKSTART.md`, `enrollments/QUICKSTART.md` and `enrollments/IMPLEMENTATION_SUMMARY.md` were deleted.
+> - Endpoints now live in **[docs/API_ROUTES.md](docs/API_ROUTES.md)**. `python manage.py api_routes --write` generates it from the URLconf: path, methods, DRF permission classes and view, for all 132 API routes.
+> - `core.tests.ProjectHygieneTests` fails when the file is stale.
+> - When API-04 adds an OpenAPI schema, the READMEs can link to it too.
 
-> *Progress 2026-11-21:* the unused or deploy-only `gunicorn` and `daphne` were removed ([D-03](#d-03)). **Still open:** Celery, Redis and kombu (no tasks exist), and hash-locked requirements.
+<a id="dep-01"></a>
+### DEP-01: Dependencies installed but unused; no lock file — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21:**
+> - Removed Celery: `skillstudio/celery.py`, the import in `skillstudio/__init__.py`, the `CELERY_*` settings and the `.env.example` block.
+> - Removed every package only Celery or Redis needed: `celery`, `kombu`, `amqp`, `billiard`, `vine`, `redis`, `click*`, `prompt_toolkit`, `wcwidth`, `tzlocal`, `python-dateutil`, `six`, `msgpack`, `colorama`, `exceptiongroup` and `packaging`.
+> - Direct dependencies are now declared in `requirements.in` and `requirements-dev.in`. `requirements.txt` and `requirements-dev.txt` are generated by `pip-compile --generate-hashes`, which gives 15 runtime packages (it was 35) with hashes.
+> - **Verified:** a clean venv installed with `pip install --require-hashes -r requirements.txt -r requirements-dev.txt` passes `manage.py check` and the test suite.
+> - Earlier: `gunicorn` and `daphne` were removed ([D-03](#d-03)).
+> - **Your existing `.venv` still has the old packages.** Run `pip-sync requirements.txt requirements-dev.txt` (from `pip-tools`) to match the lock files.
 
 *Original finding:*
 
@@ -1583,6 +1637,16 @@ Move aspirational features to a "Roadmap" section.
 - Filter analytics to `completed_at__isnull=False`.
 - Use `can_manage_course` for analytics access.
 
+> **Resolved 2026-11-21** (migration `assessments/0007`):
+> - `Quiz` has `created_at`/`updated_at`, a `__str__` and `verbose_name_plural`.
+> - `QuizQuestion.difficulty` uses `TextChoices` (`easy`/`medium`/`hard`). The migration maps existing free-text values onto them, with unknown values becoming `medium`.
+> - `Quiz.is_published` now defaults to `False`. Existing quizzes keep their value.
+>   - `ManageQuizView` accepts `is_published`, and a new quiz is a draft unless it's set.
+>   - The lesson editor has a **Published to students** checkbox. It also sends `max_attempts` now; that field was in the form but never saved.
+> - `total_marks` is kept equal to the sum of the questions' marks by `post_save`/`post_delete` signals on `QuizQuestion` (`assessments/signals.py`), so admin and shell edits stay in sync too. The migration recomputes it for existing quizzes.
+> - Both analytics functions count finished attempts only. Both analytics views and `ManageQuizView` use `can_manage_course`, so admins have access.
+> - Tests: `assessments/test_quiz_model.py`.
+
 ---
 
 ## 8. What is in good shape
@@ -1603,12 +1667,12 @@ Move aspirational features to a "Roadmap" section.
 
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
-| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, ~~TEST-02~~ ✅ | 3–5 days |
-| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, ~~TEST-01~~ ✅ | 1–2 weeks |
+| **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, ~~OPS-03~~ ✅; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ENR-03 🟡, ~~TEST-02~~ ✅ | 3–5 days |
+| **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09 🟡, ADM-01, ~~TEST-01~~ ✅ | 1–2 weeks |
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
-| **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |
+| **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
 
 ### Definition of done for release
 

@@ -16,13 +16,33 @@ class Quiz(models.Model):
         related_name='quiz'
     )
     title = models.CharField(max_length=255, blank=True)
+    # Sum of the questions' marks; kept in sync by assessments.signals (ASM-04).
     total_marks = models.PositiveIntegerField(default=0)
     time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
     passing_percentage = models.PositiveIntegerField(default=50)
-    is_published = models.BooleanField(default=True)
+    # ASM-04: a new quiz is a draft until the instructor publishes it.
+    is_published = models.BooleanField(default=False)
     # ASM-01: how many graded attempts a student gets; null = unlimited.
     # Passing once is enough; a student who passed can't start again.
     max_attempts = models.PositiveIntegerField(default=3, null=True, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "quizzes"
+
+    def __str__(self):
+        return self.title or f"Quiz for {self.lesson}"
+
+    def compute_total_marks(self):
+        return self.questions.aggregate(total=models.Sum("marks"))["total"] or 0
+
+    def refresh_total_marks(self):
+        """Recalculate total_marks from the questions and store it."""
+        self.total_marks = self.compute_total_marks()
+        Quiz.objects.filter(pk=self.pk).update(total_marks=self.total_marks)
+        return self.total_marks
 
     def has_time_limit(self):
         return bool(self.time_limit_minutes)
@@ -31,16 +51,6 @@ class Quiz(models.Model):
         """Only a published quiz with questions can gate lesson completion (ASM-01)."""
         return self.is_published and self.questions.exists()
 
-# PostgreSQL equivalent:
-# CREATE TABLE IF NOT EXISTS assessments_quiz (
-#     id serial PRIMARY KEY,
-#     lesson_id integer NOT NULL UNIQUE REFERENCES courses_lesson(id) ON DELETE CASCADE,
-#     title varchar(255) NOT NULL DEFAULT '',
-#     total_marks integer NOT NULL DEFAULT 0,
-#     time_limit_minutes integer NULL,
-#     passing_percentage integer NOT NULL DEFAULT 50,
-#     is_published boolean NOT NULL DEFAULT true
-# );
 
 class QuizAttempt(models.Model):
     quiz = models.ForeignKey(
@@ -106,23 +116,12 @@ class QuizAttempt(models.Model):
         elapsed = (timezone.now() - self.started_at).total_seconds()
         return elapsed > self.quiz.time_limit_minutes * 60 + grace_seconds
 
-# PostgreSQL equivalent for attempts:
-# CREATE TABLE IF NOT EXISTS assessments_quizattempt (
-#     id serial PRIMARY KEY,
-#     quiz_id integer NOT NULL REFERENCES assessments_quiz(id) ON DELETE CASCADE,
-#     user_id integer NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
-#     started_at timestamptz NOT NULL DEFAULT now(),
-#     completed_at timestamptz NULL,
-#     score numeric(8,2) NULL,
-#     answers jsonb NOT NULL DEFAULT '{}',
-#     question_snapshot jsonb NOT NULL DEFAULT '[]',
-#     total_marks_snapshot integer NOT NULL DEFAULT 0,
-#     passed boolean NOT NULL DEFAULT false,
-#     is_auto_submitted boolean NOT NULL DEFAULT false
-# );
-# CREATE INDEX IF NOT EXISTS idx_assessments_quizattempt_quiz_user ON assessments_quizattempt (quiz_id, user_id);
-# CREATE INDEX IF NOT EXISTS idx_assessments_quizattempt_completed_at ON assessments_quizattempt (completed_at);
 class QuizQuestion(models.Model):
+    class Difficulty(models.TextChoices):
+        EASY = "easy", "Easy"
+        MEDIUM = "medium", "Medium"
+        HARD = "hard", "Hard"
+
     quiz = models.ForeignKey(
         Quiz,
         on_delete=models.CASCADE,
@@ -131,21 +130,14 @@ class QuizQuestion(models.Model):
     question_text = models.TextField()
     difficulty = models.CharField(
         max_length=20,
-        default="medium"
+        choices=Difficulty.choices,
+        default=Difficulty.MEDIUM,
     )
     marks = models.PositiveIntegerField(default=1)
 
     def __str__(self):
         return self.question_text[:60]
 
-# PostgreSQL equivalent for questions:
-# CREATE TABLE IF NOT EXISTS assessments_quizquestion (
-#     id serial PRIMARY KEY,
-#     quiz_id integer NOT NULL REFERENCES assessments_quiz(id) ON DELETE CASCADE,
-#     question_text text NOT NULL,
-#     difficulty varchar(20) NOT NULL DEFAULT 'medium',
-#     marks integer NOT NULL DEFAULT 1
-# );
 
 class QuestionOption(models.Model):
     question = models.ForeignKey(
@@ -158,11 +150,3 @@ class QuestionOption(models.Model):
 
     def __str__(self):
         return self.option_text
-
-# PostgreSQL equivalent for question options:
-# CREATE TABLE IF NOT EXISTS assessments_questionoption (
-#     id serial PRIMARY KEY,
-#     question_id integer NOT NULL REFERENCES assessments_quizquestion(id) ON DELETE CASCADE,
-#     option_text varchar(255) NOT NULL,
-#     is_correct boolean NOT NULL DEFAULT false
-# );

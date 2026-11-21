@@ -34,11 +34,6 @@ def browse_courses(request):
     """Browse courses by category page"""
     return render(request, 'search/browse.html')
 
-def ai_recommendations(request):
-    """AI-powered course recommendations"""
-    # AI recommender removed — redirect users to course browsing instead
-    return render(request, 'search/browse.html')
-
 # ---------------------------------------------------------------------------
 # Authenticated pages (gated server-side via the JWT auth cookie)
 # ---------------------------------------------------------------------------

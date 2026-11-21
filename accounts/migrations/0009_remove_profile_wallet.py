@@ -45,7 +45,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(backfill_wallets, noop_reverse),
+        migrations.RunPython(backfill_wallets, noop_reverse, elidable=True),
         migrations.RemoveField(
             model_name='profile',
             name='wallet',

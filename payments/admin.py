@@ -7,7 +7,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
-    PaymentGatewayConfig, PaymentWebhookLog, PaymentDispute
+    PaymentWebhookLog, PaymentDispute
 )
 
 
@@ -20,7 +20,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ['status', 'payment_method', 'created_at']
     search_fields = ['user__email', 'provider_id', 'billing_email']
     readonly_fields = [
-        'id', 'user', 'instructor', 'course',  # Removed 'event' - events app disabled
+        'id', 'user', 'instructor', 'course',
         'platform_fee', 'instructor_earnings', 'provider_id',
         'created_at', 'updated_at', 'completed_at'
     ]
@@ -53,7 +53,6 @@ class PaymentAdmin(admin.ModelAdmin):
     def item_display(self, obj):
         if obj.course:
             return f"Course: {obj.course.title}"
-        # Removed event reference - events app disabled
         return "N/A"
     item_display.short_description = 'Item'
 
@@ -152,7 +151,7 @@ class CouponAdmin(admin.ModelAdmin):
     search_fields = ['code']
     readonly_fields = ['id', 'current_usage', 'is_valid', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
-    filter_horizontal = ['specific_courses']  # Removed 'specific_events' - events app disabled
+    filter_horizontal = ['specific_courses']
     
     def discount_display(self, obj):
         if obj.discount_type == Coupon.PERCENT:
@@ -182,19 +181,6 @@ class CouponRedemptionAdmin(admin.ModelAdmin):
     def user_email(self, obj):
         return obj.user.email
     user_email.short_description = 'User'
-
-
-@admin.register(PaymentGatewayConfig)
-class PaymentGatewayConfigAdmin(admin.ModelAdmin):
-    list_display = ['gateway_name', 'is_active', 'mode_display', 'created_at']
-    list_filter = ['is_active', 'is_test_mode', 'gateway_name']
-    readonly_fields = ['created_at', 'updated_at']
-    
-    def mode_display(self, obj):
-        if obj.is_test_mode:
-            return format_html('<span style="color: orange;">TEST MODE</span>')
-        return format_html('<span style="color: green;">LIVE MODE</span>')
-    mode_display.short_description = 'Mode'
 
 
 @admin.register(PaymentWebhookLog)

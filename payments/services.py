@@ -25,7 +25,7 @@ import logging
 
 from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
-    PaymentGatewayConfig, PaymentWebhookLog, PaymentDispute
+    PaymentWebhookLog, PaymentDispute
 )
 from accounts.models import User
 

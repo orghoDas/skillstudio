@@ -12,3 +12,8 @@ repos:
         language: fail
         files: '(^|/)\.env(\..+)?$'
         exclude: '(^|/)\.env\.example$'
+      - id: forbid-venv-and-bytecode
+        name: Block committing virtualenvs and Python bytecode
+        entry: "venv/ and *.pyc files must not be committed — they are machine-specific build output"
+        language: fail
+        files: '(^|/)(\.?venv|env)/|\.py[cod]$|(^|/)__pycache__/'
