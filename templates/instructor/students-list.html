@@ -87,6 +87,11 @@
                 </tbody>
             </table>
         </div>
+        <nav id="students-pagination" aria-label="Student enrollments pages" class="hidden flex items-center justify-end gap-4 px-6 py-4">
+            <button type="button" id="students-previous" class="text-blue-400 disabled:opacity-50">Previous</button>
+            <span id="students-page" class="text-sm text-gray-400"></span>
+            <button type="button" id="students-next" class="text-blue-400 disabled:opacity-50">Next</button>
+        </nav>
     </div>
 </div>
 {% endblock %}
@@ -108,25 +113,29 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    // Load students data
-    async function loadStudents() {
+    let studentPage = 1;
+    let studentRequest = 0;
+    document.getElementById('students-previous').onclick = () => loadStudents(studentPage - 1);
+    document.getElementById('students-next').onclick = () => loadStudents(studentPage + 1);
+
+    async function loadStudents(page = 1) {
+        const request = ++studentRequest;
         try {
-            const response = await apiRequest('/instructors/students/');
-            
+            const response = await apiRequest(`/instructors/students/?page=${page}`);
+
+            if (request !== studentRequest) return;
             if (response) {
-                const students = response.students || [];
-                
-                // Update stats
-                document.getElementById('total-students').textContent = response.count || 0;
-                
-                const activeStudents = students.filter(s => s.status === 'active').length;
-                document.getElementById('active-students').textContent = activeStudents;
-                
-                const avgProgress = students.length > 0 
-                    ? Math.round(students.reduce((sum, s) => sum + (s.progress || 0), 0) / students.length)
-                    : 0;
-                document.getElementById('avg-progress').textContent = avgProgress;
-                
+                const students = response.results;
+                studentPage = page;
+                document.getElementById('students-pagination').classList.toggle('hidden', !response.previous && !response.next);
+                document.getElementById('students-previous').disabled = !response.previous;
+                document.getElementById('students-next').disabled = !response.next;
+                document.getElementById('students-page').textContent = `Page ${page}`;
+
+                document.getElementById('total-students').textContent = response.count;
+                document.getElementById('active-students').textContent = response.summary.active_count;
+                document.getElementById('avg-progress').textContent = Math.round(response.summary.average_progress);
+
                 // Populate table
                 const tbody = document.getElementById('students-table');
                 
@@ -190,6 +199,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }).join('');
             }
         } catch (error) {
+            if (request !== studentRequest) return;
             console.error('Error loading students:', error);
             document.getElementById('students-table').innerHTML = `
                 <tr>

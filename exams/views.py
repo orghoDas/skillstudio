@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 
 from .models import QuestionBank, Exam, ExamAttempt
 from enrollments.constants import ACCESS_STATUSES
@@ -248,7 +250,9 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
         return queryset.filter(course_id__in=enrolled_courses, status='published')
     
     def get_serializer_class(self):
-        if self.request.user.role == 'instructor' or is_admin_user(self.request.user):
+        if self.request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            return ExamSerializer
+        if getattr(self.request.user, 'role', None) == 'instructor' or is_admin_user(self.request.user):
             return ExamSerializer
         return ExamDetailSerializer
 
@@ -313,23 +317,20 @@ def _finalize_if_due(attempt):
 # 🎯 Exam Taking Views (Students)
 # ===========================
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_exam_for_course(request, course_id):
-    """Get all exams for a course."""
-    course = get_object_or_404(Course, id=course_id)
-    if not owns_course(request.user, course) and not has_active_course_enrollment(request.user, course):
-        raise PermissionDenied("Active course enrollment required.")
+class CourseExamListView(generics.ListAPIView):
+    """Published exams accessible to an enrolled learner or course manager."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = ExamListSerializer
+    queryset = Exam.objects.none()
 
-    exams = Exam.objects.filter(
-        course_id=course_id,
-        status='published'
-    )
-    
-    serializer = ExamListSerializer(exams, many=True)
-    return Response(serializer.data)
+    def get_queryset(self):
+        course = get_object_or_404(Course, pk=self.kwargs['course_id'])
+        if not owns_course(self.request.user, course) and not has_active_course_enrollment(self.request.user, course):
+            raise PermissionDenied("Active course enrollment required.")
+        return Exam.objects.filter(course=course, status='published').select_related('course').order_by('-created_at', '-pk')
 
 
+@extend_schema(request=None, responses={201: ExamAttemptSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def start_exam(request, exam_id):
@@ -352,6 +353,7 @@ def start_exam(request, exam_id):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(request=ExamAnswersSerializer, responses=OpenApiTypes.OBJECT)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_exam(request, exam_id):
@@ -388,6 +390,7 @@ def _get_attempt_and_answers(request, exam_id):
     return attempt, serializer.validated_data['answers']
 
 
+@extend_schema(request=ExamAnswersSerializer, responses=OpenApiTypes.OBJECT)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def save_exam_answers(request, exam_id):
@@ -400,25 +403,36 @@ def save_exam_answers(request, exam_id):
     return Response({'status': attempt.status, 'time_remaining': attempt.time_remaining_seconds()})
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def exam_attempts_history(request, exam_id):
-    """Get user's attempt history for an exam."""
-    exam = get_object_or_404(Exam.objects.select_related('course'), id=exam_id)
-    ensure_student_can_access_exam(request.user, exam)
+class ExamAttemptsListView(generics.ListAPIView):
+    """Paginate attempt records before finalizing overdue attempts on this page."""
+    queryset = ExamAttempt.objects.none()
 
-    attempts = ExamAttempt.objects.filter(
-        exam_id=exam_id,
-        user=request.user
-    ).select_related('exam', 'result', 'user__profile').order_by('-started_at')
-    attempts = [_finalize_if_due(attempt) or attempt for attempt in attempts]
-    serializer = ExamAttemptListSerializer(attempts, many=True, context=exam_result_context(request.user, exam))
-    return Response({
-        'attempts': serializer.data,
-        'total_attempts': len(attempts)
-    })
+    def list(self, request, *args, **kwargs):
+        page = self.paginate_queryset(self.get_queryset())
+        attempts = [_finalize_if_due(attempt) or attempt for attempt in page]
+        return self.get_paginated_response(self.get_serializer(attempts, many=True).data)
 
 
+class ExamHistoryView(ExamAttemptsListView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ExamAttemptListSerializer
+
+    def get_queryset(self):
+        exam = get_object_or_404(Exam.objects.select_related('course'), pk=self.kwargs['exam_id'])
+        ensure_student_can_access_exam(self.request.user, exam)
+        self.result_context = exam_result_context(self.request.user, exam)
+        attempts = ExamAttempt.objects.filter(exam=exam, user=self.request.user)
+        if self.request.query_params.get('status') == 'completed':
+            attempts = attempts.filter(status='completed')
+        return attempts.select_related(
+            'exam', 'result', 'user__profile',
+        ).order_by('-started_at', '-pk')
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), **getattr(self, 'result_context', {})}
+
+
+@extend_schema(responses=ExamResultSerializer)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def exam_result_detail(request, attempt_id):
@@ -465,20 +479,13 @@ def exam_analytics(request, exam_id):
     return Response(analytics_data)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated, IsInstructor])
-def exam_attempts_list(request, exam_id):
-    """Get all attempts for an exam (instructor view)."""
-    exam = get_manageable_exam_or_404(request.user, exam_id)
-    
-    attempts = ExamAttempt.objects.filter(exam=exam).select_related('user__profile', 'exam')
-    attempts = [_finalize_if_due(attempt) or attempt for attempt in attempts]
-    serializer = ExamAttemptSerializer(attempts, many=True)
-    
-    return Response({
-        'attempts': serializer.data,
-        'total_attempts': len(attempts)
-    })
+class InstructorExamAttemptsView(ExamAttemptsListView):
+    permission_classes = [IsAuthenticated, IsInstructor]
+    serializer_class = ExamAttemptSerializer
+
+    def get_queryset(self):
+        exam = get_manageable_exam_or_404(self.request.user, self.kwargs['exam_id'])
+        return ExamAttempt.objects.filter(exam=exam).select_related('user__profile', 'exam').order_by('-started_at', '-pk')
 
 
 @api_view(['POST'])

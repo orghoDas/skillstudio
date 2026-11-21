@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load instructor stats
     async function loadStats() {
         try {
-            const response = await apiRequest('/instructors/stats/');
+            const response = await apiRequest('/instructors/dashboard/');
             console.log('Stats response:', response);
             if (response) {
                 document.getElementById('courses-count').textContent = response.total_courses || 0;
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const response = await apiRequest('/courses/?instructor=me&page_size=3');
             const container = document.getElementById('my-courses');
 
-            const courses = response.results || response || [];
+            const courses = response?.results || [];
 
             if (courses.length > 0) {
                 container.innerHTML = courses.map(course => {

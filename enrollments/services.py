@@ -1,4 +1,6 @@
 from django.db import transaction
+from django.db.models import Count, F, OuterRef, Prefetch, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
 
@@ -33,23 +35,58 @@ def mark_lesson_completed(enrollment, lesson, *, local_zone=None, record_activit
     return progress
 
 
-def _course_lessons_in_order(course):
-    return Lesson.objects.filter(module__course=course).order_by(
-        'module__position', 'module_id', 'position', 'id',
-    )
+COURSE_LESSON_ORDER = ('module__position', 'module_id', 'position', 'id')
+
+
+def required_lessons_for_courses(course_ids):
+    return Lesson.objects.filter(module__course_id__in=course_ids, is_free=False).order_by(*COURSE_LESSON_ORDER)
 
 
 def get_required_lessons(course):
-    return _course_lessons_in_order(course).filter(is_free=False)
+    return required_lessons_for_courses([course.pk])
+
+
+def _required_completion_rows(queryset, course_id):
+    return queryset.filter(is_completed=True, lesson__is_free=False, lesson__module__course_id=course_id)
+
+
+def with_enrollment_progress(queryset, *, completed_ids=False, durations=False):
+    """Load progress without per-enrollment queries or fan-out across joins."""
+    lessons = (
+        Lesson.objects.filter(module__course_id=OuterRef('course_id'), is_free=False)
+        .order_by()
+        .values('module__course_id')
+    )
+    queryset = queryset.annotate(required_count=Coalesce(
+        Subquery(lessons.annotate(total=Count('pk')).values('total')), 0,
+    ))
+    progress = LessonProgress.objects.filter(enrollment_id=OuterRef('pk')).order_by().values('enrollment_id')
+    if completed_ids:
+        completed = _required_completion_rows(LessonProgress.objects.all(), F('enrollment__course_id'))
+        queryset = queryset.prefetch_related(Prefetch(
+            'lesson_progress', queryset=completed.only('enrollment_id', 'lesson_id').order_by('lesson_id'),
+            to_attr='completed_required_progress',
+        ))
+    else:
+        completed = _required_completion_rows(progress, OuterRef('course_id'))
+        queryset = queryset.annotate(required_completed_count=Coalesce(
+            Subquery(completed.annotate(total=Count('pk')).values('total')), 0,
+        ))
+    if durations:
+        queryset = queryset.annotate(
+            total_duration_seconds=Coalesce(Subquery(lessons.annotate(total=Sum('duration_seconds')).values('total')), 0),
+            watched_time_seconds=Coalesce(Subquery(progress.annotate(total=Sum('watch_time')).values('total')), 0),
+        )
+    return queryset
+
+
+def lesson_progress_percentage(completed, total):
+    return round((completed / total) * 100, 2) if total else 0
 
 
 def get_completed_required_lesson_ids(enrollment):
     return set(
-        enrollment.lesson_progress.filter(
-            is_completed=True,
-            lesson__is_free=False,
-            lesson__module__course=enrollment.course
-        ).values_list('lesson_id', flat=True)
+        _required_completion_rows(enrollment.lesson_progress.all(), enrollment.course_id).values_list('lesson_id', flat=True)
     )
 
 
@@ -66,7 +103,7 @@ def get_lesson_completion_stats(enrollment, *, required_lessons=None):
         'total_lessons': total_count,
         'completed_lessons': completed_count,
         'completed_lesson_ids': sorted(required_ids & completed_required_ids),
-        'progress_percentage': round((completed_count / total_count * 100), 2) if total_count else 0,
+        'progress_percentage': lesson_progress_percentage(completed_count, total_count),
         'all_required_completed': total_count > 0 and completed_count == total_count,
     }
 
@@ -234,7 +271,7 @@ def get_resume_lesson(enrollment, *, lessons=None, completed_ids=None):
 
 def ordered_course_lessons(course):
     """All lessons of a course in one deterministic study order."""
-    return list(_course_lessons_in_order(course).select_related('module'))
+    return list(Lesson.objects.filter(module__course=course).select_related('module').order_by(*COURSE_LESSON_ORDER))
 
 
 def completed_lesson_ids(enrollment):

@@ -273,7 +273,7 @@ class LessonPositionTests(LearningFlowFixture, APITestCase):
         )
         for response in (created, updated):
             self.assertEqual(response.status_code, 400, response.data)
-            self.assertIn("position", response.data)
+            self.assertIn("position", response.data['fields'])
 
         target = Module.objects.create(course=self.course, title="M2")
         Lesson.objects.create(module=target, title="Existing", position=position)

@@ -68,18 +68,18 @@ class StudentDashboardView(APIView):
         })
 
     
-class StudentActivityFeedView(APIView):
+class StudentActivityFeedView(ListAPIView):
     permission_classes = [IsAuthenticated, IsStudent]
+    serializer_class = StudentActivityFeedSerializer
 
-    def get(self, request):
-        feed = get_student_activity_feed(request.user)
-        serializer = StudentActivityFeedSerializer(feed, many=True)
-        return Response(serializer.data)
+    def get_queryset(self):
+        return get_student_activity_feed(self.request.user)
 
 
 class StudentProfileView(APIView):
     """Get or update student profile."""
     permission_classes = [IsAuthenticated, IsStudent]
+    serializer_class = StudentProfileSerializer
     
     def get(self, request):
         profile = get_or_create_student_profile(request.user)
@@ -148,6 +148,7 @@ class WalletView(APIView):
     Stripe test-mode top-up, credited by the verified webhook.
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = WalletSerializer
 
     def get(self, request):
         """Get wallet details and recent transactions."""

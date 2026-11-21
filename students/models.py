@@ -64,19 +64,19 @@ class StudentProfile(models.Model):
         return f"Student Profile: {self.user.email}"
     
     @property
-    def total_courses_enrolled(self):
+    def total_courses_enrolled(self) -> int:
         from enrollments.models import Enrollment
 
         return Enrollment.objects.filter(user_id=self.user_id).count()
 
     @property
-    def total_courses_completed(self):
+    def total_courses_completed(self) -> int:
         from enrollments.models import Enrollment
 
         return Enrollment.objects.filter(user_id=self.user_id, is_completed=True).count()
 
     @property
-    def total_certificates_earned(self):
+    def total_certificates_earned(self) -> int:
         from certificates.models import Certificate
 
         return Certificate.objects.filter(user_id=self.user_id, revoked_at__isnull=True).exclude(
@@ -84,7 +84,7 @@ class StudentProfile(models.Model):
         ).count()
 
     @property
-    def total_watch_time(self):
+    def total_watch_time(self) -> int:
         from enrollments.models import LessonProgress
 
         return LessonProgress.objects.filter(user_id=self.user_id).aggregate(total=models.Sum('watch_time', default=0))['total']

@@ -281,7 +281,7 @@ class EnrollAPITests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.student)
         response = self.client.post(self.url, {"course_id": self.course.id}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data, {"detail": "Insufficient balance", "code": "insufficient_balance"})
+        self.assertEqual(response.data, {"detail": "Insufficient balance", "code": "insufficient_balance", "fields": {}})
 
 
 class RemovedAndLockedEndpointTests(PaymentsFixtureMixin, APITestCase):
@@ -350,6 +350,7 @@ class CouponAPITests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(response.json(), {
             "detail": "An unexpected server error occurred.",
             "code": "internal_error",
+            "fields": {},
         })
         self.assertIn("TypeError: Internal coupon failure", logs.output[0])
         self.assertFalse(Coupon.objects.filter(code="ROLLBACK").exists())
@@ -361,8 +362,8 @@ class CouponAPITests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.student)
         response = self.client.get("/api/payments/coupons/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual([c["code"] for c in response.data], ["PUBLIC10"])
-        self.assertNotIn("usage_stats", response.data[0])
+        self.assertEqual([c["code"] for c in response.data['results']], ["PUBLIC10"])
+        self.assertNotIn("usage_stats", response.data['results'][0])
 
     def test_admin_sees_all_coupons(self):
         self.make_coupon("PUBLIC10", is_public=True)
@@ -370,7 +371,7 @@ class CouponAPITests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.get("/api/payments/coupons/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual({c["code"] for c in response.data}, {"PUBLIC10", "SECRET50"})
+        self.assertEqual({c["code"] for c in response.data['results']}, {"PUBLIC10", "SECRET50"})
 
     def test_validate_quotes_server_price_and_ignores_client_amount(self):
         self.make_coupon("SAVE10")
@@ -426,9 +427,31 @@ class PaymentHistoryAndStatsTests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.student)
         response = self.client.get("/api/payments/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual({p["purpose"] for p in response.data}, {"course_purchase", "wallet_topup"})
+        self.assertEqual({p["purpose"] for p in response.data["results"]}, {"course_purchase", "wallet_topup"})
+        self.assertEqual(response.data["summary"]["total_spent"], "100.00")
+        self.assertEqual(response.data["summary"]["pending_count"], 1)
         completed = self.client.get("/api/payments/?status=completed")
-        self.assertEqual([p["course_slug"] for p in completed.data], [self.course.slug])
+        self.assertEqual([p["course_slug"] for p in completed.data["results"]], [self.course.slug])
+        self.assertEqual(completed.data["summary"]["pending_count"], 0)
+
+    def test_payment_summary_covers_all_pages_with_constant_queries(self):
+        Payment.objects.bulk_create([
+            Payment(
+                user=self.student, course=self.course, purpose=Payment.PURPOSE_COURSE_PURCHASE,
+                amount=Decimal("1.25"), original_amount=Decimal("1.25"), status="completed",
+            )
+            for _ in range(21)
+        ])
+        self.client.force_authenticate(self.student)
+        with self.assertNumQueries(3):
+            first = self.client.get("/api/payments/")
+        with self.assertNumQueries(3):
+            last = self.client.get("/api/payments/?page=2")
+        self.assertEqual(first.data["count"], 21)
+        self.assertEqual((len(first.data["results"]), len(last.data["results"])), (20, 1))
+        self.assertNotIn(last.data["results"][0]["id"], {row["id"] for row in first.data["results"]})
+        self.assertEqual(first.data["summary"], last.data["summary"])
+        self.assertEqual(first.data["summary"]["total_spent"], "26.25")
 
     def test_revenue_stats_exclude_wallet_topups(self):
         services.purchase_course(self.student, self.course.id)
@@ -536,8 +559,8 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(too_much.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(too_much.data["code"], "insufficient_balance")
         listing = self.client.get("/api/payments/payouts/")
-        self.assertEqual([p["id"] for p in listing.data], [payout_id])
-        self.assertEqual(listing.data[0]["instructor_name"], self.instructor.email)
+        self.assertEqual([p["id"] for p in listing.data['results']], [payout_id])
+        self.assertEqual(listing.data['results'][0]["instructor_name"], self.instructor.email)
         self.assertEqual(
             self.client.post(f"/api/payments/payouts/{payout_id}/approve/").status_code,
             status.HTTP_403_FORBIDDEN,
@@ -586,7 +609,7 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.admin)
         listed = self.client.get("/api/payments/payouts/")
         approved = self.client.post(f"/api/payments/payouts/{payout.pk}/approve/")
-        self.assertEqual(listed.data[0]["account_details"], {"provided": True})
+        self.assertEqual(listed.data['results'][0]["account_details"], {"provided": True})
         self.assertEqual(approved.data["account_details"], {"provided": True})
 
         self.client.force_login(self.admin)
@@ -620,6 +643,21 @@ class RefundTests(PaymentsFixtureMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.payment = services.purchase_course(self.student, self.course.id).payment  # student 50, instructor 90
+
+    def test_refund_list_paginates_and_limits_visibility(self):
+        Refund.objects.bulk_create([
+            Refund(payment=self.payment, requested_by=self.student, amount=1, status='processed')
+            for _ in range(21)
+        ])
+        self.client.force_authenticate(self.student)
+        with self.assertNumQueries(2):
+            response = self.client.get('/api/payments/refunds/?page=2&status=processed')
+        self.assertEqual(response.data['count'], 21)
+        self.assertEqual(len(response.data['results']), 1)
+        self.client.force_authenticate(self.instructor)
+        self.assertEqual(self.client.get('/api/payments/refunds/').data['count'], 0)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get('/api/payments/refunds/').data['count'], 21)
 
     def test_full_refund_moves_money_back_and_revokes_access(self):
         enrollment = Enrollment.objects.get(user=self.student, course=self.course)

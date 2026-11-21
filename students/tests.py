@@ -501,7 +501,7 @@ class StudentBookmarkServiceTests(TestCase):
                 with self.subTest(field=field, method=method.__name__):
                     response = method(url, data, format='json')
                     self.assertEqual(response.status_code, 400)
-                    self.assertIn(field, response.data)
+                    self.assertIn(field, response.data['fields'])
         response = client.patch(url, {'note': 'New note'}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['note'], 'New note')

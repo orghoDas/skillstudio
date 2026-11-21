@@ -3,6 +3,8 @@ from collections.abc import Mapping
 from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.views import APIView
@@ -62,6 +64,7 @@ class LogoutView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    @extend_schema(responses={205: OpenApiTypes.OBJECT})
     def post(self, request):
         cookie_refresh = request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
         if cookie_refresh or request.COOKIES.get(settings.JWT_AUTH_COOKIE):
@@ -109,9 +112,14 @@ class ChangePasswordView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(
+    put=extend_schema(request=AccountProfileSerializer, responses=UnifiedProfileSerializer),
+    patch=extend_schema(request=AccountProfileSerializer, responses=UnifiedProfileSerializer),
+)
 class ProfileView(APIView):
     """Get and update the stable current-user profile envelope."""
     permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = UnifiedProfileSerializer
 
     def get(self, request):
         serializer = UnifiedProfileSerializer(request.user)
@@ -131,6 +139,7 @@ class ProfileView(APIView):
 class MeView(APIView):
     """Get and update current user information"""
     permission_classes = [IsAuthenticated]
+    serializer_class = MeSerializer
 
     def get(self, request):
         # request.user is loaded fresh from the database on every request.

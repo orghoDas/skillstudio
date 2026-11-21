@@ -49,7 +49,7 @@ window.addEventListener('pagehide', () => {
 
 async function fetchOwnedEnrollment() {
     const response = await apiRequest(`/enrollments/?course_slug=${encodeURIComponent(courseSlug)}`);
-    const enrollments = response?.results || response || [];
+    const enrollments = response?.results || [];
     // Completed courses stay accessible (LRN-03); canceled ones don't.
     return enrollments.find(e => e.status === 'active' || e.status === 'completed') || null;
 }

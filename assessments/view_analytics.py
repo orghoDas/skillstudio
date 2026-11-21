@@ -1,4 +1,6 @@
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
+from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -26,15 +28,23 @@ class InstructorAssessmentOverviewView(APIView):
         return Response(data)
 
 
-class QuizQuestionAnalyticsView(APIView):
-    permission_classes = [IsAuthenticated]
+class QuizQuestionAnalyticsSerializer(serializers.Serializer):
+    question_id = serializers.IntegerField()
+    question_text = serializers.CharField()
+    attempts = serializers.IntegerField()
+    wrong_attempts = serializers.IntegerField()
+    wrong_ratio = serializers.FloatField()
 
-    def get(self, request, quiz_id):
-        quiz = get_object_or_404(Quiz, id=quiz_id)
+
+class QuizQuestionAnalyticsView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = QuizQuestionAnalyticsSerializer
+
+    def get_queryset(self):
+        quiz = get_object_or_404(Quiz, id=self.kwargs['quiz_id'])
         course = quiz.lesson.module.course
 
-        if not can_manage_course(request.user, course):
+        if not can_manage_course(self.request.user, course):
             raise PermissionDenied("Only the course instructor or an admin can view these analytics.")
 
-        data = get_quiz_question_analytics(quiz)
-        return Response(data)
+        return get_quiz_question_analytics(quiz)

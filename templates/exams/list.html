@@ -75,7 +75,7 @@ async function loadExams() {
         emptyState.classList.add('hidden');
         
         const data = await apiRequest('/exams/');
-        const exams = Array.isArray(data) ? data : (data.results || []);
+        const exams = data.results;
         
         console.log('Loaded exams:', exams);
         

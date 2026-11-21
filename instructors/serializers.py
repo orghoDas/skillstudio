@@ -49,13 +49,35 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
         ]
 
 
+class FeaturedInstructorSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    headline = serializers.CharField(allow_blank=True)
+    courses_count = serializers.IntegerField()
+    students_count = serializers.IntegerField()
+
+
 class InstructorDashboardSerializer(serializers.Serializer):
     """Serializer for instructor dashboard data."""
     
-    courses = serializers.ListField()
+    total_courses = serializers.IntegerField()
+    total_students = serializers.IntegerField()
+    active_enrollments = serializers.IntegerField()
+    total_revenue = serializers.FloatField()
+    courses = serializers.ListField(child=serializers.DictField())
     students = serializers.ListField()
     revenue = serializers.DictField()
     payouts = serializers.ListField()
+
+
+class InstructorRosterEntrySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    email = serializers.EmailField()
+    course = serializers.DictField()
+    enrolled_at = serializers.DateTimeField()
+    progress = serializers.FloatField()
+    status = serializers.CharField()
+    last_accessed = serializers.DateTimeField()
 
 
 class CourseOverviewSerializer(serializers.Serializer):

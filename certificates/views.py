@@ -3,6 +3,8 @@ from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404, render
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -32,6 +34,7 @@ class MyCertificatesListView(generics.ListAPIView):
 
 class MyCertificateDetailView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = CertificateSerializer
 
     def get(self, request, course_id):
         certificate = get_object_or_404(
@@ -68,6 +71,7 @@ class VerifyCertificateView(APIView):
     """Public verification endpoint, including links from older PDFs."""
     authentication_classes = []
     permission_classes = [AllowAny]
+    serializer_class = CertificateVerificationSerializer
 
     def get(self, request, code):
         details, response_status = verification_details(code)
@@ -78,6 +82,7 @@ class DownloadCertificateView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     def get(self, request, certificate_id=None, course_id=None):
         certificates = Certificate.objects.select_for_update(of=('self',)).select_related('course', 'enrollment')
         lookup = {'pk': certificate_id} if certificate_id is not None else {'course_id': course_id}
@@ -101,6 +106,7 @@ class DownloadCertificateView(APIView):
         return FileResponse(pdf, as_attachment=True, filename=f"certificate_{certificate.course.slug}.pdf")
 
 
+@extend_schema(request=None, responses=CertificateSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdmin])
 @transaction.atomic

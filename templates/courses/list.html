@@ -160,7 +160,7 @@ async function loadCourses(page = 1) {
         console.log('Results length:', data.results ? data.results.length : 'no results array');
         
         // Handle both paginated {results: [...]} and unpaginated [...] responses
-        const courses = data.results || data;
+        const courses = data.results;
         
         if (courses && courses.length > 0) {
             container.innerHTML = courses.map(course => `

@@ -45,10 +45,12 @@ def has_access_enrollment(user, course):
     ).exists()
 
 
-def can_view_course_catalog(user, course):
+def can_view_course_catalog(user, course, *, is_enrolled=None):
     return (
         course.status == 'published' or can_manage_course(user, course)
-        or (course.status == 'archived' and has_access_enrollment(user, course))
+        or (course.status == 'archived' and (
+            has_access_enrollment(user, course) if is_enrolled is None else is_enrolled
+        ))
     )
 
 
@@ -63,12 +65,14 @@ def visible_catalog_courses(user):
     return Course.objects.filter(visible)
 
 
-def can_access_course_content(user, course):
+def can_access_course_content(user, course, *, is_enrolled=None):
     if can_manage_course(user, course):
         return True
-    if course.status == 'published':
-        return course.is_free or has_access_enrollment(user, course)
-    return course.status == 'archived' and has_access_enrollment(user, course)
+    if course.status == 'published' and course.is_free:
+        return True
+    return course.status in ('published', 'archived') and (
+        has_access_enrollment(user, course) if is_enrolled is None else is_enrolled
+    )
 
 
 def can_access_lesson(user, lesson):

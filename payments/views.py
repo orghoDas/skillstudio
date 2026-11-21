@@ -9,11 +9,13 @@ test-mode top-up flow (AUDIT_REPORT.md Decision D-01).
 """
 
 from rest_framework import status
+from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Count, Q, Sum
 from decimal import Decimal
 from django.utils import timezone
 
@@ -30,33 +32,63 @@ from payments import services
 from accounts.permissions import IsInstructor, IsAdmin
 from accounts.utils import is_platform_admin
 from courses.models import Course
+from core.pagination import SummaryPageNumberPagination
+from students.activity import learning_timezone
 
 
 # ==========================================
 # PAYMENT VIEWS
 # ==========================================
 
-class PaymentListView(APIView):
+class PaymentHistoryPagination(SummaryPageNumberPagination):
+    summary_properties = {
+        'successful_count': {'type': 'integer'}, 'pending_count': {'type': 'integer'},
+        'total_spent': {'type': 'string'}, 'month_spent': {'type': 'string'},
+    }
+
+
+class PaymentListView(ListAPIView):
     """List the user's payments (top-ups and course purchases).
 
     Optional filters: ?status=<status>&purpose=<course_purchase|wallet_topup>
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = PaymentSerializer
+    pagination_class = PaymentHistoryPagination
 
-    def get(self, request):
+    def get_queryset(self):
         payments = (
-            Payment.objects.filter(user=request.user)
-            .select_related('course', 'instructor')
-            .order_by('-created_at')
+            Payment.objects.filter(user=self.request.user)
+            .select_related('course', 'instructor', 'user')
+            .order_by('-created_at', '-pk')
         )
-        status_filter = request.query_params.get('status')
+        status_filter = self.request.query_params.get('status')
         if status_filter:
             payments = payments.filter(status=status_filter)
-        purpose = request.query_params.get('purpose')
+        purpose = self.request.query_params.get('purpose')
         if purpose:
             payments = payments.filter(purpose=purpose)
-        serializer = PaymentSerializer(payments, many=True)
-        return Response(serializer.data)
+        return payments
+
+    def list(self, request, *args, **kwargs):
+        payments = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(payments)
+        month_start = timezone.localtime(timezone=learning_timezone(request)).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0,
+        )
+        completed = Q(status='completed')
+        purchases = completed & Q(purpose=Payment.PURPOSE_COURSE_PURCHASE)
+        summary = payments.aggregate(
+            successful_count=Count('pk', filter=completed),
+            pending_count=Count('pk', filter=Q(status='pending')),
+            total_spent=Sum('amount', filter=purchases, default=0),
+            month_spent=Sum('amount', filter=purchases & Q(created_at__gte=month_start), default=0),
+        )
+        for field in ('total_spent', 'month_spent'):
+            summary[field] = format(summary[field], '.2f')
+        response = self.get_paginated_response(self.get_serializer(page, many=True).data)
+        response.data['summary'] = summary
+        return response
 
 
 class PaymentDetailView(APIView):
@@ -117,20 +149,20 @@ def _payments_error_response(exc):
     return Response({'detail': exc.message, 'code': exc.code}, status=code)
 
 
-class RefundListView(APIView):
+class RefundListView(ListAPIView):
     """Admins see all refunds; everyone else sees the refunds they requested."""
     permission_classes = [IsAuthenticated]
+    serializer_class = RefundSerializer
 
-    def get(self, request):
-        if is_platform_admin(request.user):
+    def get_queryset(self):
+        if is_platform_admin(self.request.user):
             refunds = Refund.objects.all()
         else:
-            refunds = Refund.objects.filter(requested_by=request.user)
-        status_filter = request.query_params.get('status')
+            refunds = Refund.objects.filter(requested_by=self.request.user)
+        status_filter = self.request.query_params.get('status')
         if status_filter:
             refunds = refunds.filter(status=status_filter)
-        refunds = refunds.select_related('payment', 'requested_by', 'processed_by').order_by('-created_at')
-        return Response(RefundSerializer(refunds, many=True).data)
+        return refunds.select_related('payment', 'requested_by', 'processed_by').order_by('-created_at', '-pk')
 
 
 class RefundRequestView(APIView):
@@ -191,20 +223,20 @@ class RefundRejectView(APIView):
 # Withdrawable money = the instructor's wallet balance. Requesting a payout
 # reserves (debits) the amount immediately (PAY-06 / PAY-07).
 
-class PayoutListView(APIView):
+class PayoutListView(ListAPIView):
     """Instructors see their payouts; admins see all (optional ?status=)."""
     permission_classes = [IsAuthenticated, IsInstructor]
+    serializer_class = PayoutSerializer
 
-    def get(self, request):
-        if is_platform_admin(request.user):
+    def get_queryset(self):
+        if is_platform_admin(self.request.user):
             payouts = Payout.objects.all()
         else:
-            payouts = Payout.objects.filter(instructor=request.user)
-        status_filter = request.query_params.get('status')
+            payouts = Payout.objects.filter(instructor=self.request.user)
+        status_filter = self.request.query_params.get('status')
         if status_filter:
             payouts = payouts.filter(status=status_filter)
-        payouts = payouts.select_related('instructor', 'instructor__profile').order_by('-created_at')
-        return Response(PayoutSerializer(payouts, many=True).data)
+        return payouts.select_related('instructor', 'instructor__profile').order_by('-created_at', '-pk')
 
 
 class PayoutRequestView(APIView):
@@ -292,7 +324,7 @@ class PayoutRejectView(APIView):
 # COUPON VIEWS
 # ==========================================
 
-class CouponListView(APIView):
+class CouponListView(ListAPIView):
     """Admins see every coupon; everyone else sees only public, active coupons.
 
     Private coupon codes are never listed (PAY-09) — they are shared
@@ -300,13 +332,13 @@ class CouponListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        if is_platform_admin(request.user):
-            coupons = Coupon.objects.all().order_by('-created_at')
-            return Response(CouponSerializer(coupons, many=True).data)
+    def get_serializer_class(self):
+        return CouponSerializer if is_platform_admin(self.request.user) else PublicCouponSerializer
 
-        coupons = services.get_active_coupons().filter(is_public=True)
-        return Response(PublicCouponSerializer(coupons, many=True).data)
+    def get_queryset(self):
+        if is_platform_admin(self.request.user):
+            return Coupon.objects.select_related('created_by').order_by('-created_at', '-pk')
+        return services.get_active_coupons().filter(is_public=True).order_by('-created_at', '-pk')
 
 
 class CouponCreateView(APIView):

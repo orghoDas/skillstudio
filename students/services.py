@@ -1,4 +1,5 @@
 from itertools import chain
+from collections import defaultdict
 from datetime import timedelta
 from django.db import transaction
 from django.db.models import Value, CharField, Count, Exists, Max, OuterRef, Q, Sum
@@ -11,7 +12,9 @@ from courses.models import Lesson, Course
 from courses.policies import can_view_course_catalog, visible_catalog_courses
 from enrollments.models import Enrollment, LessonProgress
 from enrollments.constants import ACCESS_STATUSES
-from enrollments.services import get_lesson_completion_stats, get_required_lessons, get_resume_lesson
+from enrollments.services import (
+    get_resume_lesson, lesson_progress_percentage, required_lessons_for_courses, with_enrollment_progress,
+)
 from .models import LearningActivity, StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from .constants import (
     ACHIEVEMENTS,
@@ -103,15 +106,19 @@ def get_student_dashboard_data(user):
             ).exclude(enrollment__status='canceled')),
             last_activity=Max('lesson_progress__updated_at'),
         )
-        .order_by('-enrolled_at')
+        .order_by('-enrolled_at', '-pk')
     )
+    enrollments = list(with_enrollment_progress(enrollments, completed_ids=True))
+    lessons_by_course = defaultdict(list)
+    course_ids = [row.course_id for row in enrollments if row.status in ACCESS_STATUSES and not row.is_completed]
+    for lesson in required_lessons_for_courses(course_ids).select_related('module'):
+        lessons_by_course[lesson.module.course_id].append(lesson)
+
     dashboard = []
     for enrollment in enrollments:
-        required_lessons = list(get_required_lessons(enrollment.course).select_related('module'))
-        stats = get_lesson_completion_stats(enrollment, required_lessons=required_lessons)
-        completed_ids = set(stats['completed_lesson_ids'])
+        completed_ids = {progress.lesson_id for progress in enrollment.completed_required_progress}
         resume_lesson = get_resume_lesson(
-            enrollment, lessons=required_lessons, completed_ids=completed_ids,
+            enrollment, lessons=lessons_by_course[enrollment.course_id], completed_ids=completed_ids,
         )
 
         resume_context = None
@@ -127,7 +134,7 @@ def get_student_dashboard_data(user):
             primary_action = "view_certificate"
         elif enrollment.is_completed or enrollment.status not in ACCESS_STATUSES or not resume_lesson:
             primary_action = "view_course"
-        elif not stats['completed_lessons']:
+        elif not completed_ids:
             primary_action = "start_course"
         else:
             primary_action = "resume_lesson"
@@ -138,9 +145,9 @@ def get_student_dashboard_data(user):
             "course_title": enrollment.course.title,
             "status": enrollment.status,
             "is_completed": enrollment.is_completed,
-            "progress_percentage": stats['progress_percentage'],
-            "completed_lessons": stats['completed_lessons'],
-            "total_lessons": stats['total_lessons'],
+            "progress_percentage": lesson_progress_percentage(len(completed_ids), enrollment.required_count),
+            "completed_lessons": len(completed_ids),
+            "total_lessons": enrollment.required_count,
             "has_certificate": enrollment.has_certificate,
             "resume_lesson_id": resume_context["lesson_id"] if resume_context else None,
             "last_activity": enrollment.last_activity,

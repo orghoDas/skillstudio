@@ -364,7 +364,7 @@ class QuizAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            response.data['error'],
+            response.data['detail'],
             'Question is not part of this quiz attempt.'
         )
         attempt.refresh_from_db()
@@ -394,7 +394,7 @@ class QuizAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            response.data['error'],
+            response.data['detail'],
             'Option is not valid for this question.'
         )
         attempt.refresh_from_db()
@@ -452,7 +452,7 @@ class QuizAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            response.data['error'],
+            response.data['detail'],
             'Question is not part of this quiz attempt.'
         )
         attempt.refresh_from_db()
@@ -484,7 +484,7 @@ class QuizAPITest(APITestCase):
 
         self.assertEqual(canonical_response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(alternate_response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(canonical_response.data['error'], 'You have already passed this quiz.')
+        self.assertEqual(canonical_response.data['detail'], 'You have already passed this quiz.')
         self.assertEqual(
             list(QuizAttempt.objects.filter(quiz=self.quiz, user=self.student)),
             [attempt]
@@ -527,10 +527,10 @@ class QuizAPITest(APITestCase):
         response = self.client.get(f'/api/assessments/analytics/quiz/{self.quiz.id}/questions/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data[0]['question_id'], self.question.id)
-        self.assertEqual(response.data[0]['attempts'], 2)
-        self.assertEqual(response.data[0]['wrong_attempts'], 1)
-        self.assertEqual(response.data[0]['wrong_ratio'], 0.5)
+        self.assertEqual(response.data['results'][0]['question_id'], self.question.id)
+        self.assertEqual(response.data['results'][0]['attempts'], 2)
+        self.assertEqual(response.data['results'][0]['wrong_attempts'], 1)
+        self.assertEqual(response.data['results'][0]['wrong_ratio'], 0.5)
 
 
 class ManageQuizAPITest(APITestCase):
@@ -576,7 +576,7 @@ class ManageQuizAPITest(APITestCase):
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data['error'], 'Quiz not found for this lesson.')
+        self.assertEqual(response.data['detail'], 'Quiz not found for this lesson.')
         self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
 
     def test_manage_quiz_get_returns_existing_quiz(self):
@@ -767,7 +767,7 @@ class ManageQuizAPITest(APITestCase):
                 response = self.client.post(self.url, payload, format='json')
 
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-                self.assertIn(expected_error, response.data['errors'])
+                self.assertIn(expected_error, response.data['fields']['non_field_errors'])
                 self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
                 self.assertEqual(QuizQuestion.objects.count(), 0)
                 self.assertEqual(QuestionOption.objects.count(), 0)
@@ -811,7 +811,7 @@ class ManageQuizAPITest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('questions[0] must have exactly one correct option.', response.data['errors'])
+        self.assertIn('questions[0] must have exactly one correct option.', response.data['fields']['non_field_errors'])
         quiz.refresh_from_db()
         self.assertEqual(quiz.title, 'Original Quiz')
         self.assertEqual(quiz.passing_percentage, 60)
@@ -844,7 +844,7 @@ class ManageQuizAPITest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('questions[0].type must be mcq.', response.data['errors'])
+        self.assertIn('questions[0].type must be mcq.', response.data['fields']['non_field_errors'])
         self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
 
     def test_manage_quiz_get_rejects_non_owner_without_creating_quiz(self):
@@ -891,7 +891,7 @@ class ManageQuizAPITest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertIn('cannot be replaced after attempts exist', response.data['error'])
+        self.assertIn('cannot be replaced after attempts exist', response.data['detail'])
         quiz.refresh_from_db()
         self.assertEqual(quiz.title, 'Attempted Quiz')
         self.assertEqual(quiz.questions.count(), 1)

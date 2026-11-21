@@ -10,7 +10,6 @@ so they can't collide with these routes either.
 
 from django.urls import path
 
-from instructors.views import InstructorDashboardView
 
 from .views import (
     # Curriculum & Learning
@@ -41,7 +40,6 @@ urlpatterns = [
     path('', CourseListView.as_view(), name='course-list'),
     path('create/', CourseCreateView.as_view(), name='course-create'),
     path('instructor/courses/', InstructorCoursesView.as_view(), name='instructor-courses'),
-    path('instructor/dashboard/', InstructorDashboardView.as_view(), name='courses-instructor-dashboard'),
     path('admin/course-stats/', AdminCourseStatsView.as_view(), name='admin-course-stats'),
 
     path('<int:id>/', CourseDetailView.as_view(), name='course-detail'),

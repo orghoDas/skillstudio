@@ -26,7 +26,6 @@ from .views import (
     InstructorLessonAnalyticsCSVView,
 )
 
-from instructors.views import InstructorDashboardView
 
 
 urlpatterns = [
@@ -68,7 +67,6 @@ urlpatterns = [
     # ===========================
     # 👨‍🏫 Instructor Analytics
     # ===========================
-    path('instructor/dashboard/', InstructorDashboardView.as_view(), name='enrollments-instructor-dashboard'),  # alias of /api/instructors/dashboard/
     path('instructor/courses/<int:course_id>/lesson-analytics-csv/', InstructorLessonAnalyticsCSVView.as_view(), name='instructor-lesson-analytics-csv'),
 ]
 

@@ -360,7 +360,22 @@ class ExamAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_attempt_history_uses_two_pages_and_keeps_owner_scope(self):
+        ExamAttempt.objects.bulk_create([
+            ExamAttempt(exam=self.exam, user=self.student, attempt_number=index, status='completed')
+            for index in range(1, 22)
+        ])
+        ExamAttempt.objects.create(exam=self.exam, user=self.instructor, status='completed')
+        url = f'/api/exams/{self.exam.pk}/attempts/'
+        first = self.client.get(url)
+        second = self.client.get(f'{url}?page=2')
+        self.assertEqual(first.data['count'], 21)
+        self.assertEqual(len(first.data['results']), 20)
+        self.assertIsNotNone(first.data['next'])
+        self.assertIsNotNone(second.data['previous'])
+        self.assertEqual([item['attempt_number'] for item in second.data['results']], [1])
 
     def test_creator_name_is_returned_or_null_on_exam_and_question_detail(self):
         Profile.objects.update_or_create(
@@ -392,7 +407,7 @@ class ExamAPITest(APITestCase):
         self.client.force_authenticate(self.instructor)
         response = self.client.get(f'/api/exams/{self.exam.pk}/all-attempts/')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data['attempts'][0]['user_name'], 'Exam Student')
+        self.assertEqual(response.data['results'][0]['user_name'], 'Exam Student')
 
     def test_start_exam_reuses_active_attempt_and_returns_attempt_number(self):
         url = f'/api/exams/{self.exam.id}/start/'
@@ -551,7 +566,7 @@ class ExamAccessControlAPITest(APITestCase):
         self.assertEqual(submitted.status_code, 200, submitted.data)
         self.assertEqual(submitted.data['result']['question_results'], {})
         self.assertEqual(self.client.get(result_url).data['question_results'], {})
-        self.assertEqual(self.client.get(f'{base}attempts/').data['attempts'][0]['result']['question_results'], {})
+        self.assertEqual(self.client.get(f'{base}attempts/').data['results'][0]['result']['question_results'], {})
 
         self.exam.show_correct_answers = True
         self.exam.save(update_fields=['show_correct_answers'])
@@ -559,7 +574,7 @@ class ExamAccessControlAPITest(APITestCase):
         self.assertEqual(detail['question_results'][str(self.question.pk)]['correct_option'], 1)
         self.assertEqual(detail['question_results'][str(self.question.pk)]['selected_option'], 1)
         self.assertEqual(detail['question_results']['custom_0']['correct_option'], 1)
-        history = self.client.get(f'{base}attempts/').data['attempts'][0]
+        history = self.client.get(f'{base}attempts/').data['results'][0]
         self.assertEqual(history['result']['question_results'], detail['question_results'])
         retried = self.client.post(f'{base}submit/', {
             'attempt_id': attempt['id'], 'answers': {},
@@ -569,7 +584,7 @@ class ExamAccessControlAPITest(APITestCase):
         self.exam.show_results_immediately = False
         self.exam.save(update_fields=['show_results_immediately'])
         self.assertEqual(self.client.get(result_url).status_code, 403)
-        history = self.client.get(f'{base}attempts/').data['attempts'][0]
+        history = self.client.get(f'{base}attempts/').data['results'][0]
         self.assertIsNone(history['score'])
         self.assertIsNone(history['result'])
         retried = self.client.post(f'{base}submit/', {
@@ -611,7 +626,7 @@ class ExamAccessControlAPITest(APITestCase):
         updated = self.client.patch(base, {'questions': [foreign.pk]}, format='json')
         for response in (created, updated):
             self.assertEqual(response.status_code, 400, response.data)
-            self.assertIn('questions', response.data)
+            self.assertIn('questions', response.data['fields'])
 
         self.exam.questions.add(foreign)
         rejected = self.client.post(f'{base}publish/')

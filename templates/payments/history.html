@@ -100,39 +100,50 @@
                 </tbody>
             </table>
         </div>
+        <nav id="payments-pagination" aria-label="Payment history pages" class="hidden flex items-center justify-end gap-4 px-6 py-4">
+            <button type="button" id="payments-previous" class="text-blue-400 disabled:opacity-50">Previous</button>
+            <span id="payments-page" class="text-sm text-gray-400"></span>
+            <button type="button" id="payments-next" class="text-blue-400 disabled:opacity-50">Next</button>
+        </nav>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-let allTransactions = [];
+let paymentPage = 1;
+let paymentRequest = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication
-
+    document.getElementById('payments-previous').onclick = () => loadTransactions(paymentPage - 1);
+    document.getElementById('payments-next').onclick = () => loadTransactions(paymentPage + 1);
     loadTransactions();
 });
 
-async function loadTransactions() {
+async function loadTransactions(page = 1) {
+    const request = ++paymentRequest;
     const filterStatus = document.getElementById('filter-status').value;
     const tbody = document.getElementById('transactions-tbody');
 
     try {
-        // apiRequest() already prefixes /api.
-        let url = '/payments/';
-        if (filterStatus) {
-            url += `?status=${encodeURIComponent(filterStatus)}`;
-        }
+        const params = new URLSearchParams({
+            page,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        });
+        if (filterStatus) params.set('status', filterStatus);
+        const response = await apiRequest(`/payments/?${params}`);
+        if (request !== paymentRequest || !response) return;
 
-        const response = await apiRequest(url);
-        allTransactions = response.results || response;
+        paymentPage = page;
+        document.getElementById('payments-pagination').classList.toggle('hidden', !response.previous && !response.next);
+        document.getElementById('payments-previous').disabled = !response.previous;
+        document.getElementById('payments-next').disabled = !response.next;
+        document.getElementById('payments-page').textContent = `Page ${page}`;
+        updateStats(response.summary);
 
-        // Update stats
-        updateStats(allTransactions);
-
-        if (allTransactions.length > 0) {
-            tbody.innerHTML = allTransactions.map(tx => renderTransaction(tx)).join('');
+        const transactions = response.results;
+        if (transactions.length > 0) {
+            tbody.innerHTML = transactions.map(renderTransaction).join('');
         } else {
             tbody.innerHTML = `
                 <tr>
@@ -147,6 +158,7 @@ async function loadTransactions() {
             `;
         }
     } catch (error) {
+        if (request !== paymentRequest) return;
         console.error('Error loading transactions:', error);
         tbody.innerHTML = `
             <tr>
@@ -158,24 +170,11 @@ async function loadTransactions() {
     }
 }
 
-function updateStats(transactions) {
-    const completed = transactions.filter(tx => tx.status === 'completed');
-    const pending = transactions.filter(tx => tx.status === 'pending');
-    // "Spent" = course purchases. Wallet top-ups move money in, not out.
-    const purchases = completed.filter(tx => tx.purpose !== 'wallet_topup');
-
-    const totalSpent = purchases.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
-
-    // Calculate this month's spending
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonth = purchases.filter(tx => new Date(tx.created_at) >= monthStart);
-    const monthSpent = thisMonth.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
-
-    document.getElementById('total-spent').textContent = `$${totalSpent.toFixed(2)}`;
-    document.getElementById('successful-count').textContent = completed.length;
-    document.getElementById('pending-count').textContent = pending.length;
-    document.getElementById('month-spent').textContent = `$${monthSpent.toFixed(2)}`;
+function updateStats(summary) {
+    document.getElementById('total-spent').textContent = `$${summary.total_spent}`;
+    document.getElementById('successful-count').textContent = summary.successful_count;
+    document.getElementById('pending-count').textContent = summary.pending_count;
+    document.getElementById('month-spent').textContent = `$${summary.month_spent}`;
 }
 
 function renderTransaction(tx) {

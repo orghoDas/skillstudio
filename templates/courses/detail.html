@@ -203,7 +203,7 @@ async function checkEnrollmentStatus() {
     try {
         const response = await apiRequest(`/enrollments/?course=${courseData.id}`);
         // Handle both paginated and non-paginated responses
-        const enrollments = response?.results || response || [];
+        const enrollments = response?.results || [];
         
         if (enrollments.length > 0) {
             const enrollment = enrollments[0];
@@ -260,7 +260,7 @@ async function handleEnrollment() {
         console.error('Enrollment error:', error);
         // If error indicates insufficient balance, show friendly modal with Add Funds action
         const body = error && error.body;
-        const detail = body && (body.detail || body.error || body.message) || error.message;
+        const detail = body && body.detail || error.message;
         if ((body && body.code === 'insufficient_balance') ||
             (detail && detail.toString().toLowerCase().includes('insufficient'))) {
             showInsufficientFundsModal(detail);

@@ -213,7 +213,7 @@
             }
 
             const fetchOpts = { ...options, headers, credentials: 'same-origin' };
-            const response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
+            let response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
 
             if (response.status === 401) {
                 // Access cookie expired — try a cookie-based refresh, then retry.
@@ -224,11 +224,7 @@
                 });
 
                 if (refreshResponse.ok) {
-                    const retryResponse = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
-                    if (!retryResponse.ok) {
-                        throw new Error(`HTTP error! status: ${retryResponse.status}`);
-                    }
-                    return parseJsonBody(retryResponse);
+                    response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
                 } else {
                     // Refresh failed — session is gone; send them to login.
                     logout();
@@ -244,7 +240,7 @@
                 } catch (e) {
                     // ignore parse errors
                 }
-                const errMsg = (errorBody && (errorBody.detail || errorBody.error || errorBody.message)) || `HTTP error! status: ${response.status}`;
+                const errMsg = (errorBody && errorBody.detail) || `HTTP error! status: ${response.status}`;
                 const err = new Error(errMsg);
                 err.status = response.status;
                 err.body = errorBody;

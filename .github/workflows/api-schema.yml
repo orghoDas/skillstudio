@@ -1,0 +1,25 @@
+name: API contract
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api-schema:
+    runs-on: ubuntu-latest
+    env:
+      DEBUG: "True"
+      DATABASE_URL: "sqlite:///:memory:"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --require-hashes -r requirements.txt
+      - name: Validate and compare the API schema
+        run: |
+          python manage.py spectacular --validate --fail-on-warn --file "$RUNNER_TEMP/openapi.yaml"
+          diff -u docs/openapi.yaml "$RUNNER_TEMP/openapi.yaml"

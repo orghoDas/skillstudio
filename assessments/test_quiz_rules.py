@@ -84,7 +84,7 @@ class QuizCompletionRuleTests(QuizFixture, APITestCase):
             self.submit(attempt["id"], self.wrong)
         response = self.start()
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data["error"], "You have no attempts left for this quiz.")
+        self.assertEqual(response.data['detail'], "You have no attempts left for this quiz.")
 
     def test_unlimited_attempts(self):
         self.quiz.max_attempts = None

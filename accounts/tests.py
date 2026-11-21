@@ -210,7 +210,7 @@ class RegistrationAPITest(APITestCase):
     def test_admin_domain_cannot_self_register(self):
         response = self._register('boss@admin.com')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('email', response.data)
+        self.assertIn('email', response.data['fields'])
         self.assertFalse(User.objects.filter(email='boss@admin.com').exists())
 
     def test_register_with_mismatched_passwords(self):
@@ -500,7 +500,7 @@ class APIKeyTest(APITestCase):
     def test_unknown_scope_is_rejected_when_creating_a_key(self):
         response = self.client.post('/api/accounts/api-keys/', {'label': 'Invalid', 'scopes': ['other']}, format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('scopes', response.data)
+        self.assertIn('scopes', response.data['fields'])
 
 
 class PermissionsTest(APITestCase):
@@ -571,10 +571,10 @@ class PermissionsTest(APITestCase):
         url = f'/api/accounts/users/{superuser.pk}/'
         response = self.client.patch(f'{url}role/', {'role': 'student'}, format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('role', response.data)
+        self.assertIn('role', response.data['fields'])
         response = self.client.post(f'{url}promote/')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('role', response.data)
+        self.assertIn('role', response.data['fields'])
         superuser.refresh_from_db()
         self.assertEqual((superuser.role, superuser.is_staff, superuser.is_superuser), ('admin', True, True))
 

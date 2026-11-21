@@ -96,7 +96,7 @@ class QuizModelTests(APITestCase):
 
         per_question = self.client.get(f"/api/assessments/analytics/quiz/{quiz.id}/questions/")
         self.assertEqual(per_question.status_code, status.HTTP_200_OK)
-        self.assertEqual((per_question.data[0]["attempts"], per_question.data[0]["wrong_attempts"]), (1, 0))
+        self.assertEqual((per_question.data['results'][0]["attempts"], per_question.data['results'][0]["wrong_attempts"]), (1, 0))
 
         self.client.force_authenticate(self.student)
         denied = self.client.get(f"/api/assessments/analytics/quiz/{quiz.id}/questions/")

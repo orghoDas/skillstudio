@@ -1,9 +1,9 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 from accounts.utils import public_instructor_name
-from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import get_access_enrollment, lesson_lock_state, ordered_course_lessons
 from .policies import can_access_course_content, can_manage_course
 from .video import parse_video_url
@@ -25,7 +25,7 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'slug', 'course_count']
         read_only_fields = ['slug']
 
-    def get_course_count(self, obj):
+    def get_course_count(self, obj) -> int:
         if hasattr(obj, 'course_count'):
             return obj.course_count
         return obj.courses.filter(status='published').count()
@@ -147,7 +147,7 @@ class LessonDataSerializer(serializers.ModelSerializer):
             'is_free', 'resources', 'module_title'
         ]
 
-    def get_video(self, obj):
+    def get_video(self, obj) -> dict | None:
         return parse_video_url(obj.video_url)
 
 
@@ -174,10 +174,10 @@ class CurriculumLessonSerializer(serializers.ModelSerializer):
             'duration_seconds', 'is_completed', 'is_locked'
         ]
 
-    def get_is_completed(self, lesson):
+    def get_is_completed(self, lesson) -> bool:
         return lesson.id in self.context.get('completed_ids', set())
 
-    def get_is_locked(self, lesson):
+    def get_is_locked(self, lesson) -> bool:
         return lesson.id in self.context.get('locked_ids', set())
 
 
@@ -192,7 +192,7 @@ class ModuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'course', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
         read_only_fields = ['created_at']
 
-    def get_lesson_count(self, obj):
+    def get_lesson_count(self, obj) -> int:
         return obj.lessons.count()
 
 
@@ -223,6 +223,7 @@ class CurriculumModuleSerializer(serializers.ModelSerializer):
         model = Module
         fields = ['id', 'title', 'position', 'lessons']
 
+    @extend_schema_field(CurriculumLessonSerializer(many=True))
     def get_lessons(self, module):
         lessons = module.lessons.all()
         return CurriculumLessonSerializer(
@@ -242,7 +243,7 @@ class CourseDetailLessonSerializer(serializers.ModelSerializer):
             'duration_seconds', 'is_locked'
         ]
 
-    def get_is_locked(self, lesson):
+    def get_is_locked(self, lesson) -> bool:
         module = lesson.module
         locks_by_course = self.context.setdefault('lesson_locks_by_course', {})
         if module.course_id not in locks_by_course:
@@ -278,7 +279,7 @@ class CourseDetailModuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
         read_only_fields = ['created_at']
 
-    def get_lesson_count(self, obj):
+    def get_lesson_count(self, obj) -> int:
         return obj.lessons.count()
 
 
@@ -291,7 +292,7 @@ class CatalogModuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'course', 'title', 'position', 'created_at', 'lessons', 'lesson_count']
         read_only_fields = ['created_at']
 
-    def get_lesson_count(self, obj):
+    def get_lesson_count(self, obj) -> int:
         return obj.lessons.count()
 
 
@@ -301,9 +302,9 @@ class CourseListSerializer(serializers.ModelSerializer):
     instructor_name = serializers.SerializerMethodField()
     instructor_id = serializers.IntegerField(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
-    enrollments_count = serializers.SerializerMethodField()
-    module_count = serializers.SerializerMethodField()
-    lesson_count = serializers.SerializerMethodField()
+    enrollments_count = serializers.IntegerField(read_only=True)
+    module_count = serializers.IntegerField(read_only=True)
+    lesson_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Course
@@ -314,16 +315,7 @@ class CourseListSerializer(serializers.ModelSerializer):
             'module_count', 'lesson_count'
         ]
 
-    def get_enrollments_count(self, obj):
-        return obj.enrollments.filter(status='active').count()
-
-    def get_module_count(self, obj):
-        return obj.modules.count()
-
-    def get_lesson_count(self, obj):
-        return Lesson.objects.filter(module__course=obj).count()
-    
-    def get_instructor_name(self, obj):
+    def get_instructor_name(self, obj) -> str:
         return public_instructor_name(obj.instructor)
 
 
@@ -334,8 +326,8 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     modules = CourseDetailModuleSerializer(many=True, read_only=True)
-    enrollment_count = serializers.SerializerMethodField()
-    enrollments_count = serializers.SerializerMethodField()  # Alias for template compatibility
+    enrollment_count = serializers.IntegerField(source='enrollments_count', read_only=True)
+    enrollments_count = serializers.IntegerField(read_only=True)
     is_enrolled = serializers.SerializerMethodField()
     total_duration = serializers.SerializerMethodField()
     version_number = serializers.IntegerField(source='current_version.version_number', read_only=True, default=None)
@@ -357,27 +349,17 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             data.pop('rejection_reason', None)
         return data
 
-    def get_enrollment_count(self, obj):
-        return obj.enrollments.filter(status='active').count()
+    def get_is_enrolled(self, obj) -> bool:
+        return self.context['is_enrolled']
     
-    def get_enrollments_count(self, obj):
-        # Alias for enrollment_count for template compatibility
-        return obj.enrollments.filter(status='active').count()
-
-    def get_is_enrolled(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.enrollments.filter(user=request.user, status__in=ACCESS_STATUSES).exists()
-        return False
-    
-    def get_total_duration(self, obj):
+    def get_total_duration(self, obj) -> int:
         total = 0
         for module in obj.modules.all():
             for lesson in module.lessons.all():
                 total += lesson.duration_seconds or 0
         return total
     
-    def get_instructor_name(self, obj):
+    def get_instructor_name(self, obj) -> str:
         return public_instructor_name(obj.instructor)
 
 
@@ -465,6 +447,7 @@ class CourseCurriculumSerializer(serializers.ModelSerializer):
         model = Course
         fields = ['id', 'title', 'modules']
 
+    @extend_schema_field(CurriculumModuleSerializer(many=True))
     def get_modules(self, course):
         modules = course.modules.all()
         return CurriculumModuleSerializer(

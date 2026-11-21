@@ -303,6 +303,40 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page.wait_for_selector("#transactions-container >> text=Course earnings")
         self.assert_no_errors(page, "instructor wallet")
 
+    def test_payment_history_and_instructor_roster_paginate_without_changing_totals(self):
+        from accounts.models import User
+        from enrollments.models import Enrollment
+        from payments.models import Payment
+
+        learners = User.objects.bulk_create([User(email=f'roster-{index}@example.test') for index in range(21)])
+        Enrollment.objects.bulk_create([Enrollment(course=self.course, user=user) for user in learners])
+        Payment.objects.bulk_create([
+            Payment(
+                user=self.student, course=self.course, purpose=Payment.PURPOSE_COURSE_PURCHASE,
+                amount=Decimal('2.00'), original_amount=Decimal('2.00'), status='completed',
+            )
+            for _ in range(21)
+        ])
+
+        for user, path, prefix, table, summary, expected in (
+            (self.student, '/payments/history/', 'payments', '#transactions-tbody', '#total-spent', '$42.00'),
+            (self.instructor, '/instructor/students/', 'students', '#students-table', '#total-students', '21'),
+        ):
+            with self.subTest(path=path):
+                page = self.new_page()
+                self.login(page, user)
+                self.visit(page, path)
+                self.assertEqual(page.locator(f'{table} tr').count(), 20)
+                self.assertEqual(page.locator(summary).inner_text(), expected)
+                page.locator(f'#{prefix}-next').click()
+                page.wait_for_selector(f'#{prefix}-page >> text=Page 2')
+                self.assertEqual(page.locator(f'{table} tr').count(), 1)
+                self.assertEqual(page.locator(summary).inner_text(), expected)
+                page.locator(f'#{prefix}-previous').click()
+                page.wait_for_selector(f'#{prefix}-page >> text=Page 1')
+                self.assertEqual(page.locator(f'{table} tr').count(), 20)
+                self.assert_no_errors(page, path)
+
     def test_platform_admin_can_save_another_instructors_course_in_the_editor(self):
         from accounts.models import User
 

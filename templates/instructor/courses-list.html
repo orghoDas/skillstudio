@@ -145,7 +145,7 @@ function debounce(func, wait) {
 
 async function loadStats() {
     try {
-        const stats = await apiRequest('/instructors/stats/');
+        const stats = await apiRequest('/instructors/dashboard/');
         document.getElementById('total-courses').textContent = stats.total_courses || 0;
         document.getElementById('total-students').textContent = stats.total_students || 0;
         document.getElementById('published-courses').textContent = stats.published_courses || 0;
@@ -173,7 +173,7 @@ async function loadCourses() {
         const response = await apiRequest(`/courses/?${params.toString()}`);
         
         // Handle both paginated (response.results) and direct array responses
-        const courses = response.results || response;
+        const courses = response.results;
         
         if (courses && courses.length > 0) {
             container.innerHTML = courses.map(course => renderCourseCard(course)).join('');

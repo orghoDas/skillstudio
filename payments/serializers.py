@@ -67,13 +67,13 @@ class PayoutSerializer(serializers.ModelSerializer):
             'processed_at', 'created_at', 'updated_at', 'payment_count'
         ]
     
-    def get_instructor_name(self, obj):
+    def get_instructor_name(self, obj) -> str:
         # The custom User has no first/last name; names live on accounts.Profile.
         profile = getattr(obj.instructor, 'profile', None)
         name = profile and (profile.full_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip())
         return name or obj.instructor.email
 
-    def get_account_details(self, obj):
+    def get_account_details(self, obj) -> dict:
         return {'provided': True} if obj.account_details_encrypted else {}
 
 
@@ -164,7 +164,7 @@ class CouponSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
     
-    def get_usage_stats(self, obj):
+    def get_usage_stats(self, obj) -> dict:
         from payments.services import get_coupon_usage_stats
         return get_coupon_usage_stats(obj)
 

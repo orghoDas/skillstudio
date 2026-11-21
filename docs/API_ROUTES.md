@@ -66,7 +66,6 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/courses/` | GET | AllowAny | `courses.views.CourseListView` |
 | `/api/courses/create/` | POST | IsAuthenticated, IsInstructor | `courses.views.CourseCreateView` |
 | `/api/courses/instructor/courses/` | GET | IsAuthenticated, IsInstructor | `courses.views.InstructorCoursesView` |
-| `/api/courses/instructor/dashboard/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorDashboardView` |
 | `/api/courses/admin/course-stats/` | GET | IsAuthenticated, IsAdmin | `courses.views_analytics.AdminCourseStatsView` |
 | `/api/courses/<int:id>/` | GET | AllowAny | `courses.views.CourseDetailView` |
 | `/api/courses/<int:id>/update/` | PUT PATCH | IsAuthenticated | `courses.views.CourseUpdateView` |
@@ -117,7 +116,6 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/enrollments/wishlist/check/<int:course_id>/` | GET | IsAuthenticated | `enrollments.views.CheckWishlistView` |
 | `/api/enrollments/stats/` | GET | IsAuthenticated | `enrollments.views.EnrollmentStatsView` |
 | `/api/enrollments/learning-dashboard/` | GET | IsAuthenticated | `enrollments.views.LearningProgressDashboardView` |
-| `/api/enrollments/instructor/dashboard/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorDashboardView` |
 | `/api/enrollments/instructor/courses/<int:course_id>/lesson-analytics-csv/` | GET | IsAuthenticated, IsInstructor | `enrollments.views.InstructorLessonAnalyticsCSVView` |
 
 ## `/api/exams/`
@@ -128,14 +126,14 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/exams/questions/<int:pk>/` | GET PUT PATCH DELETE | IsAuthenticated, IsInstructor | `exams.views.QuestionBankDetailView` |
 | `/api/exams/` | GET POST | IsAuthenticated | `exams.views.ExamListCreateView` |
 | `/api/exams/<int:pk>/` | GET PUT PATCH DELETE | IsAuthenticated | `exams.views.ExamDetailView` |
-| `/api/exams/course/<int:course_id>/` | GET | IsAuthenticated | `exams.views.get_exam_for_course` |
+| `/api/exams/course/<int:course_id>/` | GET | IsAuthenticated | `exams.views.CourseExamListView` |
 | `/api/exams/<int:exam_id>/start/` | POST | IsAuthenticated | `exams.views.start_exam` |
 | `/api/exams/<int:exam_id>/submit/` | POST | IsAuthenticated | `exams.views.submit_exam` |
 | `/api/exams/<int:exam_id>/save-answers/` | POST | IsAuthenticated | `exams.views.save_exam_answers` |
-| `/api/exams/<int:exam_id>/attempts/` | GET | IsAuthenticated | `exams.views.exam_attempts_history` |
+| `/api/exams/<int:exam_id>/attempts/` | GET | IsAuthenticated | `exams.views.ExamHistoryView` |
 | `/api/exams/attempt/<int:attempt_id>/result/` | GET | IsAuthenticated | `exams.views.exam_result_detail` |
 | `/api/exams/<int:exam_id>/analytics/` | GET | IsAuthenticated, IsInstructor | `exams.views.exam_analytics` |
-| `/api/exams/<int:exam_id>/all-attempts/` | GET | IsAuthenticated, IsInstructor | `exams.views.exam_attempts_list` |
+| `/api/exams/<int:exam_id>/all-attempts/` | GET | IsAuthenticated, IsInstructor | `exams.views.InstructorExamAttemptsView` |
 | `/api/exams/<int:exam_id>/publish/` | POST | IsAuthenticated, IsInstructor | `exams.views.publish_exam` |
 | `/api/exams/<int:exam_id>/archive/` | POST | IsAuthenticated, IsInstructor | `exams.views.archive_exam` |
 
@@ -144,7 +142,6 @@ other clients send `Authorization: Bearer <access token>`.
 | Path | Methods | Auth | View |
 |---|---|---|---|
 | `/api/instructors/dashboard/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorDashboardView` |
-| `/api/instructors/stats/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorDashboardView` |
 | `/api/instructors/profile/` | GET PUT PATCH | IsAuthenticated, IsInstructor | `instructors.views.InstructorProfileView` |
 | `/api/instructors/students/` | GET | IsAuthenticated, IsInstructor | `instructors.views.InstructorStudentsView` |
 | `/api/instructors/featured/` | GET | AllowAny | `instructors.views.FeaturedInstructorsView` |
@@ -174,6 +171,12 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/payments/stats/` | GET | IsAuthenticated, IsAdmin | `payments.views.PaymentStatsView` |
 | `/api/payments/instructor/earnings/` | GET | IsAuthenticated, IsInstructor | `payments.views.InstructorEarningsView` |
 | `/api/payments/webhooks/stripe/` | POST | AllowAny | `payments.webhooks.StripeWebhookView` |
+
+## `/api/schema/`
+
+| Path | Methods | Auth | View |
+|---|---|---|---|
+| `/api/schema/` | GET | AllowAny | `drf_spectacular.views.SpectacularAPIView` |
 
 ## `/api/students/`
 

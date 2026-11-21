@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
 async function loadCategories() {
     try {
         const response = await apiRequest('/courses/categories/');
-        categories = response.results || response || [];
+        categories = response?.results || [];
         
         const categorySelect = document.getElementById('category');
         categorySelect.innerHTML = '<option value="">Select category...</option>';
@@ -252,7 +252,7 @@ async function saveChanges() {
     } catch (error) {
         console.error('Error updating course:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
-        showToast(error.body?.price?.[0] || error.message || 'Failed to update course', 'error');
+        showToast(error.body?.fields?.price?.[0] || error.message || 'Failed to update course', 'error');
     }
 }
 </script>

@@ -230,23 +230,23 @@ class ExamDetailSerializer(serializers.ModelSerializer):
             for question in self.active_questions if question['custom'] == custom
         ]
 
-    def get_questions(self, obj):
+    def get_questions(self, obj) -> list[dict]:
         return self._questions(custom=False)
 
-    def get_custom_questions(self, obj):
+    def get_custom_questions(self, obj) -> list[dict]:
         return self._questions(custom=True)
 
-    def get_question_order(self, obj):
+    def get_question_order(self, obj) -> list[int | str]:
         return [question['id'] for question in self.active_questions]
 
-    def get_availability(self, obj):
+    def get_availability(self, obj) -> str:
         from .services import exam_availability
         return exam_availability(obj)
 
-    def get_questions_hidden(self, obj):
+    def get_questions_hidden(self, obj) -> bool:
         return not self.active_questions
 
-    def get_attempt(self, obj):
+    def get_attempt(self, obj) -> dict | None:
         attempt = self.context.get('attempt')
         if not attempt:
             return None
@@ -301,7 +301,7 @@ class ExamAttemptListSerializer(serializers.ModelSerializer):
             data.update(score=None, percentage=None, passed=None)
         return data
 
-    def get_result(self, obj):
+    def get_result(self, obj) -> dict | None:
         """Get result data if it exists."""
         if self.context.get('show_results', False) and hasattr(obj, 'result'):
             return ExamResultSerializer(obj.result, context=self.context).data
@@ -322,7 +322,7 @@ class ExamResultSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at']
 
-    def get_question_results(self, result):
+    def get_question_results(self, result) -> dict:
         from .services import selected_option_index
 
         if not self.context.get('show_question_review', False):

@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import F, Q, Count, Prefetch, Sum
+from django.db.models import F, Q, Count, OuterRef, Prefetch, Subquery, Sum
 from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -11,10 +11,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
-from courses.policies import can_manage_course, can_view_course_catalog
+from courses.policies import can_access_course_content, can_manage_course, can_view_course_catalog
 from courses.services import lock_course_for_edit, lock_draft_for_deletion, start_new_version, transition
 from enrollments.constants import ACCESS_STATUSES
-from enrollments.services import get_resume_lesson, ordered_course_lessons, require_active_enrollment
+from enrollments.services import (
+    get_access_enrollment, get_resume_lesson, lesson_lock_state, ordered_course_lessons, require_active_enrollment,
+)
 
 from .models import Course, Lesson, Module, Category, Tag, LessonResource
 from .serializers import (
@@ -73,6 +75,19 @@ class CoursePagination(PageNumberPagination):
     max_page_size = 100
 
 
+def _course_enrollment_count(statuses):
+    counts = Enrollment.objects.filter(course_id=OuterRef('pk'), status__in=statuses).order_by().values('course_id')
+    return Coalesce(Subquery(counts.annotate(total=Count('pk')).values('total')), 0)
+
+
+def _with_course_counts(queryset):
+    return queryset.select_related('instructor__profile', 'category').annotate(
+        enrollments_count=_course_enrollment_count(('active',)),
+        module_count=Count('modules', distinct=True),
+        lesson_count=Count('modules__lessons', distinct=True),
+    )
+
+
 class CourseListView(generics.ListAPIView):
     """List all published courses with search and filtering"""
     serializer_class = CourseListSerializer
@@ -84,20 +99,16 @@ class CourseListView(generics.ListAPIView):
         instructor = self.request.query_params.get('instructor')
         if instructor == 'me' and self.request.user.is_authenticated:
             # Show all courses (including drafts) for the logged-in instructor
-            queryset = Course.objects.filter(instructor=self.request.user).select_related(
-                'instructor', 'instructor__profile', 'category'
-            ).prefetch_related('modules', 'enrollments')
+            queryset = Course.objects.filter(instructor=self.request.user)
         elif instructor and instructor.isdigit():
             # Show only published courses for other instructors
             queryset = Course.objects.filter(
                 instructor__id=instructor,
                 status='published'
-            ).select_related('instructor', 'instructor__profile', 'category').prefetch_related('modules', 'enrollments')
+            )
         else:
             # Show only published courses for public
-            queryset = Course.objects.filter(status='published').select_related(
-                'instructor', 'instructor__profile', 'category'
-            ).prefetch_related('modules', 'enrollments')
+            queryset = Course.objects.filter(status='published')
         
         # Search by title or description
         search = self.request.query_params.get('search')
@@ -152,21 +163,23 @@ class CourseListView(generics.ListAPIView):
             raise ValidationError({'ordering': 'Course rating order is unavailable.'})
         if sort_by == 'popular':
             queryset = queryset.annotate(
-                enrollment_count=Count('enrollments', filter=Q(enrollments__status__in=ACCESS_STATUSES))
+                enrollment_count=_course_enrollment_count(ACCESS_STATUSES)
             ).order_by('-enrollment_count', '-id')
         else:
             if sort_by.removeprefix('-') not in COURSE_ORDERING_FIELDS:
                 sort_by = '-created_at'
             queryset = queryset.order_by(sort_by, '-id')
 
-        return queryset
+        return _with_course_counts(queryset)
 
 
 class CourseDetailView(generics.RetrieveAPIView):
     """Get single course details (by id or slug)"""
     queryset = Course.objects.select_related(
         'instructor', 'instructor__profile', 'category', 'current_version',
-    ).prefetch_related('tags', 'modules__lessons', 'enrollments')
+    ).prefetch_related('tags', 'modules__lessons').annotate(
+        enrollments_count=_course_enrollment_count(('active',)),
+    )
     serializer_class = CourseDetailSerializer
     permission_classes = [AllowAny]
     lookup_field = 'id'
@@ -188,13 +201,23 @@ class CourseDetailView(generics.RetrieveAPIView):
     
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        enrollment = get_access_enrollment(request.user, instance)
+        is_enrolled = enrollment is not None
         
-        if not can_view_course_catalog(request.user, instance):
+        if not can_view_course_catalog(request.user, instance, is_enrolled=is_enrolled):
             if not request.user.is_authenticated:
                 return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.get_serializer(instance, context={'request': request})
+        lessons = [lesson for module in instance.modules.all() for lesson in module.lessons.all()]
+        if not can_access_course_content(request.user, instance, is_enrolled=is_enrolled):
+            locks = {lesson.pk: not lesson.is_free for lesson in lessons}
+        else:
+            learner_enrollment = None if can_manage_course(request.user, instance) else enrollment
+            locks = lesson_lock_state(learner_enrollment, lessons)
+        context = self.get_serializer_context()
+        context.update(is_enrolled=is_enrolled, lesson_locks_by_course={instance.pk: locks})
+        serializer = self.get_serializer(instance, context=context)
         return Response(serializer.data)
 
 
@@ -278,9 +301,7 @@ class InstructorCoursesView(generics.ListAPIView):
         # BUG-02: the old try/except wrappers referenced an un-imported
         # `logging` (NameError) and turned every error into a vague 500.
         # DRF's exception handler already logs and reports real errors.
-        return Course.objects.filter(instructor=self.request.user).select_related(
-            'category', 'instructor__profile'
-        ).order_by('-created_at', '-id')
+        return _with_course_counts(Course.objects.filter(instructor=self.request.user)).order_by('-created_at', '-id')
 
 
 # ===== MODULE VIEWS =====
@@ -434,6 +455,7 @@ class LessonDetailView(APIView):
       (enrollments.services.lesson_lock_state).
     """
     permission_classes = [AllowAny]
+    serializer_class = LessonDataSerializer
 
     def get(self, request, lesson_id):
         from courses.policies import can_access_lesson
@@ -475,6 +497,7 @@ class CourseCurriculumView(APIView):
     page shows as unlocked is exactly what the content endpoint serves.
     """
     permission_classes = [AllowAny]
+    serializer_class = CourseCurriculumSerializer
 
     def get(self, request, course_id):
         from courses.policies import can_access_course_content

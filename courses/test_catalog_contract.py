@@ -48,7 +48,7 @@ class CatalogContractTests(APITestCase):
             with self.subTest(ordering=ordering):
                 response = self.client.get('/api/courses/', {'ordering': ordering})
                 self.assertEqual(response.status_code, 400)
-                self.assertIn('ordering', response.data)
+                self.assertIn('ordering', response.data['fields'])
 
     def test_course_detail_excludes_the_unsaved_learning_outcomes_field(self):
         response = self.client.get(f'/api/courses/{self.course.slug}/')
@@ -68,7 +68,7 @@ class CatalogContractTests(APITestCase):
                 )
                 for response in (created, edited):
                     self.assertEqual(response.status_code, 400, response.data)
-                    self.assertIn('content_type', response.data)
+                    self.assertIn('content_type', response.data['fields'])
         self.lesson.refresh_from_db()
         self.assertEqual(self.lesson.content_type, 'text')
         self.assertFalse(Lesson.objects.filter(title='Unsupported type').exists())

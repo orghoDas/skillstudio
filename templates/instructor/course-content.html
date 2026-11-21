@@ -131,7 +131,7 @@ async function loadCourseContent() {
         
         // Load sections with lessons
         const sectionsResponse = await apiRequest(`/courses/${courseSlug}/sections/`);
-        sections = sectionsResponse.results || sectionsResponse;
+        sections = sectionsResponse.results;
 
         renderContent();
     } catch (error) {

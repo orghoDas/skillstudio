@@ -86,7 +86,7 @@ async function loadEnrollments() {
     try {
         // Always fetch all enrollments and filter client-side
         const response = await apiRequest('/enrollments/');
-        let enrollments = response.results || response || [];
+        let enrollments = response?.results || [];
         
         // Filter based on current tab
         if (currentFilter === 'in_progress') {

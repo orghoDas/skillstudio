@@ -2,17 +2,22 @@ from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Count, Q
+from django.db.models import Avg, Count, FloatField, Q
+from django.db.models.functions import Cast, Coalesce, NullIf
 
 from accounts.permissions import IsInstructor
 from accounts.utils import public_instructor_name
 from courses.models import Course
+from core.pagination import SummaryPageNumberPagination
 from enrollments.models import Enrollment
+from enrollments.services import lesson_progress_percentage, with_enrollment_progress
 from django.shortcuts import get_object_or_404
 from .models import InstructorProfile
 from .serializers import (
+    FeaturedInstructorSerializer,
     InstructorProfileSerializer,
     InstructorDashboardSerializer,
+    InstructorRosterEntrySerializer,
 )
 from .services import (
     get_course_overview,
@@ -25,6 +30,7 @@ from .services import (
 
 class InstructorDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsInstructor]
+    serializer_class = InstructorDashboardSerializer
 
     def get(self, request):
         instructor = request.user
@@ -87,6 +93,7 @@ class InstructorDashboardView(APIView):
 class InstructorProfileView(APIView):
     """Get or update instructor profile."""
     permission_classes = [IsAuthenticated, IsInstructor]
+    serializer_class = InstructorProfileSerializer
     
     def get(self, request):
         profile = get_or_create_instructor_profile(request.user)
@@ -101,68 +108,56 @@ class InstructorProfileView(APIView):
     patch = put
 
 
-class InstructorStudentsView(APIView):
+class InstructorRosterPagination(SummaryPageNumberPagination):
+    summary_properties = {'active_count': {'type': 'integer'}, 'average_progress': {'type': 'number'}}
+
+
+class InstructorStudentsView(ListAPIView):
     """List all students enrolled in instructor's courses."""
     permission_classes = [IsAuthenticated, IsInstructor]
+    serializer_class = InstructorRosterEntrySerializer
+    pagination_class = InstructorRosterPagination
     
-    def get(self, request):
-        instructor = request.user
-        
-        # Get all enrollments for instructor's courses
-        enrollments = Enrollment.objects.filter(
-            course__instructor=instructor
-        ).select_related('user', 'course').prefetch_related('lesson_progress').order_by('-enrolled_at')
-        
-        # Group students by course
-        students_data = []
-        seen_students = set()
-        
-        for enrollment in enrollments:
-            student_key = (enrollment.user.id, enrollment.course.id)
-            if student_key not in seen_students:
-                seen_students.add(student_key)
-                
-                # Calculate progress percentage
-                from courses.models import Lesson
-                total_lessons = Lesson.objects.filter(
-                    module__course=enrollment.course,
-                    is_free=False
-                ).count()
-                
-                if total_lessons == 0:
-                    progress_percentage = 0
-                else:
-                    completed_lessons = enrollment.lesson_progress.filter(is_completed=True).count()
-                    progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
-                
-                students_data.append({
-                    "id": enrollment.user.id,
-                    "email": enrollment.user.email,
-                    "course": {
-                        "id": enrollment.course.id,
-                        "title": enrollment.course.title,
-                    },
-                    "enrolled_at": enrollment.enrolled_at,
-                    "progress": progress_percentage,
-                    "status": enrollment.status,
-                    "last_accessed": enrollment.updated_at if hasattr(enrollment, 'updated_at') else enrollment.enrolled_at,
-                })
-        
-        return Response({
-            "count": len(students_data),
-            "students": students_data
-        })
+    def get_queryset(self):
+        queryset = Enrollment.objects.filter(course__instructor=self.request.user).select_related('user', 'course')
+        return with_enrollment_progress(queryset.order_by('-enrolled_at', '-pk'))
+
+    def list(self, request, *args, **kwargs):
+        enrollments = self.get_queryset()
+        page = self.paginate_queryset(enrollments)
+        students = [
+            {
+                'id': row.user_id,
+                'email': row.user.email,
+                'course': {'id': row.course_id, 'title': row.course.title},
+                'enrolled_at': row.enrolled_at,
+                'progress': lesson_progress_percentage(row.required_completed_count, row.required_count),
+                'status': row.status,
+                'last_accessed': row.enrolled_at,
+            }
+            for row in page
+        ]
+        response = self.get_paginated_response(students)
+        ratio = Cast('required_completed_count', FloatField()) * 100 / NullIf(Cast('required_count', FloatField()), 0.0)
+        summary = enrollments.aggregate(
+            active_count=Count('pk', filter=Q(status='active')),
+            average_progress=Avg(Coalesce(ratio, 0.0), default=0.0),
+        )
+        summary['average_progress'] = round(summary['average_progress'], 2)
+        response.data['summary'] = summary
+        return response
 
 
-class FeaturedInstructorsView(APIView):
+class FeaturedInstructorsView(ListAPIView):
     """Public: instructors with published courses, most students first (API-01).
 
     Returns display data only (name, headline, counts) — never email addresses.
     """
     permission_classes = [AllowAny]
+    serializer_class = FeaturedInstructorSerializer
     LIMIT = 8
 
-    def get(self, request):
+    def get_queryset(self):
         from django.contrib.auth import get_user_model
         from enrollments.constants import ACCESS_STATUSES
 
@@ -182,7 +177,7 @@ class FeaturedInstructorsView(APIView):
             .select_related('profile', 'instructor_profile')
             .order_by('-students_count', '-courses_count', 'id')[: self.LIMIT]
         )
-        return Response([_featured_instructor_data(user) for user in instructors])
+        return [_featured_instructor_data(user) for user in instructors]
 
 
 def _featured_instructor_data(user):

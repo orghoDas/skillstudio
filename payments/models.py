@@ -149,11 +149,11 @@ class Payment(models.Model):
 
     
     @property
-    def is_successful(self):
+    def is_successful(self) -> bool:
         return self.status == 'completed'
     
     @property
-    def can_be_refunded(self):
+    def can_be_refunded(self) -> bool:
         return self.status in ['completed', 'partially_refunded']
 
 

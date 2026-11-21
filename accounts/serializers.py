@@ -71,7 +71,7 @@ class AccountProfileSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("created_at", "updated_at")
 
-    def get_wallet(self, obj):
+    def get_wallet(self, obj) -> dict:
         from students.services import get_or_create_wallet
         return get_or_create_wallet(obj.user).balance
 
@@ -123,11 +123,11 @@ class MeSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'email', 'role', 'is_active', 'created_at')
 
-    def get_account_profile(self, obj):
+    def get_account_profile(self, obj) -> dict:
         profile, _ = Profile.objects.get_or_create(user=obj)
         return AccountProfileSerializer(profile).data
 
-    def get_student_profile(self, obj):
+    def get_student_profile(self, obj) -> dict | None:
         if obj.role != User.Role.STUDENT:
             return None
 
@@ -136,7 +136,7 @@ class MeSerializer(serializers.ModelSerializer):
 
         return StudentProfileSerializer(get_or_create_student_profile(obj)).data
 
-    def get_instructor_profile(self, obj):
+    def get_instructor_profile(self, obj) -> dict | None:
         if obj.role not in (User.Role.INSTRUCTOR, User.Role.ADMIN):
             return None
 

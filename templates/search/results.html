@@ -217,7 +217,7 @@ async function performSearch() {
         if (filters.price) params.set('is_free', filters.price[0] === 'free' ? 'true' : 'false');
 
         const response = await apiRequest(`/courses/?${params.toString()}`);
-        const courses = response.results || response;
+        const courses = response.results;
 
         document.getElementById('results-count').textContent = response.count ?? courses.length;
 

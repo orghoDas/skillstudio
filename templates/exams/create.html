@@ -254,17 +254,7 @@ async function loadCourses() {
         const payload = await apiRequest('/courses/instructor/courses/');
         const select = document.getElementById('course-select');
 
-        let courses = [];
-        if (Array.isArray(payload)) {
-            courses = payload;
-        } else if (payload && Array.isArray(payload.results)) {
-            // DRF pagination
-            courses = payload.results;
-        } else {
-            console.warn('Unexpected courses payload:', payload);
-            throw new Error('Unexpected response from server');
-        }
-        console.debug('loadCourses payload', payload);
+        const courses = payload.results;
         // If no courses, show friendly message
         if (!courses || courses.length === 0) {
             const select = document.getElementById('course-select');
@@ -281,48 +271,13 @@ async function loadCourses() {
             option.textContent = course.title;
             select.appendChild(option);
         });
-        // If instructor endpoint returned empty, try fallback
-        if (courses.length === 0) {
-            // Try the public courses list filtered by instructor=me
-            try {
-                const fallback = await apiRequest('/courses/?instructor=me');
-                let fbCourses = Array.isArray(fallback) ? fallback : (fallback && Array.isArray(fallback.results) ? fallback.results : []);
-                if (fbCourses.length > 0) {
-                    fbCourses.forEach(course => {
-                        const option = document.createElement('option');
-                        option.value = course.id;
-                        option.textContent = course.title;
-                        select.appendChild(option);
-                    });
-                } else {
-                    // No courses at all
-                    select.innerHTML = '';
-                    const opt = document.createElement('option');
-                    opt.value = '';
-                    opt.textContent = 'No courses found. Create a course first.';
-                    select.appendChild(opt);
-                    // Add a create course link
-                    let createLink = document.getElementById('create-course-link');
-                    if (!createLink) {
-                        createLink = document.createElement('a');
-                        createLink.id = 'create-course-link';
-                        createLink.href = '/instructor/courses/create/';
-                        createLink.className = 'mt-2 inline-block text-sm text-blue-400 hover:underline';
-                        createLink.textContent = 'Create a course';
-                        select.parentNode.appendChild(createLink);
-                    }
-                }
-            } catch (e) {
-                console.warn('Fallback courses request failed', e);
-            }
-        }
     } catch (error) {
         console.error('Error loading courses:', error);
         const select = document.getElementById('course-select');
         // Show a friendly option with the error message and a retry
         let msg = 'Failed to load courses';
         if (error && error.body) {
-            msg = (error.body.detail || error.body.error || error.body.message) || msg;
+            msg = error.body.detail || msg;
         } else if (error && error.message) {
             msg = error.message;
         }
@@ -364,7 +319,7 @@ async function showQuestionBank() {
 
     try {
         const payload = await apiRequest(`/exams/questions/?course_id=${courseId}`);
-        let questions = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.results) ? payload.results : []);
+        const questions = payload.results;
 
         questionMap = {}; // reset
         container.innerHTML = '';
@@ -547,7 +502,7 @@ async function submitCreateQuestion() {
         console.error('Create question failed', err);
         statusEl.textContent = 'Failed to create';
         // Show detailed server error if available
-        const serverMsg = (err && err.body && (err.body.detail || err.body.error || err.body.message)) || err.message || 'Failed to create question';
+        const serverMsg = (err && err.body && err.body.detail) || err.message || 'Failed to create question';
         showToast(serverMsg, 'error');
         // If server returned validation errors, log them for debugging
         if (err && err.body) console.debug('Server error body:', err.body);

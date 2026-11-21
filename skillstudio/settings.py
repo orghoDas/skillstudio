@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
     "core.apps.CoreConfig",
     "accounts",
@@ -108,6 +109,7 @@ INSTALLED_APPS = [
 ]
 
 REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "core.schema.SkillStudioAutoSchema",
     "EXCEPTION_HANDLER": "core.api_exceptions.handle_api_exception",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "accounts.authentication.CookieJWTAuthentication",
@@ -120,9 +122,28 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
 }
 
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SkillStudio API",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/",
+    "ENUM_NAME_OVERRIDES": {
+        "CourseStatus": "courses.models.Course.STATUS_CHOICES",
+        "EnrollmentStatus": "enrollments.models.Enrollment.STATUS_CHOICES",
+        "ExamStatus": "exams.models.Exam.STATUS_CHOICES",
+        "ExamAttemptStatus": "exams.models.ExamAttempt.STATUS_CHOICES",
+    },
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "core.schema.add_error_contract",
+    ],
+}
+
 ASGI_APPLICATION = "skillstudio.asgi.application"
 
 MIDDLEWARE = [
+    "core.api_exceptions.APIErrorEnvelopeMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',

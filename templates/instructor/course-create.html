@@ -181,7 +181,7 @@ async function createCourse() {
     } catch (error) {
         console.error('Error creating course:', error);
         console.error('Error details:', error.message);
-        showToast(error.body?.price?.[0] || error.message || 'Failed to create course', 'error');
+        showToast(error.body?.fields?.price?.[0] || error.message || 'Failed to create course', 'error');
     }
 }
 

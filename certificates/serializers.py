@@ -34,13 +34,13 @@ class CertificateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'verification_code', 'issued_at', 'revoked_at']
     
-    def get_user_name(self, obj):
+    def get_user_name(self, obj) -> str:
         """Get user's full name or email."""
         if hasattr(obj.user, 'profile') and obj.user.profile and obj.user.profile.full_name:
             return obj.user.profile.full_name
         return obj.user.email
     
-    def get_pdf_url(self, obj):
+    def get_pdf_url(self, obj) -> str | None:
         """Get PDF download URL."""
         if obj.is_revoked:
             return None
@@ -70,7 +70,7 @@ class CertificateListSerializer(serializers.ModelSerializer):
             'has_pdf'
         ]
     
-    def get_has_pdf(self, obj):
+    def get_has_pdf(self, obj) -> bool:
         return (
             not obj.is_revoked and bool(obj.pdf)
             and obj.pdf_verification_url == obj.verification_url and obj.pdf_grade == obj.released_grade

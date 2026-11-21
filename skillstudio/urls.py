@@ -16,10 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
     path('', include('core.urls')),
     path('admin/', admin.site.urls),
+    path('api/schema/', SpectacularAPIView.as_view(authentication_classes=[]), name='api-schema'),
     path("api/accounts/", include("accounts.urls")),
     path("api/courses/", include("courses.urls")),
     path("api/enrollments/", include("enrollments.urls")),

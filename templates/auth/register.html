@@ -184,22 +184,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.location.href = '/auth/login/';
                 }, 2000);
             } else {
-                // Show field-specific errors
-                if (data.email) {
-                    document.getElementById('email-error').textContent = data.email[0];
+                const fields = data.fields;
+                if (fields.email) {
+                    document.getElementById('email-error').textContent = fields.email[0];
                     document.getElementById('email-error').classList.remove('hidden');
                 }
-                if (data.password) {
-                    document.getElementById('password-error').textContent = data.password[0];
+                if (fields.password) {
+                    document.getElementById('password-error').textContent = fields.password[0];
                     document.getElementById('password-error').classList.remove('hidden');
                 }
-                if (data.role) {
-                    registerError.querySelector('p').textContent = data.role[0];
+                if (fields.role) {
+                    registerError.querySelector('p').textContent = fields.role[0];
                     registerError.classList.remove('hidden');
                 }
                 
                 // Show general error
-                if (!data.email && !data.password && !data.role) {
+                if (!fields.email && !fields.password && !fields.role) {
                     const errorMsg = data.detail || data.message || 'Registration failed. Please try again.';
                     registerError.querySelector('p').textContent = errorMsg;
                     registerError.classList.remove('hidden');

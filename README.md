@@ -62,6 +62,10 @@ flowchart LR
 
 Each app has a short README covering its rules and invariants. Every endpoint is listed in **[docs/API_ROUTES.md](docs/API_ROUTES.md)**, which is generated from the URLconf.
 
+The OpenAPI contract is served at `/api/schema/` and checked in as [docs/openapi.yaml](docs/openapi.yaml). Regenerate it after changing the API with `python manage.py spectacular --validate --fail-on-warn --file docs/openapi.yaml`. Pull-request CI validates the generated schema and compares it with the snapshot.
+
+Standalone list responses use `count`, `next`, `previous`, and `results`. Errors include a readable `detail`, a machine-readable `code`, and a `fields` object for validation messages.
+
 ### Rules worth knowing before you change code
 - **One money path** ([D-01](AUDIT_REPORT.md#d-01)): money enters a wallet (top-up), and a course is bought from the wallet by `payments.services.purchase_course`. Every balance change goes through `Wallet._apply_delta`, which row-locks the wallet and writes a ledger row.
 - **Access** is decided in `courses/policies.py`. Lesson order is decided by `enrollments.services.lesson_lock_state`. Use these instead of re-checking enrollment status in views.

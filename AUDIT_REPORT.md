@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *56 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01; all 2026-11-21); 11 open (4 P0 and 7 P2), of which SEC-01, SEC-03, PAY-04, PAY-05, API-04 are partially done. All P1 and P3 items are resolved.* |
+| *Resolved so far* | *58 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04; all 2026-11-21); 9 open (4 P0 and 5 P2), of which SEC-01, SEC-03, PAY-04, PAY-05 are partially done. All P1 and P3 items are resolved.* |
 
 ### Fix these first (in order)
 
@@ -194,8 +194,8 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [EXM-02](#exm-02) | P2 | Exam settings that do nothing; analytics disagree with grading — ✅ resolved 2026-11-21 |
 | [CRT-01](#crt-01) | P2 | Certificate admin, verification and rendering issues — ✅ resolved 2026-11-21 |
 | [ACC-01](#acc-01) | P2 | Account-management inconsistencies — ✅ resolved 2026-11-21 |
-| [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints |
-| [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes — 🟡 duplicate route names fixed |
+| [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints — ✅ resolved 2026-11-21 |
+| [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes — ✅ resolved 2026-11-21 |
 | [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs — re-scoped (deploy items dropped) |
 | [SEC-08](#sec-08) | P2 | Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope |
 | [FE-02](#fe-02) | P2 | Role-based navbar never works; debug logs and stale routes |
@@ -1074,7 +1074,7 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 >   - The lesson editor's **quiz options**.
 >
 >   Each inner render function was checked to escape its own data before the outer escape was removed.
-> - **Still open (not blocking):** response-*shape* checks need the OpenAPI schema ([API-04](#api-04)).
+> - [API-04](#api-04) adds an OpenAPI snapshot and response-shape checks for errors and paginated collections.
 
 *Original finding:*
 
@@ -1431,7 +1431,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Either enforce scopes in a `HasAPIKeyScope` permission or remove the field.
 
 <a id="perf-01"></a>
-### PERF-01: N+1 queries and unpaginated list endpoints
+### PERF-01: N+1 queries and unpaginated list endpoints — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Course counts are annotated and course detail loads only the viewer's enrollment and progress. Enrollment lists batch completed lesson IDs, and the dashboards and instructor roster calculate progress without per-course queries. Payment history, refunds, the instructor roster, and the detailed learning dashboard now return page-number responses with `count`, `next`, `previous`, and `results`. Payment history and the roster also return a `summary` for the entire filtered result set. Their pages expose Previous and Next controls. Query-budget tests cover the changed reads.
+
+*Original finding:*
 
 **Evidence:**
 - `CourseListSerializer`: 3 queries per course (enrollment count, module count, lesson count).
@@ -1449,9 +1453,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Add `assertNumQueries` budget tests for course list, enrollment list and dashboards.
 
 <a id="api-04"></a>
-### API-04: No API contract: inconsistent error and pagination shapes — 🟡 DUPLICATE ROUTE NAMES FIXED 2026-11-21
+### API-04: No API contract: inconsistent error and pagination shapes — ✅ RESOLVED 2026-11-21
 
-> *Progress 2026-11-21:* the duplicate URL names are gone: `category-list` was removed by the [API-02](#api-02) merge, `instructor-dashboard` was renamed, and `logout` only clashes with the namespaced `admin:logout`. [ERR-01](#err-01) added a shared handler for Django validation errors and unexpected exceptions. **Still open:** OpenAPI schema, a common envelope across all error responses, consistent pagination.
+> **Resolved 2026-11-21.** The OpenAPI schema is served at `/api/schema/`, with a validated snapshot in [docs/openapi.yaml](docs/openapi.yaml) and a pull-request drift check. It documents supported authentication methods, pagination and the shared error envelope. Some hand-built success responses retain a free-form schema.
+> - API errors return JSON with `detail`, `code`, and `fields`. Certificate and coupon verification retain their status metadata. The frontend reads the common envelope, including after an access-token refresh.
+> - Standalone list endpoints use `count`, `next`, `previous`, and `results`. Exam attempt history has page navigation. The instructor dashboard uses one canonical route.
 
 *Original finding:*
 
@@ -1665,7 +1671,7 @@ Move aspirational features to a "Roadmap" section.
 > - `accounts/QUICKSTART.md`, `courses/QUICKSTART.md`, `enrollments/QUICKSTART.md` and `enrollments/IMPLEMENTATION_SUMMARY.md` were deleted.
 > - Endpoints now live in **[docs/API_ROUTES.md](docs/API_ROUTES.md)**. `python manage.py api_routes --write` generates it from the URLconf: path, methods, DRF permission classes and view, for all 132 API routes.
 > - `core.tests.ProjectHygieneTests` fails when the file is stale.
-> - When API-04 adds an OpenAPI schema, the READMEs can link to it too.
+> - [API-04](#api-04) publishes the OpenAPI schema at `/api/schema/`.
 
 <a id="dep-01"></a>
 ### DEP-01: Dependencies installed but unused; no lock file — ✅ RESOLVED 2026-11-21
@@ -1740,8 +1746,8 @@ Move aspirational features to a "Roadmap" section.
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, ~~OPS-03~~ ✅; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, ~~EXM-03~~ ✅, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ~~ENR-03~~ ✅, ~~TEST-02~~ ✅ | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, ~~SEC-09~~ ✅, ~~ADM-01~~ ✅, ~~TEST-01~~ ✅ | 1–2 weeks |
-| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, FE-02, ~~ERR-01~~ ✅ | 3–5 days |
-| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ASM-03, INS-01 | 1 week |
+| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, FE-02, ~~ERR-01~~ ✅ | 3–5 days |
+| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
 
 ### Definition of done for release

@@ -13,16 +13,16 @@ urlpatterns = [
     path('<int:pk>/', views.ExamDetailView.as_view(), name='exam-detail'),
     
     # Student Exam Taking
-    path('course/<int:course_id>/', views.get_exam_for_course, name='course-exams'),
+    path('course/<int:course_id>/', views.CourseExamListView.as_view(), name='course-exams'),
     path('<int:exam_id>/start/', views.start_exam, name='start-exam'),
     path('<int:exam_id>/submit/', views.submit_exam, name='submit-exam'),
     path('<int:exam_id>/save-answers/', views.save_exam_answers, name='save-exam-answers'),
-    path('<int:exam_id>/attempts/', views.exam_attempts_history, name='exam-attempts'),
+    path('<int:exam_id>/attempts/', views.ExamHistoryView.as_view(), name='exam-attempts'),
     path('attempt/<int:attempt_id>/result/', views.exam_result_detail, name='exam-result'),
     
     # Instructor Views
     path('<int:exam_id>/analytics/', views.exam_analytics, name='exam-analytics'),
-    path('<int:exam_id>/all-attempts/', views.exam_attempts_list, name='all-attempts'),
+    path('<int:exam_id>/all-attempts/', views.InstructorExamAttemptsView.as_view(), name='all-attempts'),
     path('<int:exam_id>/publish/', views.publish_exam, name='publish-exam'),
     path('<int:exam_id>/archive/', views.archive_exam, name='archive-exam'),
 ]

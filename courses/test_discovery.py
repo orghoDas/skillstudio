@@ -72,9 +72,9 @@ class FeaturedInstructorsTests(DiscoveryFixture, APITestCase):
     def test_public_list_ordered_by_students_without_emails(self):
         response = self.client.get("/api/instructors/featured/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual([i["id"] for i in response.data], [self.ann.id, self.ben.id])  # idle has no published course
-        ann = response.data[0]
+        self.assertEqual([i["id"] for i in response.data['results']], [self.ann.id, self.ben.id])  # idle has no published course
+        ann = response.data['results'][0]
         self.assertEqual((ann["name"], ann["courses_count"], ann["students_count"]), ("Ann Teacher", 2, 3))
-        for entry in response.data:
+        for entry in response.data['results']:
             self.assertNotIn("email", entry)
             self.assertNotIn("@", entry["name"])

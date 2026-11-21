@@ -29,7 +29,7 @@ class CoursePricingAndTagTests(APITestCase):
                     'title': 'Rejected pricing', 'is_free': is_free, 'price': price,
                 }, format='json')
                 self.assertEqual(response.status_code, 400, response.data)
-                self.assertIn('price', response.data)
+                self.assertIn('price', response.data['fields'])
         self.assertFalse(Course.objects.filter(title='Rejected pricing').exists())
 
         for fields, expected in (({}, (True, '0.00')), ({'price': '3.75'}, (False, '3.75'))):
@@ -62,7 +62,7 @@ class CoursePricingAndTagTests(APITestCase):
             'title': 'Rejected tag', 'tag_ids': [self.first_tag.pk, unknown],
         }, format='json')
         self.assertEqual(bad_create.status_code, 400, bad_create.data)
-        self.assertIn('tag_ids', bad_create.data)
+        self.assertIn('tag_ids', bad_create.data['fields'])
         self.assertFalse(Course.objects.filter(title='Rejected tag').exists())
 
         duplicate_ids = [self.first_tag.pk, self.first_tag.pk, self.second_tag.pk]

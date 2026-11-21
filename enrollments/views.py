@@ -35,7 +35,9 @@ from .services import (
     get_resume_lesson,
     ordered_course_lessons,
     get_lesson_completion_stats,
+    lesson_progress_percentage,
     update_lesson_watch_progress,
+    with_enrollment_progress,
 )
 
 
@@ -51,7 +53,7 @@ class EnrollmentListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = Enrollment.objects.filter(
             user=self.request.user
-        ).select_related('course__instructor__profile').order_by('-enrolled_at')
+        ).select_related('course__instructor__profile')
         
         # Filter by course ID if provided
         course_id = self.request.query_params.get('course')
@@ -68,7 +70,7 @@ class EnrollmentListView(generics.ListAPIView):
         if status:
             queryset = queryset.filter(status=status)
         
-        return queryset
+        return with_enrollment_progress(queryset.order_by('-enrolled_at', '-pk'), completed_ids=True)
 
 
 class EnrollmentDetailView(generics.RetrieveAPIView):
@@ -147,10 +149,11 @@ class MyLearningView(generics.ListAPIView):
     serializer_class = EnrollmentListSerializer
 
     def get_queryset(self):
-        return Enrollment.objects.filter(
+        queryset = Enrollment.objects.filter(
             user=self.request.user,
             status='active'
-        ).select_related('course__instructor__profile').order_by('-enrolled_at')
+        ).select_related('course__instructor__profile').order_by('-enrolled_at', '-pk')
+        return with_enrollment_progress(queryset, completed_ids=True)
 
 
 class CompletedCoursesView(generics.ListAPIView):
@@ -159,10 +162,11 @@ class CompletedCoursesView(generics.ListAPIView):
     serializer_class = EnrollmentListSerializer
 
     def get_queryset(self):
-        return Enrollment.objects.filter(
+        queryset = Enrollment.objects.filter(
             user=self.request.user,
             status='completed'
-        ).select_related('course__instructor__profile').order_by('-completed_at')
+        ).select_related('course__instructor__profile').order_by('-completed_at', '-pk')
+        return with_enrollment_progress(queryset, completed_ids=True)
 
 
 # ===========================
@@ -495,88 +499,43 @@ class CheckWishlistView(APIView):
 class EnrollmentStatsView(APIView):
     """Get overall enrollment statistics for the authenticated user."""
     permission_classes = [IsAuthenticated]
+    serializer_class = EnrollmentStatsSerializer
 
     def get(self, request):
         user = request.user
         enrollments = Enrollment.objects.filter(user=user)
 
-        total_enrollments = enrollments.count()
-        active_enrollments = enrollments.filter(status='active').count()
-        completed_enrollments = enrollments.filter(status='completed').count()
-        canceled_enrollments = enrollments.filter(status='canceled').count()
-        
-        total_courses_enrolled = enrollments.values('course').distinct().count()
-        
-        # Calculate average progress
-        active_enroll = enrollments.filter(status='active')
-        if active_enroll.exists():
-            progress_sum = 0
-            for enrollment in active_enroll:
-                stats = get_lesson_completion_stats(enrollment)
-                if stats['total_lessons'] > 0:
-                    progress_sum += stats['progress_percentage']
-            average_progress = round(progress_sum / active_enroll.count(), 2) if active_enroll.count() > 0 else 0
-        else:
-            average_progress = 0
+        stats = enrollments.aggregate(
+            total_enrollments=Count('pk'),
+            active_enrollments=Count('pk', filter=Q(status='active')),
+            completed_enrollments=Count('pk', filter=Q(status='completed')),
+            canceled_enrollments=Count('pk', filter=Q(status='canceled')),
+            total_courses_enrolled=Count('course_id', distinct=True),
+        )
+        active_courses = with_enrollment_progress(enrollments.filter(status='active')).values_list(
+            'required_completed_count', 'required_count',
+        )
+        active_progress = [lesson_progress_percentage(completed, total) for completed, total in active_courses]
+        stats['average_progress'] = round(sum(active_progress) / len(active_progress), 2) if active_progress else 0
         
         # Calculate total watch time in hours
         total_watch_time = LessonProgress.objects.filter(
             user=user
         ).aggregate(total=Sum('watch_time'))['total'] or 0
-        total_watch_time_hours = round(total_watch_time / 3600, 2)
-
-        stats = {
-            'total_enrollments': total_enrollments,
-            'active_enrollments': active_enrollments,
-            'completed_enrollments': completed_enrollments,
-            'canceled_enrollments': canceled_enrollments,
-            'total_courses_enrolled': total_courses_enrolled,
-            'average_progress': average_progress,
-            'total_watch_time_hours': total_watch_time_hours,
-        }
+        stats['total_watch_time_hours'] = round(total_watch_time / 3600, 2)
 
         serializer = EnrollmentStatsSerializer(stats)
         return Response(serializer.data)
 
 
-class LearningProgressDashboardView(APIView):
+class LearningProgressDashboardView(generics.ListAPIView):
     """Get detailed progress for all enrolled courses."""
     permission_classes = [IsAuthenticated]
+    serializer_class = CourseProgressStatsSerializer
 
-    def get(self, request):
-        enrollments = Enrollment.objects.filter(
-            user=request.user,
-            status='active'
-        ).select_related('course')
-
-        progress_data = []
-        for enrollment in enrollments:
-            stats = get_lesson_completion_stats(enrollment)
-            
-            total_duration = Lesson.objects.filter(
-                module__course=enrollment.course,
-                is_free=False
-            ).aggregate(total=Sum('duration_seconds'))['total'] or 0
-            
-            watched_time = enrollment.lesson_progress.aggregate(
-                total=Sum('watch_time')
-            )['total'] or 0
-            
-            progress_data.append({
-                'course_id': enrollment.course.id,
-                'course_title': enrollment.course.title,
-                'total_lessons': stats['total_lessons'],
-                'completed_lessons': stats['completed_lessons'],
-                'progress_percentage': stats['progress_percentage'],
-                'total_duration_seconds': total_duration,
-                'watched_time_seconds': watched_time,
-                'is_completed': enrollment.is_completed,
-                'enrolled_at': enrollment.enrolled_at,
-                'completed_at': enrollment.completed_at,
-            })
-
-        serializer = CourseProgressStatsSerializer(progress_data, many=True)
-        return Response(serializer.data)
+    def get_queryset(self):
+        queryset = Enrollment.objects.filter(user=self.request.user, status='active').select_related('course')
+        return with_enrollment_progress(queryset.order_by('-enrolled_at', '-pk'), durations=True)
 
 
 # ===========================

@@ -57,7 +57,7 @@ class CoursePrivacyTests(APITestCase):
                 self.assertEqual(detail.data['instructor_name'], 'Instructor')
                 self.assertNotContains(detail, self.owner.email)
                 featured = self.client.get('/api/instructors/featured/')
-                listed = next(instructor for instructor in featured.data if instructor['id'] == self.owner.pk)
+                listed = next(instructor for instructor in featured.data['results'] if instructor['id'] == self.owner.pk)
                 self.assertEqual(listed['name'], 'Instructor')
                 self.assertNotContains(featured, self.owner.email)
 

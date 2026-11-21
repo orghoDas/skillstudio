@@ -99,7 +99,7 @@ class Certificate(models.Model):
         super().save(*args, **kwargs)
     
     @property
-    def verification_url(self):
+    def verification_url(self) -> str:
         path = reverse('certificate-verification-page', kwargs={'code': self.verification_code})
         return f"{settings.BACKEND_URL}{path}"
 

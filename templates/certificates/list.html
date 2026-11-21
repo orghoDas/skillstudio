@@ -84,7 +84,7 @@ async function loadCertificates() {
     
     try {
         const response = await apiRequest('/certificates/');
-        const certificates = response.results || response;
+        const certificates = response.results;
 
         // Update stats
         document.getElementById('total-certificates').textContent = certificates.length;

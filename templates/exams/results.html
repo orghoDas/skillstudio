@@ -82,6 +82,10 @@
             <div id="attempts-list" class="space-y-3">
                 <!-- Attempts will be loaded here -->
             </div>
+            <nav id="attempt-pages" class="hidden flex justify-end gap-4 mt-4" aria-label="Attempt history pages">
+                <button type="button" id="attempts-previous" class="text-blue-400 disabled:opacity-50">Previous</button>
+                <button type="button" id="attempts-next" class="text-blue-400 disabled:opacity-50">Next</button>
+            </nav>
         </div>
 
         <!-- Question Review (if enabled) -->
@@ -109,6 +113,7 @@ let examId = null;
 let attemptId = null;
 let exam = null;
 let currentAttempt = null;
+let historyPage = 1;
 
 // Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
@@ -117,6 +122,7 @@ function getUrlParams() {
     const pathParts = window.location.pathname.split('/');
     examId = pathParts[pathParts.indexOf('results') + 1];
     attemptId = params.get('attempt');
+    historyPage = Number(params.get('page')) || 1;
 }
 
 async function loadResults() {
@@ -126,13 +132,26 @@ async function loadResults() {
     try {
         const [examData, history] = await Promise.all([
             apiRequest(`/exams/${examId}/`),
-            apiRequest(`/exams/${examId}/attempts/`),
+            apiRequest(`/exams/${examId}/attempts/?page=${historyPage}`),
         ]);
         exam = examData;
-        const attempts = history.attempts;
+        const attempts = history.results;
         currentAttempt = attempts.find(attempt =>
             attemptId ? String(attempt.id) === attemptId : attempt.status === 'completed'
         );
+        if (!currentAttempt && attemptId) {
+            try {
+                const result = await apiRequest(`/exams/attempt/${encodeURIComponent(attemptId)}/result/`);
+                if (String(result.attempt.exam) === examId) currentAttempt = { ...result.attempt, result };
+            } catch (error) {
+                if (error.status !== 403) throw error;
+                loadingState.textContent = 'Results are unavailable for this attempt.';
+                return;
+            }
+        } else if (!currentAttempt) {
+            const completed = await apiRequest(`/exams/${examId}/attempts/?status=completed`);
+            currentAttempt = completed.results[0];
+        }
         if (!currentAttempt || currentAttempt.status !== 'completed') {
             throw new Error('No completed attempt found.');
         }
@@ -145,6 +164,13 @@ async function loadResults() {
         resultsContainer.classList.remove('hidden');
         displayResults();
         displayAttemptHistory(attempts);
+        document.getElementById('attempt-pages').classList.toggle('hidden', !history.previous && !history.next);
+        const previous = document.getElementById('attempts-previous');
+        const next = document.getElementById('attempts-next');
+        previous.disabled = !history.previous;
+        next.disabled = !history.next;
+        previous.onclick = () => viewAttempt(currentAttempt.id, historyPage - 1);
+        next.onclick = () => viewAttempt(currentAttempt.id, historyPage + 1);
 
     } catch (error) {
         console.error('Error loading results:', error);
@@ -297,8 +323,9 @@ function displayQuestionReview(results) {
     }).join('');
 }
 
-function viewAttempt(id) {
-    window.location.href = `/exams/results/${examId}/?attempt=${id}`;
+function viewAttempt(id, page = historyPage) {
+    const params = new URLSearchParams({ attempt: id, page });
+    window.location.href = `/exams/results/${examId}/?${params}`;
 }
 
 async function retakeExam() {

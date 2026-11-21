@@ -63,7 +63,7 @@ class ExamWindowTests(APITestCase):
         response = self.start()
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.data["code"], "not_open_yet")
-        self.assertIn("opens at", response.data["error"])
+        self.assertIn("opens at", response.data['detail'])
 
     def test_start_after_window_closed(self):
         now = timezone.now()

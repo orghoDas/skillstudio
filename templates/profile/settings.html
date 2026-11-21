@@ -293,12 +293,12 @@ async function handlePasswordChange(e) {
         console.error('Error changing password:', error);
         
         // Handle specific error fields
-        if (error.old_password) {
-            showAlert(error.old_password[0] || 'Old password is incorrect', 'error');
-        } else if (error.new_password) {
-            showAlert(error.new_password[0] || 'New password is invalid', 'error');
-        } else if (error.new_password2) {
-            showAlert(error.new_password2[0] || 'Password confirmation failed', 'error');
+        if (error.body?.fields?.old_password) {
+            showAlert(error.body?.fields?.old_password[0] || 'Old password is incorrect', 'error');
+        } else if (error.body?.fields?.new_password) {
+            showAlert(error.body?.fields?.new_password[0] || 'New password is invalid', 'error');
+        } else if (error.body?.fields?.new_password2) {
+            showAlert(error.body?.fields?.new_password2[0] || 'Password confirmation failed', 'error');
         } else {
             showAlert(error.message || 'Failed to update password', 'error');
         }

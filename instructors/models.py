@@ -53,13 +53,13 @@ class InstructorProfile(models.Model):
         self.save(update_fields=['is_verified', 'verified_at'])
     
     @property
-    def total_courses(self):
+    def total_courses(self) -> int:
         from courses.models import Course
 
         return Course.objects.filter(instructor_id=self.user_id).count()
 
     @property
-    def total_students(self):
+    def total_students(self) -> int:
         from enrollments.models import Enrollment
 
         return Enrollment.objects.filter(course__instructor_id=self.user_id).values('user').distinct().count()

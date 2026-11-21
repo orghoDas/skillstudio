@@ -4,7 +4,7 @@ from .models import Enrollment, LessonProgress, Wishlist
 from courses.models import Course, Module, Lesson
 from courses.policies import can_view_course_catalog
 from .constants import ACCESS_STATUSES
-from .services import get_lesson_completion_stats, get_resume_lesson
+from .services import get_lesson_completion_stats, get_resume_lesson, lesson_progress_percentage
 
 
 # ===========================
@@ -48,7 +48,7 @@ class LessonProgressDetailSerializer(serializers.ModelSerializer):
             'position': obj.lesson.position,
         }
     
-    def get_progress_percentage(self, obj):
+    def get_progress_percentage(self, obj) -> float:
         if obj.lesson.duration_seconds == 0:
             return 0
         return round((obj.watch_time / obj.lesson.duration_seconds) * 100, 2)
@@ -68,7 +68,7 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
     progress_percentage = serializers.SerializerMethodField()
     completed_lessons = serializers.SerializerMethodField()
     completed_lessons_count = serializers.SerializerMethodField()
-    total_lessons_count = serializers.SerializerMethodField()
+    total_lessons_count = serializers.IntegerField(source='required_count', read_only=True)
     
     class Meta:
         model = Enrollment
@@ -80,7 +80,7 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['enrolled_at', 'completed_at']
     
-    def get_course(self, obj):
+    def get_course(self, obj) -> dict:
         """Return minimal course information"""
         return {
             'id': obj.course.id,
@@ -89,20 +89,16 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
             'thumbnail': obj.course.thumbnail
         }
     
-    def get_progress_percentage(self, obj):
-        return get_lesson_completion_stats(obj)['progress_percentage']
+    def get_progress_percentage(self, obj) -> float:
+        return lesson_progress_percentage(len(obj.completed_required_progress), obj.required_count)
     
-    def get_completed_lessons(self, obj):
+    def get_completed_lessons(self, obj) -> list[int]:
         """Return list of completed lesson IDs"""
-        return get_lesson_completion_stats(obj)['completed_lesson_ids']
+        return [progress.lesson_id for progress in obj.completed_required_progress]
     
-    def get_completed_lessons_count(self, obj):
+    def get_completed_lessons_count(self, obj) -> int:
         """Return count of completed lessons"""
-        return get_lesson_completion_stats(obj)['completed_lessons']
-    
-    def get_total_lessons_count(self, obj):
-        """Return total lessons in course"""
-        return Lesson.objects.filter(module__course=obj.course, is_free=False).count()
+        return len(obj.completed_required_progress)
 
 
 class EnrollmentDetailSerializer(serializers.ModelSerializer):
@@ -119,7 +115,7 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['enrolled_at', 'completed_at']
     
-    def get_course(self, obj):
+    def get_course(self, obj) -> dict:
         course = obj.course
         instructor = course.instructor
         profile = getattr(instructor, 'profile', None)
@@ -137,7 +133,7 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
             }
         }
     
-    def get_progress(self, obj):
+    def get_progress(self, obj) -> dict:
         stats = get_lesson_completion_stats(obj)
         
         total_duration = Lesson.objects.filter(
@@ -157,7 +153,7 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
             'watched_time_seconds': watched_time,
         }
     
-    def get_next_lesson(self, obj):
+    def get_next_lesson(self, obj) -> dict | None:
         """Get the next incomplete lesson."""
         if obj.status not in ACCESS_STATUSES or not can_view_course_catalog(obj.user, obj.course):
             return None
@@ -223,7 +219,7 @@ class WishlistSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['added_at']
         
-    def get_instructor_name(self, obj):
+    def get_instructor_name(self, obj) -> str:
         if hasattr(obj.course.instructor, 'profile') and obj.course.instructor.profile.full_name:
             return obj.course.instructor.profile.full_name
         return obj.course.instructor.email
@@ -269,12 +265,15 @@ class EnrollmentStatsSerializer(serializers.Serializer):
 class CourseProgressStatsSerializer(serializers.Serializer):
     """Serializer for detailed course progress statistics."""
     course_id = serializers.IntegerField()
-    course_title = serializers.CharField()
-    total_lessons = serializers.IntegerField()
-    completed_lessons = serializers.IntegerField()
-    progress_percentage = serializers.FloatField()
+    course_title = serializers.CharField(source='course.title')
+    total_lessons = serializers.IntegerField(source='required_count')
+    completed_lessons = serializers.IntegerField(source='required_completed_count')
+    progress_percentage = serializers.SerializerMethodField()
     total_duration_seconds = serializers.IntegerField()
     watched_time_seconds = serializers.IntegerField()
     is_completed = serializers.BooleanField()
     enrolled_at = serializers.DateTimeField()
     completed_at = serializers.DateTimeField(allow_null=True)
+
+    def get_progress_percentage(self, obj) -> float:
+        return lesson_progress_percentage(obj.required_completed_count, obj.required_count)

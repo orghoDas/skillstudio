@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
 from courses.models import Lesson, Course
@@ -181,6 +182,7 @@ class WalletSerializer(serializers.ModelSerializer):
         fields = ['id', 'balance', 'created_at', 'updated_at', 'recent_transactions']
         read_only_fields = ['id', 'balance', 'created_at', 'updated_at']
     
+    @extend_schema_field(WalletTransactionSerializer(many=True))
     def get_recent_transactions(self, obj):
         """Get recent transactions (last 10)."""
         transactions = obj.transactions.all()[:10]
