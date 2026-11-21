@@ -1550,7 +1550,10 @@ Several data migrations are **destructive and irreversible** (`reverse = noop`):
 >   - Both end with identical `accounts` tables.
 > - Delete the replaced files once no database still needs them.
 > - The README's **Migrations** section makes a backup (`pg_dump`) and a `migrate --plan` review (read every `Raw Python`/`Raw SQL` operation) mandatory, and names the destructive migrations. There is no deploy CI ([D-03](#d-03)). Instead, `core.tests.ProjectHygieneTests` fails when a model changes without a migration.
-> - **Note:** `makemigrations` against the hosted Neon database reports `InconsistentMigrationHistory: certificates.0001_initial is applied before its dependency enrollments.0001_initial`. That history predates this change; the squash doesn't touch it. Fix it on that database only after a backup, or recreate the database from migrations.
+> - **Neon database rebuilt 2026-11-21 (on the owner's instruction, no backup):** its history was inconsistent (`certificates.0001` recorded before `enrollments.0001`). Its schema had also drifted from the migrations: some tables were never recorded, some recorded apps had no tables, and removed apps had left tables and history behind.
+>   - All 104 tables were dropped, deleting the test data in them.
+>   - `migrate` was run from scratch: 50 tables, every migration applied, and `accounts` on `0001_squashed_0008`.
+>   - `create_categories` was run to seed the categories.
 
 <a id="doc-01"></a>
 ### DOC-01: README advertises features that don't exist and has no setup guide — ✅ RESOLVED 2026-11-21
