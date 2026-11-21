@@ -350,7 +350,7 @@ async function deleteSection(sectionId) {
         loadCourseContent();
     } catch (error) {
         console.error('Error deleting section:', error);
-        showAlert('Failed to delete section', 'error');
+        showAlert(error.message || 'Failed to delete section', 'error');
     }
 }
 
@@ -363,7 +363,7 @@ async function deleteLesson(lessonId) {
         loadCourseContent();
     } catch (error) {
         console.error('Error deleting lesson:', error);
-        showAlert('Failed to delete lesson', 'error');
+        showAlert(error.message || 'Failed to delete lesson', 'error');
     }
 }
 </script>

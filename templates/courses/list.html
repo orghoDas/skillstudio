@@ -53,7 +53,7 @@
             <select id="sort-filter" class="px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                 <option value="-created_at">Newest First</option>
                 <option value="title">Title A-Z</option>
-                <option value="-enrollment_count">Most Popular</option>
+                <option value="popular">Most Popular</option>
                 <option value="price">Price: Low to High</option>
                 <option value="-price">Price: High to Low</option>
             </select>
@@ -85,8 +85,19 @@
 <script>
 let currentPage = 1;
 let currentFilters = {};
+// Filters carried in the page URL, e.g. /courses/?instructor=5 (featured
+// instructor cards) or /courses/?search=python.
+const pageParams = new URLSearchParams(window.location.search);
+const urlInstructor = /^\d+$/.test(pageParams.get('instructor') || '') ? pageParams.get('instructor') : '';
 
 document.addEventListener('DOMContentLoaded', function() {
+    if (pageParams.get('search')) {
+        document.getElementById('search-input').value = pageParams.get('search');
+    }
+    currentFilters = {
+        search: pageParams.get('search') || '',
+        instructor: urlInstructor,
+    };
     // Filter event listeners
     document.getElementById('search-input').addEventListener('input', debounce(applyFilters, 500));
     document.getElementById('category-filter').addEventListener('change', applyFilters);
@@ -117,7 +128,9 @@ function applyFilters() {
         category: document.getElementById('category-filter').value,
         level: document.getElementById('level-filter').value,
         ordering: document.getElementById('sort-filter').value,
-        free_only: document.getElementById('free-only').checked
+        // The API's filter is is_free=true ("free_only" was silently ignored).
+        is_free: document.getElementById('free-only').checked ? 'true' : '',
+        instructor: urlInstructor,
     };
     loadCourses();
 }

@@ -190,7 +190,7 @@ function renderCourseCard(enrollment) {
                         ${escapeHtml(isCompleted ? 'Review Course' : (progress > 0 ? 'Continue Learning' : 'Start Learning'))}
                     </a>
                     ${isCompleted && enrollment.certificate_available ? `
-                        <button onclick="downloadCertificate('${escapeHtml(enrollment.id)}')" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
+                        <button onclick="downloadCertificate(${Number(enrollment.course.id)})" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
@@ -202,14 +202,28 @@ function renderCourseCard(enrollment) {
     `;
 }
 
-async function downloadCertificate(enrollmentId) {
+async function downloadCertificate(courseId) {
+    // GET /api/certificates/download/<course_id>/ streams the PDF (cookie auth).
     try {
-        const response = await apiRequest(`/enrollments/${enrollmentId}/certificate/`);
-        if (response.certificate_url) {
-            window.open(response.certificate_url, '_blank');
-        } else {
-            showAlert('Certificate is being generated. Please try again in a moment.', 'info');
+        const response = await fetch(`${API_BASE}/certificates/download/${Number(courseId)}/`, {
+            method: 'GET',
+            credentials: 'same-origin',
+        });
+        if (!response.ok) {
+            showAlert(response.status === 404
+                ? 'Your certificate is being generated. Please try again in a moment.'
+                : 'Failed to download certificate', response.status === 404 ? 'info' : 'error');
+            return;
         }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `certificate_course_${Number(courseId)}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Error downloading certificate:', error);
         showAlert('Failed to download certificate', 'error');

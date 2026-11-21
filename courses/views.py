@@ -1,6 +1,7 @@
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from django.db.models import F, Q, Count, Prefetch
+from django.db.models import F, Q, Count, Prefetch, Sum
+from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -57,6 +58,13 @@ class TagListCreateView(generics.ListCreateAPIView):
 # ===== COURSE VIEWS =====
 
 COURSE_ORDERING_FIELDS = {'created_at', 'published_at', 'price', 'title', 'level'}
+# Course-length filter buckets in hours: (min inclusive, max exclusive or None).
+DURATION_BUCKETS = {'0-2': (0, 2), '2-5': (2, 5), '5-10': (5, 10), '10+': (10, None)}
+
+
+def _csv_param(value):
+    """Split a comma-separated query value into a clean list."""
+    return [part.strip() for part in (value or '').split(',') if part.strip()]
 
 
 class CourseListView(generics.ListAPIView):
@@ -72,7 +80,7 @@ class CourseListView(generics.ListAPIView):
             queryset = Course.objects.filter(instructor=self.request.user).select_related(
                 'instructor', 'category'
             ).prefetch_related('modules', 'enrollments')
-        elif instructor:
+        elif instructor and instructor.isdigit():
             # Show only published courses for other instructors
             queryset = Course.objects.filter(
                 instructor__id=instructor,
@@ -91,15 +99,30 @@ class CourseListView(generics.ListAPIView):
                 Q(title__icontains=search) | Q(description__icontains=search)
             )
         
-        # Filter by category
-        category = self.request.query_params.get('category')
-        if category:
-            queryset = queryset.filter(category__slug=category)
-        
-        # Filter by level
-        level = self.request.query_params.get('level')
-        if level:
-            queryset = queryset.filter(level=level)
+        # Filter by category / level: one value or a comma-separated list.
+        categories = _csv_param(self.request.query_params.get('category'))
+        if categories:
+            queryset = queryset.filter(category__slug__in=categories)
+
+        levels = _csv_param(self.request.query_params.get('level'))
+        if levels:
+            queryset = queryset.filter(level__in=levels)
+
+        # Filter by total video/lesson length in hours: comma-separated
+        # buckets "0-2", "2-5", "5-10", "10+" (used by the search page).
+        durations = [b for b in _csv_param(self.request.query_params.get('duration')) if b in DURATION_BUCKETS]
+        if durations:
+            queryset = queryset.annotate(
+                total_seconds=Coalesce(Sum('modules__lessons__duration_seconds'), 0)
+            )
+            duration_q = Q()
+            for bucket in durations:
+                low, high = DURATION_BUCKETS[bucket]
+                cond = Q(total_seconds__gte=low * 3600)
+                if high is not None:
+                    cond &= Q(total_seconds__lt=high * 3600)
+                duration_q |= cond
+            queryset = queryset.filter(duration_q)
         
         # Filter by price
         is_free = self.request.query_params.get('is_free')
@@ -315,8 +338,14 @@ class ModuleCreateView(generics.CreateAPIView):
         serializer.save()
 
 
-class ModuleUpdateView(generics.UpdateAPIView):
-    """Update module"""
+class ModuleUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update or delete one module (owner only).
+
+    API-03: this backs ``sections/<id>/``, which the course-content page calls
+    with DELETE; it used to be update-only (405). Editing is allowed while the
+    course is draft/under review; deleting only while it is a draft (same rule
+    as ModuleDeleteView).
+    """
     queryset = Module.objects.all()
     serializer_class = ModuleCreateUpdateSerializer
     permission_classes = [IsAuthenticated]
@@ -332,6 +361,11 @@ class ModuleUpdateView(generics.UpdateAPIView):
             raise ValidationError("Cannot edit modules in published courses.")
         
         return module
+
+    def perform_destroy(self, instance):
+        if instance.course.status != 'draft':
+            raise ValidationError("Cannot delete modules in non-draft courses.")
+        instance.delete()
 
 
 class ModuleDeleteView(generics.DestroyAPIView):
@@ -433,8 +467,13 @@ class LessonUpdateView(generics.UpdateAPIView):
         return lesson
 
 
-class LessonRetrieveUpdateView(generics.RetrieveUpdateAPIView):
-    """Retrieve and update lesson for instructor editor"""
+class LessonRetrieveUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update or delete one lesson in the instructor editor (owner only).
+
+    API-03: the course-content page deletes lessons here; this used to be
+    retrieve/update-only (405). Deleting is only allowed while the course is a
+    draft (same rule as LessonDeleteView).
+    """
     queryset = Lesson.objects.all()
     serializer_class = LessonCreateUpdateSerializer
     permission_classes = [IsAuthenticated]
@@ -450,6 +489,11 @@ class LessonRetrieveUpdateView(generics.RetrieveUpdateAPIView):
             raise ValidationError("Cannot edit lessons in published courses.")
         
         return lesson
+
+    def perform_destroy(self, instance):
+        if instance.module.course.status != 'draft':
+            raise ValidationError("Cannot delete lessons in non-draft courses.")
+        instance.delete()
 
 
 class LessonDeleteView(generics.DestroyAPIView):

@@ -21,10 +21,6 @@ urlpatterns = [
     path('instructor/profile/', views.instructor_profile_page, name='instructor_profile_page'),
     path('settings/', views.settings_page, name='settings_page'),
     path('settings/profile/', views.profile_page, name='settings_profile_page'),  # Alias for profile
-    path('assessments/', views.assessments_list, name='assessments_list'),
-    path('assessments/<int:assessment_id>/attempt/', views.assessment_attempt, name='assessment_attempt'),
-    path('assessments/<int:assessment_id>/attempt/<int:attempt_id>/', views.assessment_attempt, name='assessment_attempt_resume'),
-    path('assessments/<int:assessment_id>/results/<int:attempt_id>/', views.assessment_results, name='assessment_results'),
     path('instructor/courses/', views.instructor_courses_list, name='instructor_courses_list'),
     path('instructor/courses/create/', views.instructor_course_create, name='instructor_course_create'),
     path('instructor/courses/<slug:slug>/edit/', views.instructor_course_edit, name='instructor_course_edit'),
@@ -49,6 +45,4 @@ urlpatterns = [
     path('search/', views.search_results, name='search_results'),
     path('browse/', views.browse_courses, name='browse_courses'),
     path('recommendations/', views.ai_recommendations, name='ai_recommendations'),
-    path('courses/<int:course_id>/resources/', views.course_resources, name='course_resources'),
-    path('instructor/resources/', views.instructor_resources, name='instructor_resources'),
 ]

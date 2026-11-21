@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *22 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-03; all 2026-11-21); 2 not applicable since the project is no longer deployed (OPS-01, OPS-02; [D-03](#d-03)); 43 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-01, API-02, CRS-01, ENR-03, TEST-01, DEP-01 are partially done* |
+| *Resolved so far* | *25 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-03; all 2026-11-21); 2 not applicable since the project is no longer deployed (OPS-01, OPS-02; [D-03](#d-03)); 40 open, of which SEC-01, SEC-03, PAY-04, PAY-05, API-04, TEST-02, CRS-01, ENR-03, TEST-01, DEP-01 are partially done* |
 
 ### Fix these first (in order)
 
@@ -164,9 +164,9 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [ASM-01](#asm-01) | P1 | ~~Unpublished or failed quizzes permanently block course completion~~ ✅ resolved 2026-11-21 |
 | [ASM-02](#asm-02) | P1 | ~~Quiz time limit can be bypassed~~ ✅ resolved 2026-11-21 |
 | [EXM-01](#exm-01) | P1 | Exam questions are visible before the exam window opens |
-| [API-01](#api-01) | P1 | 24 frontend calls target endpoints that don't exist — 🟡 checkout + payment history fixed 2026-11-21 |
-| [API-02](#api-02) | P1 | Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 lesson content fixed 2026-11-21 |
-| [API-03](#api-03) | P1 | Section and lesson delete buttons return 405 |
+| [API-01](#api-01) | P1 | ~~24 frontend calls target endpoints that don't exist~~ ✅ resolved 2026-11-21 (contract test added) |
+| [API-02](#api-02) | P1 | ~~Route shadowing: `tags/`, `search/`, lesson content, numeric slugs~~ ✅ resolved 2026-11-21 |
+| [API-03](#api-03) | P1 | ~~Section and lesson delete buttons return 405~~ ✅ resolved 2026-11-21 |
 | [BUG-01](#bug-01) | P1 | ~~Instructor lesson-analytics CSV export always 500s~~ ✅ resolved 2026-11-21 |
 | [BUG-02](#bug-02) | P1 | ~~`InstructorCoursesView` error path raises `NameError`~~ ✅ resolved 2026-11-21 |
 | [CRS-01](#crs-01) | P1 | Access policy is fragmented and inconsistent — 🟡 partial 2026-11-21 |
@@ -174,7 +174,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [OPS-02](#ops-02) | P1 | Certificate PDFs live on local disk and aren't served in production — ⏸ not applicable (not deployed) |
 | [OPS-03](#ops-03) | P1 | ~~`gunicorn==21.2.0` has known request-smuggling CVEs~~ ✅ resolved 2026-11-21 (gunicorn removed) |
 | [TEST-01](#test-01) | P1 | Payments tests don't run, and tests write into the real `media/` — 🟡 payments part resolved 2026-11-21 |
-| [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract |
+| [TEST-02](#test-02) | P1 | No tests cover the frontend↔API contract — 🟡 route + method contract test added 2026-11-21 |
 | [OPS-05](#ops-05) | P1 | Tests and scratch scripts run against the hosted database by default |
 | [ADM-01](#adm-01) | P2 | Django admin actions and fields bypass the domain logic |
 | [SEC-09](#sec-09) | P2 | Gateway secrets and payout bank details stored in plaintext |
@@ -195,7 +195,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [CRT-01](#crt-01) | P2 | Certificate admin, verification and rendering issues |
 | [ACC-01](#acc-01) | P2 | Account-management inconsistencies |
 | [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints |
-| [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes |
+| [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes — 🟡 duplicate route names fixed |
 | [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs — re-scoped (deploy items dropped) |
 | [SEC-08](#sec-08) | P2 | Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope |
 | [FE-02](#fe-02) | P2 | Role-based navbar never works; debug logs and stale routes |
@@ -833,7 +833,24 @@ Document the choice either way.
 - Map the service errors to explicit, safe messages.
 
 <a id="api-01"></a>
-### API-01: 24 frontend calls target endpoints that don't exist
+### API-01: 24 frontend calls target endpoints that don't exist — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.** Every template API call now resolves to a real route. A new test, `core.tests.TemplateApiContractTests`, fails if any template calls an endpoint that doesn't exist; I checked that it flags the old templates. Per page:
+>
+> - **Assessments pages** (`/assessments/` list, attempt, results) — **deleted** along with their views and routes. Nothing linked to them, all 8 of their endpoints were fictional, and quizzes are taken in the learn page ([ASM-01](#asm-01)).
+> - **Resources pages** (`/courses/<id>/resources/`, `/instructor/resources/`) — **deleted** along with their views and routes. Nothing linked to them, and no resources API exists. Lesson resources are shown per lesson on the learn page. *Gap noted:* there's still no API or UI for instructors to add `LessonResource`s (admin only).
+> - **Checkout and payment history** — fixed earlier ([D-01](#d-01)).
+> - **Certificates page download** — was already correct: `cert.id` is the UUID primary key the `<uuid:…>/download/` route expects. The audit's resolver had substituted a number.
+> - **My Courses certificate button** — now downloads from the existing `GET /api/certificates/download/<course_id>/`.
+> - **Featured instructors** (browse page) — new public `GET /api/instructors/featured/`: instructors with published courses, most students first, name, headline and counts only (no emails). Cards link to `/courses/?instructor=<id>` instead of a non-existent `/instructors/<id>/` page.
+> - **Search page** — called `apiRequest('/api/courses/search/')`, which was both a doubled `/api/api/` prefix and a shadowed route. It now uses `GET /api/courses/?search=…`, with its sort values mapped to the allow-listed `ordering`. `CourseListView` gained comma-separated `category`/`level` and a `duration` filter in hours (`0-2`, `2-5`, `5-10`, `10+`). The never-implemented rating filter and "Highest Rated" sort were removed.
+> - **Course list page — two more silent contract bugs fixed:**
+>   - Its "Most Popular" sort sent `-enrollment_count` (now `popular`).
+>   - Its "Free only" box sent `free_only`, which the API ignored (now `is_free=true`).
+>   - It also now honours `?instructor=` and `?search=` from the page URL, and a non-numeric `instructor` no longer 500s.
+> - **Tests:** `courses/test_discovery.py`.
+
+*Original finding:*
 
 **Evidence (✔ verified by resolving every call site):**
 
@@ -856,9 +873,15 @@ Document the choice either way.
 Then add the contract test from [TEST-02](#test-02) so this can't regress.
 
 <a id="api-02"></a>
-### API-02: Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — 🟡 LESSON CONTENT FIXED 2026-11-21
+### API-02: Route shadowing: `tags/`, `search/`, lesson content, numeric slugs — ✅ RESOLVED 2026-11-21
 
-> **Progress 2026-11-21:** lesson content has its own route, `lessons/<id>/content/` ([LRN-01](#lrn-01)), and the dead duplicate was removed. **Still open:** `tags/`, `search/` and numeric slugs.
+> **Resolved 2026-11-21.**
+> - **One route file.** `courses/urls_extras.py` was merged into [courses/urls.py](courses/urls.py) and deleted. All fixed paths come first and the slug catch-alls last, so `tags/`, `categories/create/`, `modules/…`, `lessons/…`, `instructor/…` and `admin/…` are all reachable. The duplicate `categories/` route is gone.
+> - **Safe slugs.** `Course.save()` now uses `safe_course_slug_base`: a slug is never empty (`course`), never purely numeric (where `<int:id>/` would win), and never a reserved route word (`tags`, `create`, `categories`, …); those get a `-course` suffix.
+> - **Existing data.** Migration `courses/0003` re-slugs any existing course that collides, keeping slugs unique.
+> - **Earlier the same day:** lesson content got its own route ([LRN-01](#lrn-01)), and search moved to `?search=` ([API-01](#api-01)).
+> - **Duplicate route names.** The duplicate `instructor-dashboard` URL name (an alias under `/api/enrollments/`) was renamed.
+> - **Tests:** `courses/test_routes.py` (route resolution, reserved and numeric slugs, the migration).
 
 *Original finding:*
 
@@ -875,7 +898,15 @@ Then add the contract test from [TEST-02](#test-02) so this can't regress.
 - Make `slugify` output never purely numeric (append `-course`).
 
 <a id="api-03"></a>
-### API-03: Section and lesson delete buttons return 405
+### API-03: Section and lesson delete buttons return 405 — ✅ RESOLVED 2026-11-21
+
+> **Resolved 2026-11-21.**
+> - **Server.** `ModuleUpdateView` (`sections/<id>/`) and `LessonRetrieveUpdateView` (`lessons/<id>/`) are now `RetrieveUpdateDestroyAPIView`. DELETE follows the same rules as the existing delete views: owner only, course in `draft`; otherwise a 400 with the reason.
+> - **Client.** Found while fixing: a successful delete returns `204 No Content`, and the shared `apiRequest` helper always called `response.json()`, so it threw and the page said "Failed to delete" even when the delete worked. `apiRequest` now returns `null` for empty or 204 responses (`parseJsonBody`, also on the token-refresh retry path), and the delete buttons show the server's error message.
+> - **Regression guard.** `core.tests.TemplateApiContractTests` now also checks that each template call's HTTP method is handled by the resolved view.
+> - **Tests:** `courses/test_routes.py` (owner delete in draft → 204, refused outside draft, non-owner refused).
+
+*Original finding:*
 
 **Evidence:** [instructor/course-content.html:348](templates/instructor/course-content.html#L348) and [:361](templates/instructor/course-content.html#L361) send `DELETE /courses/sections/<id>/` and `DELETE /courses/lessons/<id>/`. Those paths resolve to `ModuleUpdateView` (UpdateAPIView) and `LessonRetrieveUpdateView` (RetrieveUpdateAPIView), neither of which allows DELETE. The real delete routes are `/modules/<id>/delete/` and `/lessons/<id>/delete/`.
 
@@ -1003,7 +1034,15 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Use `@override_settings(MEDIA_ROOT=tempfile.mkdtemp())` in a shared base `TestCase` (or `STORAGES['default']` = `InMemoryStorage`, available since Django 4.2) for all tests.
 
 <a id="test-02"></a>
-### TEST-02: No tests cover the frontend↔API contract
+### TEST-02: No tests cover the frontend↔API contract — 🟡 ROUTE CONTRACT TEST ADDED 2026-11-21
+
+> **Progress 2026-11-21:**
+> - `core.tests.TemplateApiContractTests` checks that every statically visible `apiRequest`/`fetch` URL in the templates resolves to a route **and** that the view handles the HTTP method used ([API-03](#api-03)).
+> - `TemplateGlobalsTests` guards the [FE-01](#fe-01) class of bug.
+>
+> **Still open:** a Playwright browser smoke suite (and checking response shapes, which needs the OpenAPI schema from [API-04](#api-04)).
+
+*Original finding:*
 
 **Evidence:** [API-01](#api-01), [API-02](#api-02), [API-03](#api-03), [LRN-01](#lrn-01) and [FE-01](#fe-01) all exist because nothing checks that templates call real routes or that pages parse.
 
@@ -1302,7 +1341,11 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Add `assertNumQueries` budget tests for course list, enrollment list and dashboards.
 
 <a id="api-04"></a>
-### API-04: No API contract: inconsistent error and pagination shapes
+### API-04: No API contract: inconsistent error and pagination shapes — 🟡 DUPLICATE ROUTE NAMES FIXED 2026-11-21
+
+> *Progress 2026-11-21:* the duplicate URL names are gone: `category-list` was removed by the [API-02](#api-02) merge, `instructor-dashboard` was renamed, and `logout` only clashes with the namespaced `admin:logout`. **Still open:** OpenAPI schema, one error envelope, consistent pagination.
+
+*Original finding:*
 
 **Evidence:**
 - Errors come back as `{"error": …}`, `{"detail": …}`, `{"errors": [...]}` and field dicts.
@@ -1528,9 +1571,9 @@ Move aspirational features to a "Roadmap" section.
 | Phase | Goal | Items | Rough size |
 |---|---|---|---|
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, OPS-05, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, OPS-03; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
-| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, API-02 🟡, API-03, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
+| **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, EXM-01, EXM-03, ~~API-02~~ ✅, ~~API-03~~ ✅, CRS-01 🟡, ENR-03 🟡, TEST-02 (contract test first) | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, SEC-09, ADM-01, TEST-01 🟡 | 1–2 weeks |
-| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | API-01 (build or remove each), API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
+| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, API-04 (OpenAPI + error envelope), ENR-01, ENR-02, CRS-06, CRS-07, FE-02, ERR-01 | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ⏸, ~~OPS-02~~ ⏸, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, PERF-01, CRT-01, CRS-02–05, ACC-01, STU-01, STU-02, EXM-02, ASM-03, INS-01 | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | REPO-01–03, DOC-01–02, DEP-01, ASM-04 | 1–2 days |
 

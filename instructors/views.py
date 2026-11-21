@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView, RetrieveAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.exceptions import ValidationError as DjangoValidationError, PermissionDenied as DjangoPermissionDenied
@@ -188,3 +188,50 @@ class InstructorStudentsView(APIView):
             "count": len(students_data),
             "students": students_data
         })
+
+
+class FeaturedInstructorsView(APIView):
+    """Public: instructors with published courses, most students first (API-01).
+
+    Returns display data only (name, headline, counts) — never email addresses.
+    """
+    permission_classes = [AllowAny]
+    LIMIT = 8
+
+    def get(self, request):
+        from django.contrib.auth import get_user_model
+        from enrollments.constants import ACCESS_STATUSES
+
+        User = get_user_model()
+        published = Q(courses__status='published')
+        instructors = (
+            User.objects.filter(role=User.Role.INSTRUCTOR, is_active=True)
+            .annotate(
+                courses_count=Count('courses', filter=published, distinct=True),
+                students_count=Count(
+                    'courses__enrollments__user',
+                    filter=published & Q(courses__enrollments__status__in=ACCESS_STATUSES),
+                    distinct=True,
+                ),
+            )
+            .filter(courses_count__gt=0)
+            .select_related('profile', 'instructor_profile')
+            .order_by('-students_count', '-courses_count', 'id')[: self.LIMIT]
+        )
+        return Response([_featured_instructor_data(user) for user in instructors])
+
+
+def _featured_instructor_data(user):
+    profile = getattr(user, 'profile', None)
+    name = ''
+    if profile is not None:
+        name = profile.full_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip()
+    name = name or user.username or 'Instructor'
+    instructor_profile = getattr(user, 'instructor_profile', None)
+    return {
+        'id': user.id,
+        'name': name,
+        'headline': (instructor_profile.headline if instructor_profile else '') or '',
+        'courses_count': user.courses_count,
+        'students_count': user.students_count,
+    }

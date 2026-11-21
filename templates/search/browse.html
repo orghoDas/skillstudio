@@ -146,19 +146,21 @@ async function loadFeaturedInstructors() {
         const instructors = response.results || response;
 
         if (instructors.length > 0) {
-            container.innerHTML = instructors.map(instructor => `
-                <a href="/instructors/${escapeHtml(instructor.id)}/" class="block bg-dark-bg rounded-lg p-6 hover:bg-dark-surface border border-transparent hover:border-blue-500 transition-all text-center">
+            container.innerHTML = instructors.map(instructor => {
+                const initials = (instructor.name || 'I').split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+                return `
+                <a href="/courses/?instructor=${Number(instructor.id)}" class="block bg-dark-bg rounded-lg p-6 hover:bg-dark-surface border border-transparent hover:border-blue-500 transition-all text-center">
                     <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-900 to-purple-900 rounded-full flex items-center justify-center text-2xl font-bold">
-                        ${escapeHtml(instructor.first_name ? instructor.first_name[0] : instructor.username[0])}
+                        ${escapeHtml(initials)}
                     </div>
-                    <h4 class="font-semibold mb-1">${escapeHtml(instructor.first_name || '')} ${escapeHtml(instructor.last_name || '')}</h4>
-                    <p class="text-sm text-gray-400 mb-3">${escapeHtml(instructor.title || 'Instructor')}</p>
+                    <h4 class="font-semibold mb-1">${escapeHtml(instructor.name)}</h4>
+                    <p class="text-sm text-gray-400 mb-3">${escapeHtml(instructor.headline || 'Instructor')}</p>
                     <div class="flex items-center justify-center space-x-4 text-xs text-gray-500">
                         <span>${escapeHtml(instructor.courses_count || 0)} courses</span>
                         <span>${escapeHtml(instructor.students_count || 0)} students</span>
                     </div>
-                </a>
-            `).join('');
+                </a>`;
+            }).join('');
         } else {
             container.innerHTML = '<div class="col-span-4 text-center py-8 text-gray-400">No instructors found</div>';
         }

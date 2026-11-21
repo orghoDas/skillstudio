@@ -123,40 +123,6 @@
                     </div>
                 </div>
 
-                <!-- Rating -->
-                <div class="mb-6">
-                    <h4 class="text-sm font-medium mb-3">Rating</h4>
-                    <div class="space-y-2">
-                        <label class="flex items-center">
-                            <input type="checkbox" name="rating" value="4.5" class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                            <span class="ml-2 text-sm flex items-center">
-                                <span>4.5+</span>
-                                <svg class="w-4 h-4 ml-1 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                </svg>
-                            </span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="checkbox" name="rating" value="4" class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                            <span class="ml-2 text-sm flex items-center">
-                                <span>4.0+</span>
-                                <svg class="w-4 h-4 ml-1 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                </svg>
-                            </span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="checkbox" name="rating" value="3" class="w-4 h-4 text-blue-600 bg-dark-bg border-dark-border rounded">
-                            <span class="ml-2 text-sm flex items-center">
-                                <span>3.0+</span>
-                                <svg class="w-4 h-4 ml-1 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                </svg>
-                            </span>
-                        </label>
-                    </div>
-                </div>
-
                 <!-- Apply Filters -->
                 <div class="flex flex-col space-y-2">
                     <button onclick="applyFilters()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
@@ -180,7 +146,6 @@
                     class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                     <option value="relevance">Most Relevant</option>
                     <option value="popular">Most Popular</option>
-                    <option value="rating">Highest Rated</option>
                     <option value="newest">Newest</option>
                     <option value="price-low">Price: Low to High</option>
                     <option value="price-high">Price: High to Low</option>
@@ -225,28 +190,36 @@ function handleSearch(event) {
     }
 }
 
+// Search-page sort values -> CourseListView ?ordering= (allow-listed server-side).
+const SORT_TO_ORDERING = {
+    relevance: '-created_at',
+    newest: '-created_at',
+    popular: 'popular',
+    'price-low': 'price',
+    'price-high': '-price',
+};
+
 async function performSearch() {
     const container = document.getElementById('results-container');
     const query = document.getElementById('search-input').value;
     const sort = document.getElementById('sort-select').value;
 
     try {
-        let url = '/api/courses/search/?';
-        if (query) url += `q=${encodeURIComponent(query)}&`;
-        if (sort) url += `sort=${sort}&`;
+        // Search is the course list endpoint's ?search= filter (API-01/API-02).
+        const params = new URLSearchParams();
+        if (query) params.set('search', query);
+        params.set('ordering', SORT_TO_ORDERING[sort] || '-created_at');
 
-        // Add active filters
         const filters = getActiveFilters();
-        Object.keys(filters).forEach(key => {
-            if (filters[key].length > 0) {
-                url += `${key}=${filters[key].join(',')}&`;
-            }
+        ['category', 'level', 'duration'].forEach(key => {
+            if (filters[key].length > 0) params.set(key, filters[key].join(','));
         });
+        if (filters.price) params.set('is_free', filters.price[0] === 'free' ? 'true' : 'false');
 
-        const response = await apiRequest(url);
+        const response = await apiRequest(`/courses/?${params.toString()}`);
         const courses = response.results || response;
 
-        document.getElementById('results-count').textContent = courses.length;
+        document.getElementById('results-count').textContent = response.count ?? courses.length;
 
         if (courses.length > 0) {
             container.innerHTML = courses.map(course => renderCourseCard(course)).join('');
@@ -271,8 +244,7 @@ function getActiveFilters() {
     const filters = {
         category: [],
         level: [],
-        duration: [],
-        rating: []
+        duration: []
     };
 
     document.querySelectorAll('input[name="category"]:checked').forEach(input => {
@@ -285,10 +257,6 @@ function getActiveFilters() {
 
     document.querySelectorAll('input[name="duration"]:checked').forEach(input => {
         filters.duration.push(input.value);
-    });
-
-    document.querySelectorAll('input[name="rating"]:checked').forEach(input => {
-        filters.rating.push(input.value);
     });
 
     const priceRadio = document.querySelector('input[name="price"]:checked');

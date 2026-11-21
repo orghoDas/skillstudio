@@ -69,21 +69,6 @@ def settings_page(request):
     return render(request, 'profile/settings.html')
 
 @cookie_login_required
-def assessments_list(request):
-    """Assessments listing page"""
-    return render(request, 'assessments/list.html')
-
-@cookie_login_required
-def assessment_attempt(request, assessment_id, attempt_id=None):
-    """Assessment attempt page"""
-    return render(request, 'assessments/attempt.html')
-
-@cookie_login_required
-def assessment_results(request, assessment_id, attempt_id):
-    """Assessment results page"""
-    return render(request, 'assessments/results.html')
-
-@cookie_login_required
 def instructor_courses_list(request):
     """Instructor courses list page"""
     return render(request, 'instructor/courses-list.html')
@@ -168,12 +153,3 @@ def exam_create(request):
     """Exam creation page"""
     return render(request, 'exams/create.html')
 
-@cookie_login_required
-def course_resources(request, course_id):
-    """Student course resources view"""
-    return render(request, 'courses/resources.html')
-
-@cookie_login_required
-def instructor_resources(request):
-    """Instructor resource management"""
-    return render(request, 'instructor/resources.html')

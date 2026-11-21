@@ -35,6 +35,22 @@ class Tag(models.Model):
 # );
 
 
+# Single-segment paths under /api/courses/ that a course slug must never equal,
+# or the slug route would be shadowed / shadow the fixed route (API-02).
+RESERVED_COURSE_SLUGS = frozenset({
+    'admin', 'categories', 'create', 'instructor', 'lessons', 'modules', 'sections', 'tags',
+})
+
+
+def safe_course_slug_base(title):
+    """slugify(title), but never empty, purely numeric (``<int:id>/`` would win)
+    or a reserved route word."""
+    base = slugify(title or '') or 'course'
+    if base.isdigit() or base in RESERVED_COURSE_SLUGS:
+        base = f'{base}-course'
+    return base
+
+
 class Course(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -126,7 +142,7 @@ class Course(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            base_slug = slugify(self.title)
+            base_slug = safe_course_slug_base(self.title)
             slug = base_slug
             counter = 1
             

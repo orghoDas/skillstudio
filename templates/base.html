@@ -228,7 +228,7 @@
                     if (!retryResponse.ok) {
                         throw new Error(`HTTP error! status: ${retryResponse.status}`);
                     }
-                    return retryResponse.json();
+                    return parseJsonBody(retryResponse);
                 } else {
                     // Refresh failed — session is gone; send them to login.
                     logout();
@@ -251,7 +251,15 @@
                 throw err;
             }
 
-            return response.json();
+            return parseJsonBody(response);
+        }
+
+        // 204 No Content (e.g. a successful DELETE) or an empty body has no JSON
+        // to parse; response.json() would throw and make the call look failed.
+        async function parseJsonBody(response) {
+            if (response.status === 204) return null;
+            const text = await response.text();
+            return text ? JSON.parse(text) : null;
         }
         
         // Logout helper: clears the httpOnly auth cookies server-side, drops the
