@@ -1,11 +1,9 @@
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models import Count, Max, Sum, Q
-from django.core.exceptions import ValidationError, PermissionDenied
-from django.utils import timezone
-from decimal import Decimal
+from django.core.exceptions import ValidationError
 
 from courses.models import Course
-from enrollments.models import Enrollment, LessonProgress
+from enrollments.models import Enrollment
 from payments.models import Payment, Payout
 from .models import InstructorProfile
 
@@ -39,14 +37,15 @@ def get_student_engagement(instructor):
 
 def get_revenue_summary(instructor):
     """Revenue summary (wallet-ledger based, PAY-07) and payout history."""
-    from payments.services import calculate_instructor_balance
+    from payments.services import SETTLED_PAYMENT_STATUSES, calculate_instructor_balance, with_payment_refunds
 
     balance = calculate_instructor_balance(instructor)
-    fees = Payment.objects.filter(
+    sales = Payment.objects.filter(
         instructor=instructor,
         purpose=Payment.PURPOSE_COURSE_PURCHASE,
-        status__in=("completed", "partially_refunded"),
-    ).aggregate(platform_fee=Sum("platform_fee"))
+        status__in=SETTLED_PAYMENT_STATUSES,
+    )
+    fees = with_payment_refunds(sales).aggregate(platform_fee=Sum("net_platform_fee"))
     earnings = {
         "total_earned": balance["total_earnings"],   # net of refunds
         "platform_fee": fees["platform_fee"] or 0,

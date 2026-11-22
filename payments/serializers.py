@@ -5,13 +5,7 @@ Serializers for payment-related models
 
 from rest_framework import serializers
 from decimal import Decimal
-from django.utils import timezone
-
-from payments.models import (
-    Payment, Payout, Refund, Coupon, CouponRedemption,
-    PaymentWebhookLog, PaymentDispute
-)
-from accounts.models import User
+from payments.models import Payment, Payout, Refund, Coupon
 from courses.models import Course
 
 
@@ -232,41 +226,6 @@ class CouponValidationSerializer(serializers.Serializer):
 
     code = serializers.CharField(max_length=64)
     course_id = serializers.IntegerField()
-
-
-class CouponRedemptionSerializer(serializers.ModelSerializer):
-    """Serializer for Coupon Redemption"""
-    
-    coupon_code = serializers.CharField(source='coupon.code', read_only=True)
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-    
-    class Meta:
-        model = CouponRedemption
-        fields = [
-            'id', 'coupon', 'coupon_code',
-            'user', 'user_email',
-            'payment', 'discount_amount', 'redeemed_at'
-        ]
-        read_only_fields = ['id', 'redeemed_at']
-
-
-class PaymentDisputeSerializer(serializers.ModelSerializer):
-    """Serializer for Payment Dispute"""
-    
-    payment_id = serializers.IntegerField(source='payment.id', read_only=True)
-    
-    class Meta:
-        model = PaymentDispute
-        fields = [
-            'id', 'payment', 'payment_id', 'dispute_id',
-            'amount', 'currency', 'reason', 'status',
-            'evidence', 'admin_notes',
-            'opened_at', 'closed_at', 'created_at', 'updated_at'
-        ]
-        read_only_fields = [
-            'id', 'dispute_id', 'opened_at', 'closed_at',
-            'created_at', 'updated_at'
-        ]
 
 
 class PaymentStatsSerializer(serializers.Serializer):

@@ -47,6 +47,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    admin_console_only = models.BooleanField(
+        default=False,
+        db_default=False,
+        help_text='Restricts this account to the admin console. Website sign-in and API credentials are disabled.',
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     USERNAME_FIELD = 'email'

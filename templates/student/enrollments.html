@@ -41,6 +41,7 @@
         </div>
     </div>
 </div>
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -68,30 +69,23 @@ document.addEventListener('DOMContentLoaded', function() {
     loadEnrollments();
 });
 
-async function loadEnrollments() {
+let loadEnrollmentsRequest = 0;
+
+async function loadEnrollments(page = 1) {
+    const request = ++loadEnrollmentsRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('enrollments-container');
     
     try {
-        // Always fetch all enrollments and filter client-side
-        const response = await apiRequest('/enrollments/');
-        let enrollments = response?.results || [];
-        
-        // Filter based on current tab
-        if (currentFilter === 'in_progress') {
-            // In progress = active status and has some progress but not completed
-            enrollments = enrollments.filter(e => 
-                e.status === 'active' && 
-                (e.progress_percentage > 0 || e.completed_lessons > 0) && 
-                !e.is_completed
-            );
-        } else if (currentFilter === 'completed') {
-            // Completed = completed status or is_completed flag
-            enrollments = enrollments.filter(e => 
-                e.status === 'completed' || e.is_completed === true
-            );
-        }
-        // 'all' shows everything, no filtering needed
-        
+        const params = new URLSearchParams({page});
+        if (currentFilter === 'in_progress') params.set('status', 'active');
+        if (currentFilter === 'completed') params.set('status', 'completed');
+        const response = await apiRequest(`/enrollments/?${params}`);
+        if (request !== loadEnrollmentsRequest || !response) return;
+        renderPagination(pagination, response, page, loadEnrollments);
+        const enrollments = response.results;
+
         if (enrollments.length > 0) {
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -112,6 +106,7 @@ async function loadEnrollments() {
             `;
         }
     } catch (error) {
+        if (request !== loadEnrollmentsRequest) return;
         console.error('Error loading enrollments:', error);
         container.innerHTML = `
             <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
@@ -177,8 +172,8 @@ function renderEnrollmentCard(enrollment) {
                 </div>
                 
                 <!-- Action Button -->
-                <a href="/learn/${escapeHtml(course.slug)}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                    ${escapeHtml(progress > 0 ? 'Continue Learning' : 'Start Learning')}
+                <a href="/${status === 'canceled' ? 'courses' : 'learn'}/${encodeURIComponent(course.slug)}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    ${status === 'canceled' ? 'View Course' : status === 'completed' ? 'Review Course' : progress > 0 ? 'Continue Learning' : 'Start Learning'}
                 </a>
             </div>
         </div>

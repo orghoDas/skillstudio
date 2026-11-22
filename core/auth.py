@@ -6,9 +6,9 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 
+from accounts.authentication import CookieJWTAuthentication
 from accounts.utils import is_platform_admin
 
 
@@ -17,7 +17,7 @@ def page_user(request):
         request._page_user = None
         access = request.COOKIES.get(settings.JWT_AUTH_COOKIE)
         if access:
-            auth = JWTAuthentication()
+            auth = CookieJWTAuthentication()
             try:
                 request._page_user = auth.get_user(auth.get_validated_token(access))
             except (AuthenticationFailed, InvalidToken):

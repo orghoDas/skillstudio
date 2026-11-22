@@ -63,6 +63,7 @@ class ManageQuizQuestionSerializer(serializers.ModelSerializer):
             "question_text",
             "difficulty",
             "marks",
+            "explanation",
             "options",
         ]
 

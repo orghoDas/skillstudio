@@ -51,6 +51,7 @@
         <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-80"></div>
     </div>
 </div>
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -77,8 +78,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Filters
-    document.getElementById('search-courses').addEventListener('input', debounce(loadCourses, 500));
-    document.getElementById('sort-by').addEventListener('change', loadCourses);
+    document.getElementById('search-courses').addEventListener('input', debounce(() => loadCourses(), 500));
+    document.getElementById('sort-by').addEventListener('change', () => loadCourses());
 });
 
 function debounce(func, wait) {
@@ -89,7 +90,12 @@ function debounce(func, wait) {
     };
 }
 
-async function loadCourses() {
+let loadCoursesRequest = 0;
+
+async function loadCourses(page = 1) {
+    const request = ++loadCoursesRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('courses-container');
     container.innerHTML = '<div class="col-span-3 flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
 
@@ -97,21 +103,22 @@ async function loadCourses() {
         const search = document.getElementById('search-courses').value;
         const sortBy = document.getElementById('sort-by').value;
 
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({page, accessible: true});
         if (search) params.append('search', search);
         if (sortBy) params.append('ordering', sortBy);
 
         // Filter by progress status
         if (currentTab === 'in-progress') {
-            params.append('progress_min', '1');
-            params.append('progress_max', '99');
+            params.append('status', 'active');
         } else if (currentTab === 'completed') {
-            params.append('completed', 'true');
+            params.append('status', 'completed');
         }
 
         const response = await apiRequest(`/enrollments/?${params.toString()}`);
         
-        if (response && response.results && response.results.length > 0) {
+        if (request !== loadCoursesRequest || !response) return;
+        renderPagination(pagination, response, page, loadCourses);
+        if (response.results.length > 0) {
             container.innerHTML = response.results.map(enrollment => renderCourseCard(enrollment)).join('');
         } else {
             container.innerHTML = `
@@ -127,6 +134,7 @@ async function loadCourses() {
             `;
         }
     } catch (error) {
+        if (request !== loadCoursesRequest) return;
         console.error('Error loading courses:', error);
         container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load courses</div>';
     }

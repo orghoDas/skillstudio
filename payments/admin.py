@@ -3,13 +3,44 @@ Payment Admin Configuration
 Django admin interface for payment models
 """
 
+from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.utils.html import format_html
-from core.admin import ReadOnlyAdmin
+from core.admin import DecisionForm, ReadOnlyAdmin, WorkflowAdmin
+from payments import services
 from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
     PaymentWebhookLog, PaymentDispute
 )
+
+
+class MonetaryWorkflowAdmin(WorkflowAdmin):
+    def apply_decision(self, request, obj, data):
+        try:
+            return self.process_decision(request, obj, data)
+        except services.PaymentsError as error:
+            raise ValidationError(error.message) from error
+
+
+class PayoutDecisionForm(DecisionForm):
+    transaction_id = forms.CharField(required=False, max_length=255, label='Transfer reference')
+
+    def __init__(self, *args, choices, **kwargs):
+        super().__init__(*args, choices=choices, **kwargs)
+        self.fields['note'].label = 'Approval note or rejection reason'
+        if not any(value == 'complete' for value, _ in choices):
+            self.fields.pop('transaction_id')
+
+    def clean(self):
+        data = super().clean()
+        if data.get('action') == 'complete' and not data.get('transaction_id'):
+            self.add_error('transaction_id', 'Enter the reference from the completed bank transfer.')
+        return data
+
+
+class RefundDecisionForm(DecisionForm):
+    absorb_shortfall = forms.BooleanField(required=False, label='Cover an instructor shortfall from the platform')
 
 
 @admin.register(Payment)
@@ -60,15 +91,44 @@ class PaymentAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Payout)
-class PayoutAdmin(admin.ModelAdmin):
+class PayoutAdmin(MonetaryWorkflowAdmin):
+    decision_form = PayoutDecisionForm
+    decision_help = 'Record a payout as sent only after the external transfer is complete. Rejecting returns the reserved funds to the instructor’s wallet.'
+    exclude = ('account_details_encrypted', 'provider_details')
+    list_select_related = ('instructor',)
+
+    def decision_details(self, obj):
+        return [
+            *super().decision_details(obj),
+            ('Instructor', obj.instructor.email),
+            ('Amount', f'{obj.currency} {obj.amount}'),
+            ('Method', obj.get_payout_method_display()),
+            ('Destination on file', 'Yes' if obj.account_details_encrypted else 'No'),
+        ]
+
+    def workflow_choices(self, obj):
+        if obj.status == 'pending':
+            return [('approve', 'Approve payout'), ('reject', 'Reject payout')]
+        if obj.status == 'processing':
+            return [('complete', 'Record as sent'), ('reject', 'Reject payout')]
+        return []
+
+    def process_decision(self, request, obj, data):
+        if data['action'] == 'approve':
+            services.approve_payout(obj.pk, request.user, data['note'])
+            return 'Payout approved.'
+        if data['action'] == 'complete':
+            services.complete_payout(obj.pk, data['transaction_id'], admin_user=request.user)
+            return 'Payout recorded as sent.'
+        services.reject_payout(obj.pk, request.user, data['note'])
+        return 'Payout rejected.'
+
     list_display = [
         'id', 'instructor_email', 'amount_display', 'status_display',
         'payout_method', 'created_at'
     ]
     list_filter = ['status', 'wallet_debited', 'payout_method', 'created_at']
     search_fields = ['instructor__email', 'transaction_id']
-    # Money/state fields are read-only here: changing them in the admin would
-    # bypass the wallet ledger. Use the payout API (approve/complete/reject).
     readonly_fields = [
         'id', 'instructor', 'amount', 'status', 'wallet_debited',
         'created_at', 'updated_at', 'processed_at', 'destination_on_file',
@@ -104,15 +164,36 @@ class PayoutAdmin(admin.ModelAdmin):
 
 
 @admin.register(Refund)
-class RefundAdmin(admin.ModelAdmin):
+class RefundAdmin(MonetaryWorkflowAdmin):
+    decision_form = RefundDecisionForm
+    decision_help = 'Approving immediately returns money to the buyer’s wallet. Review the payment and request before submitting.'
+    list_select_related = ('payment', 'requested_by')
+
+    def decision_details(self, obj):
+        return [
+            *super().decision_details(obj),
+            ('Requested by', obj.requested_by.email if obj.requested_by else '—'),
+            ('Amount', f'{obj.payment.currency} {obj.amount}'),
+            ('Course', obj.payment.course or '—'),
+            ('Reason', obj.reason),
+        ]
+
+    def workflow_choices(self, obj):
+        return [('approve', 'Approve wallet refund'), ('reject', 'Reject refund')] if obj.status == 'requested' else []
+
+    def process_decision(self, request, obj, data):
+        if data['action'] == 'approve':
+            services.approve_refund(obj.pk, request.user, data['note'], absorb_shortfall=data['absorb_shortfall'])
+            return 'Wallet refund approved.'
+        services.reject_refund(obj.pk, request.user, data['note'])
+        return 'Refund rejected.'
+
     list_display = [
         'id', 'payment_id', 'amount_display', 'refund_type',
         'status_display', 'requested_by_email', 'created_at'
     ]
     list_filter = ['status', 'refund_type', 'created_at']
     search_fields = ['payment__id', 'requested_by__email', 'reason']
-    # Money/state fields are read-only: refunds move wallet money and must go
-    # through the refund API (approve/reject), not the admin form.
     readonly_fields = [
         'id', 'payment', 'requested_by', 'requested_at', 'amount', 'status',
         'refund_type', 'instructor_debit', 'platform_absorbed',
@@ -173,7 +254,7 @@ class CouponAdmin(admin.ModelAdmin):
 
 
 @admin.register(CouponRedemption)
-class CouponRedemptionAdmin(admin.ModelAdmin):
+class CouponRedemptionAdmin(ReadOnlyAdmin):
     list_display = ['id', 'coupon_code', 'user_email', 'discount_amount', 'redeemed_at']
     list_filter = ['redeemed_at']
     search_fields = ['coupon__code', 'user__email']
@@ -190,7 +271,7 @@ class CouponRedemptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(PaymentWebhookLog)
-class PaymentWebhookLogAdmin(admin.ModelAdmin):
+class PaymentWebhookLogAdmin(ReadOnlyAdmin):
     list_display = [
         'id', 'gateway', 'event_type', 'event_id',
         'processed_display', 'payment_id', 'created_at'
@@ -205,14 +286,13 @@ class PaymentWebhookLogAdmin(admin.ModelAdmin):
     payment_id.short_description = 'Payment'
     
     def processed_display(self, obj):
-        if obj.processed:
-            return format_html('<span style="color: green;">✓ Processed</span>')
-        return format_html('<span style="color: orange;">Pending</span>')
+        color, label = ('green', 'Processed') if obj.processed else ('orange', 'Pending')
+        return format_html('<span style="color: {};">{}</span>', color, label)
     processed_display.short_description = 'Status'
 
 
 @admin.register(PaymentDispute)
-class PaymentDisputeAdmin(admin.ModelAdmin):
+class PaymentDisputeAdmin(ReadOnlyAdmin):
     list_display = [
         'dispute_id', 'payment_id', 'amount_display',
         'status_display', 'opened_at'

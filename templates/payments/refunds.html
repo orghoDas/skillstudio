@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}Wallet refunds - SkillStudio{% endblock %}
+{% block sidebar %}{% include 'components/sidebar.html' %}{% endblock %}
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-6">
+    <h1 class="text-3xl font-bold">Wallet refunds</h1>
+    <a href="{% url 'payment_history' %}" class="text-blue-400">Payment history</a>
+    <form id="refund-form" class="hidden space-y-3 rounded-lg border border-dark-border bg-dark-surface p-5">
+        <h2 class="text-xl font-semibold">Request a refund for payment <span id="refund-payment-label"></span></h2>
+        <input type="hidden" name="payment_id">
+        <label class="block">Amount in USD (leave empty to request the remaining balance)
+            <input type="number" name="amount" step="0.01" min="0.01" class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        </label>
+        <label class="block">Reason
+            <textarea name="reason" required maxlength="1000" rows="3" class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2"></textarea>
+        </label>
+        <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2">Request wallet refund</button>
+    </form>
+    <div id="refunds" class="space-y-3" aria-live="polite"></div>
+    {% include 'components/pager.html' with pager_id='refund-pages' %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+const refundForm = document.getElementById('refund-form');
+const requestedPayment = Number(new URLSearchParams(window.location.search).get('payment'));
+if (Number.isSafeInteger(requestedPayment) && requestedPayment > 0) {
+    refundForm.elements.payment_id.value = requestedPayment;
+    document.getElementById('refund-payment-label').textContent = `#${requestedPayment}`;
+    refundForm.classList.remove('hidden');
+}
+
+async function loadRefunds(page = 1) {
+    const list = document.getElementById('refunds');
+    try {
+        const data = await apiRequest(`/payments/refunds/?page=${page}`);
+        if (!data) return;
+        const administrator = document.body.dataset.pageRole === 'admin';
+        list.innerHTML = data.results.map(refund => `
+            <article class="space-y-2 rounded-lg border border-dark-border bg-dark-surface p-4">
+                <h2 class="font-semibold">Payment #${Number(refund.payment_id)} · $${Number(refund.amount).toFixed(2)}</h2>
+                <p class="capitalize">${escapeHtml(refund.status)}${administrator ? ` · ${escapeHtml(refund.requested_by_email)}` : ''}</p>
+                <p class="whitespace-pre-wrap break-words">${escapeHtml(refund.reason)}</p>
+                ${refund.rejection_reason ? `<p class="break-words">Reason declined: ${escapeHtml(refund.rejection_reason)}</p>` : ''}
+                ${administrator && refund.status === 'requested' ? `
+                    <form data-refund-id="${Number(refund.id)}" class="flex flex-wrap items-end gap-2">
+                        <label class="min-w-0 flex-1">Decision note
+                            <input name="note" maxlength="1000" class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+                        </label>
+                        <button type="submit" value="approve" class="rounded-lg bg-blue-600 px-3 py-2">Approve</button>
+                        <button type="submit" value="reject" class="rounded-lg border border-dark-border px-3 py-2">Reject</button>
+                    </form>
+                ` : ''}
+            </article>
+        `).join('') || '<p class="text-gray-400">No refund requests.</p>';
+        renderPagination(document.getElementById('refund-pages'), data, page, loadRefunds);
+    } catch (error) {
+        list.textContent = error.message;
+    }
+}
+
+refundForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const data = new FormData(refundForm);
+    const amount = data.get('amount');
+    event.submitter.disabled = true;
+    try {
+        const refund = await apiRequest('/payments/refunds/request/', {
+            method: 'POST',
+            body: JSON.stringify({payment_id: Number(data.get('payment_id')), reason: data.get('reason').trim(), ...(amount && {amount})}),
+        });
+        if (refund) {
+            refundForm.classList.add('hidden');
+            showAlert('Refund request submitted.', 'success');
+            await loadRefunds();
+        }
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        event.submitter.disabled = false;
+    }
+});
+
+document.getElementById('refunds').addEventListener('submit', async event => {
+    const form = event.target;
+    if (!form.dataset.refundId) return;
+    event.preventDefault();
+    const action = event.submitter.value;
+    const id = Number(form.dataset.refundId);
+    if (!await showConfirm(action === 'approve' ? 'Approve this refund and return funds to the buyer’s wallet?' : 'Reject this refund request?')) return;
+    const note = new FormData(form).get('note').trim();
+    const buttons = form.querySelectorAll('button');
+    buttons.forEach(button => { button.disabled = true; });
+    try {
+        await apiRequest(action === 'approve' ? `/payments/refunds/${id}/approve/` : `/payments/refunds/${id}/reject/`, {
+            method: 'POST', body: JSON.stringify(action === 'approve' ? {notes: note} : {reason: note}),
+        });
+        await loadRefunds();
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        buttons.forEach(button => { button.disabled = false; });
+    }
+});
+loadRefunds();
+</script>
+{% endblock %}

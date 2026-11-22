@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from courses.models import Lesson
+from courses.serializers import LessonCreateUpdateSerializer
 from courses.views import prepare_course_edit, require_course_manager
 from .models import Quiz, QuizQuestion, QuestionOption
 from .serializers import ManageQuizDetailSerializer
@@ -16,7 +17,7 @@ def _coerce_int(value, field_name, errors, *, min_value=None, max_value=None, al
     if allow_empty and value in (None, ''):
         return None
 
-    if isinstance(value, bool):
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
         errors.append(f'{field_name} must be an integer.')
         return None
 
@@ -49,6 +50,8 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
     title = str(title).strip() if title is not None else ''
     if not title:
         title = quiz.title if quiz else f'{lesson.title} Quiz'
+    if len(title) > 255:
+        errors.append('Title must be at most 255 characters.')
 
     passing_percentage = data.get(
         'passing_percentage',
@@ -118,7 +121,7 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
                 q_data.get('marks', 1),
                 f'questions[{index}].marks',
                 errors,
-                min_value=1
+                min_value=1, max_value=2147483647
             )
 
             options_data = q_data.get('options', [])
@@ -140,6 +143,8 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
                 option_text = str(option_text).strip() if option_text is not None else ''
                 if not option_text:
                     errors.append(f'questions[{index}].options[{option_index}].text is required.')
+                elif len(option_text) > 255:
+                    errors.append(f'questions[{index}].options[{option_index}].text must be at most 255 characters.')
 
                 is_correct = _coerce_bool(opt_data.get('is_correct', False))
                 correct_count += 1 if is_correct else 0
@@ -151,11 +156,27 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
             if correct_count != 1:
                 errors.append(f'questions[{index}] must have exactly one correct option.')
 
+            explanation = q_data.get('explanation') or ''
+            if not isinstance(explanation, str):
+                errors.append(f'questions[{index}].explanation must be text.')
+            difficulty = q_data.get('difficulty', QuizQuestion.Difficulty.MEDIUM)
+            if difficulty not in QuizQuestion.Difficulty.values:
+                errors.append(f'questions[{index}].difficulty is invalid.')
+
             validated_questions.append({
+                'explanation': explanation,
+                'difficulty': difficulty,
                 'text': question_text,
                 'marks': marks,
                 'options': validated_options,
             })
+
+    if validated_questions and sum(question['marks'] or 0 for question in validated_questions) > 2147483647:
+        errors.append('Total marks must be at most 2147483647.')
+
+    has_questions = bool(validated_questions) if replacing_questions else bool(quiz and quiz.questions.exists())
+    if is_published and not has_questions:
+        errors.append('Add at least one question before publishing this quiz.')
 
     return {
         'title': title,
@@ -210,6 +231,17 @@ class ManageQuizView(APIView):
         if errors:
             raise ValidationError({'non_field_errors': errors})
 
+        if 'lesson' in request.data:
+            lesson_input = request.data['lesson']
+            allowed = {'title', 'content_type', 'content_text', 'duration_seconds', 'is_free', 'video_url'}
+            if not isinstance(lesson_input, dict) or set(lesson_input) - allowed:
+                raise ValidationError({'lesson': 'Provide only editable lesson content fields.'})
+            if lesson_input.get('content_type', lesson.content_type) != 'quiz':
+                raise ValidationError({'lesson': 'The lesson must use quiz content.'})
+            lesson_serializer = LessonCreateUpdateSerializer(lesson, data=lesson_input, partial=True)
+            lesson_serializer.is_valid(raise_exception=True)
+            lesson_serializer.save()
+
         if quiz is None:
             quiz = Quiz.objects.create(
                 lesson=lesson,
@@ -235,7 +267,9 @@ class ManageQuizView(APIView):
                 question = QuizQuestion.objects.create(
                     quiz=quiz,
                     question_text=q_data['text'],
-                    marks=q_data['marks']
+                    marks=q_data['marks'],
+                    explanation=q_data['explanation'],
+                    difficulty=q_data['difficulty'],
                 )
 
                 # Create options

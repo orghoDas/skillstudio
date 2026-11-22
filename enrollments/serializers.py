@@ -205,6 +205,7 @@ class EnrollmentCreateSerializer(serializers.Serializer):
 
 class WishlistSerializer(serializers.ModelSerializer):
     """Wishlist serializer with course details."""
+    course_slug = serializers.SlugField(source='course.slug', read_only=True)
     course_title = serializers.CharField(source='course.title', read_only=True)
     course_thumbnail = serializers.URLField(source='course.thumbnail', read_only=True)
     instructor_name = serializers.SerializerMethodField()
@@ -214,7 +215,7 @@ class WishlistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wishlist
         fields = [
-            'id', 'course', 'course_title', 'course_thumbnail',
+            'id', 'course', 'course_slug', 'course_title', 'course_thumbnail',
             'instructor_name', 'course_price', 'course_level', 'added_at'
         ]
         read_only_fields = ['added_at']

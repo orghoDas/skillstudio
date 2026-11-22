@@ -52,6 +52,7 @@ class InstructorDashboardView(APIView):
                 {
                     "id": c.id,
                     "title": c.title,
+                    "status": c.status,
                     "enrollments": c.total_enrollments,
                 }
                 for c in courses

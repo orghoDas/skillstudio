@@ -242,6 +242,9 @@ function renderQuizEditor() {
                 </button>
             </div>
             
+            <label class="block mb-4 text-sm">Quiz title (defaults to the lesson title)
+                <input id="quiz-title" maxlength="255" class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+            </label>
             <div id="quiz-questions" class="space-y-4">
                 <!-- Questions will be added here -->
             </div>
@@ -251,7 +254,7 @@ function renderQuizEditor() {
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label for="quiz-passing-score" class="block text-sm mb-2">Passing Score (%)</label>
-                        <input type="number" id="quiz-passing-score" min="0" max="100" value="70" 
+                        <input type="number" id="quiz-passing-score" min="0" max="100" value="50"
                             class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
                     </div>
                     <div>
@@ -265,14 +268,7 @@ function renderQuizEditor() {
                             class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg">
                         <p class="text-xs text-gray-400 mt-1">0 for unlimited</p>
                     </div>
-                    <div>
-                        <span class="block text-sm mb-2">Visibility</span>
-                        <label for="quiz-published" class="flex items-center gap-2 py-2">
-                            <input type="checkbox" id="quiz-published" class="w-4 h-4">
-                            <span>Published to students</span>
-                        </label>
-                        <p class="text-xs text-gray-400">Unpublished quizzes are drafts students can't see.</p>
-                    </div>
+                    <p class="text-xs text-gray-400">Save Draft hides the quiz. Save &amp; Publish makes it available when the course is published.</p>
                 </div>
             </div>
         </div>
@@ -335,41 +331,7 @@ function updateVideoPreview() {
 function loadTextContent() {
     if (!lessonData.content_text) return;
     const editor = document.getElementById('text-editor');
-    const template = document.createElement('template');
-    template.innerHTML = lessonData.content_text;
-
-    const formatting = new Set(['a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3',
-        'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul']);
-    const ignored = new Set(['script', 'style', 'iframe', 'object', 'template']);
-
-    function appendFormatted(target, node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-            target.append(node.textContent);
-            return;
-        }
-        const tag = node.localName;
-        if (node.nodeType !== Node.ELEMENT_NODE || ignored.has(tag)) return;
-        let output = target;
-        if (formatting.has(tag)) {
-            output = document.createElement(tag);
-            const urlAttr = tag === 'a' ? 'href' : tag === 'img' ? 'src' : null;
-            if (urlAttr && node.hasAttribute(urlAttr)) {
-                try {
-                    const url = new URL(node.getAttribute(urlAttr), window.location.origin);
-                    if (['http:', 'https:'].includes(url.protocol)) output.setAttribute(urlAttr, url.href);
-                } catch (error) {
-                    // Keep the formatted content if the URL is invalid.
-                }
-            }
-            if (tag === 'img') output.alt = node.getAttribute('alt') || '';
-            target.append(output);
-        }
-        for (const child of node.childNodes) appendFormatted(output, child);
-    }
-
-    const fragment = document.createDocumentFragment();
-    for (const child of template.content.childNodes) appendFormatted(fragment, child);
-    editor.replaceChildren(fragment);
+    editor.replaceChildren(formattedLessonContent(lessonData.content_text));
 }
 
 async function loadQuizContent() {
@@ -378,9 +340,9 @@ async function loadQuizContent() {
         const response = await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`);
         
         if (response.title) {
-            document.getElementById('lesson-title').value = response.title;
+            document.getElementById('quiz-title').value = response.title;
         }
-        if (response.passing_percentage) {
+        if (response.passing_percentage != null) {
             document.getElementById('quiz-passing-score').value = response.passing_percentage;
         }
         if (response.time_limit_minutes !== undefined) {
@@ -389,7 +351,6 @@ async function loadQuizContent() {
         if (response.max_attempts !== undefined) {
             document.getElementById('quiz-attempts').value = response.max_attempts || 0;
         }
-        document.getElementById('quiz-published').checked = !!response.is_published;
         
         const questions = response.questions || [];
         questions.forEach(q => {
@@ -399,7 +360,9 @@ async function loadQuizContent() {
                     text: opt.option_text || '',
                     is_correct: !!opt.is_correct
                 })),
-                explanation: ''
+                explanation: q.explanation || '',
+                marks: q.marks,
+                difficulty: q.difficulty
             });
         });
         
@@ -407,8 +370,8 @@ async function loadQuizContent() {
             addQuestion();
         }
     } catch (error) {
-        // No existing quiz, start fresh
-        addQuestion();
+        if (error.status === 404) addQuestion();
+        else showAlert(error.message || 'Could not load quiz.', 'error');
     }
 }
 
@@ -441,7 +404,7 @@ function addQuestion(questionData = null) {
     const questionId = questionData?.id || `q${questionCount}`;
     
     const questionHtml = `
-        <div class="quiz-question" data-question-id="${escapeHtml(questionId)}">
+        <div class="quiz-question" data-question-id="${escapeHtml(questionId)}" data-difficulty="${escapeHtml(questionData?.difficulty || 'medium')}">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold">Question ${escapeHtml(questionCount)}</h3>
                 <button data-click="removeQuestion" data-value-one="${escapeHtml(questionId)}" class="text-red-400 hover:text-red-300">
@@ -457,6 +420,9 @@ function addQuestion(questionData = null) {
                     value="${escapeHtml(questionData?.text || '')}" placeholder="Enter your question...">
             </div>
             
+            <label class="block mb-4 text-sm">Marks
+                <input type="number" min="1" class="question-marks ml-2 w-24 rounded-lg border border-dark-border bg-dark-bg p-2" value="${escapeHtml(questionData?.marks ?? 1)}">
+            </label>
             <div class="mb-4">
                 <label class="block text-sm mb-2">Options</label>
                 <div class="space-y-2 question-options">
@@ -491,7 +457,7 @@ function renderQuestionOptions(options) {
         <div class="quiz-option ${escapeHtml(opt.is_correct ? 'correct' : '')}" data-option-index="${escapeHtml(index)}">
             <input type="radio" name="correct-${escapeHtml(Date.now())}" ${escapeHtml(opt.is_correct ? 'checked' : '')} 
                 data-change="markCorrect" class="w-4 h-4 text-green-600">
-            <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
+            <input type="text" maxlength="255" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none"
                 value="${escapeHtml(opt.text || '')}" placeholder="Option ${escapeHtml(String.fromCharCode(65 + index))}">
             <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -511,7 +477,7 @@ function addOption(questionId) {
     const optionHtml = `
         <div class="quiz-option" data-option-index="${escapeHtml(optionCount)}">
             <input type="radio" name="${escapeHtml(radioName)}" data-change="markCorrect" class="w-4 h-4 text-green-600">
-            <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
+            <input type="text" maxlength="255" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none"
                 placeholder="Option ${escapeHtml(String.fromCharCode(65 + optionCount))}">
             <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,17 +538,21 @@ async function saveContent(isDraft = false) {
                 
             case 'quiz':
                 lessonUpdateData.content_text = 'Quiz';
-                // Save quiz via separate API endpoint
-                await saveQuizData();
                 break;
         }
-        
-        // Save to server
-        await apiRequest(`/courses/lessons/${lessonId}/`, {
-            method: 'PUT',
-            body: JSON.stringify(lessonUpdateData)
-        });
-        
+
+        if (contentType === 'quiz') {
+            await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`, {
+                method: 'POST',
+                body: JSON.stringify({...collectQuizData(), lesson: lessonUpdateData, is_published: !isDraft}),
+            });
+        } else {
+            await apiRequest(`/courses/lessons/${lessonId}/`, {
+                method: 'PUT',
+                body: JSON.stringify(lessonUpdateData),
+            });
+        }
+
         showAlert(isDraft ? 'Draft saved successfully!' : 'Content saved successfully!', 'success');
         
         if (!isDraft) {
@@ -591,22 +561,13 @@ async function saveContent(isDraft = false) {
         
     } catch (error) {
         console.error('Error saving content:', error);
-        showAlert('Failed to save content', 'error');
+        showAlert(error.message || 'Failed to save content', 'error');
     }
-}
-
-async function saveQuizData() {
-    const quizData = collectQuizData();
-    
-    await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`, {
-        method: 'POST',
-        body: JSON.stringify(quizData)
-    });
 }
 
 function collectQuizData() {
     const questions = [];
-    document.querySelectorAll('.quiz-question').forEach((q, index) => {
+    document.querySelectorAll('.quiz-question').forEach(q => {
         const options = [];
         q.querySelectorAll('.quiz-option').forEach(opt => {
             const optionText = opt.querySelector('.option-text').value.trim();
@@ -619,11 +580,12 @@ function collectQuizData() {
         });
         
         const questionText = q.querySelector('.question-text').value.trim();
-        if (questionText && options.length > 0) {  // Only add questions with text and options
+        if (questionText || options.length || q.querySelector('.question-explanation').value.trim()) {
             questions.push({
                 text: questionText,
                 type: 'mcq',  // Multiple choice question
-                marks: 5,  // Default marks per question
+                marks: q.querySelector('.question-marks').value,
+                difficulty: q.dataset.difficulty,
                 options: options,
                 explanation: q.querySelector('.question-explanation').value.trim()
             });
@@ -631,11 +593,10 @@ function collectQuizData() {
     });
     
     return {
-        title: document.getElementById('lesson-title').value || 'Quiz',
-        passing_percentage: parseInt(document.getElementById('quiz-passing-score').value) || 70,
+        title: document.getElementById('quiz-title').value.trim() || document.getElementById('lesson-title').value,
+        passing_percentage: document.getElementById('quiz-passing-score').value,
         time_limit_minutes: parseInt(document.getElementById('quiz-time-limit').value) || 0,
         max_attempts: parseInt(document.getElementById('quiz-attempts').value) || 0,
-        is_published: document.getElementById('quiz-published').checked,
         questions: questions
     };
 }

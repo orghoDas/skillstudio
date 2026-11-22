@@ -69,6 +69,7 @@
         <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-64"></div>
     </div>
 </div>
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -79,18 +80,29 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCertificates();
 });
 
-async function loadCertificates() {
+let loadCertificatesRequest = 0;
+
+async function loadCertificates(page = 1) {
+    const request = ++loadCertificatesRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('certificates-container');
     
     try {
-        const response = await apiRequest('/certificates/');
+        const response = await apiRequest(`/certificates/?page=${page}`);
+        if (request !== loadCertificatesRequest || !response) return;
+        renderPagination(pagination, response, page, loadCertificates);
         const certificates = response.results;
 
         // Update stats
-        document.getElementById('total-certificates').textContent = certificates.length;
-        document.getElementById('completed-courses').textContent = certificates.length;
+        document.getElementById('total-certificates').textContent = response.count;
+        if (page === 1) {
+            const completed = await apiRequest('/enrollments/completed-courses/');
+            if (request !== loadCertificatesRequest || !completed) return;
+            document.getElementById('completed-courses').textContent = completed.count;
+        }
         
-        if (certificates.length > 0) {
+        if (page === 1 && certificates.length > 0) {
             const latestDate = new Date(certificates[0].issued_at);
             document.getElementById('latest-date').textContent = latestDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
@@ -112,6 +124,7 @@ async function loadCertificates() {
             `;
         }
     } catch (error) {
+        if (request !== loadCertificatesRequest) return;
         console.error('Error loading certificates:', error);
         container.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400">Failed to load certificates</div>';
     }

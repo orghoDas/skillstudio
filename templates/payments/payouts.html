@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block title %}Payouts - SkillStudio{% endblock %}
+{% block sidebar %}{% include 'components/sidebar.html' %}{% endblock %}
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-6">
+    <h1 class="text-3xl font-bold">{% if page_role == 'admin' %}Payout requests{% else %}My payouts{% endif %}</h1>
+    {% if page_role == 'instructor' %}
+    <p>Withdrawable balance <strong id="payout-available">Loading…</strong></p>
+    {% if payout_details_configured %}
+    <form id="payout-form" autocomplete="off" class="space-y-4 rounded-lg border border-dark-border bg-dark-surface p-5">
+        <h2 class="text-xl font-semibold">Request a manual bank transfer</h2>
+        <p class="text-sm text-gray-400">SkillStudio reserves the amount until an operator sends or closes the request.</p>
+        <label class="block">Amount in USD (minimum $10)
+            <input type="number" name="amount" min="10" step="0.01" required class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        </label>
+        <label class="block">Account holder
+            <input name="account_holder" maxlength="150" required class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        </label>
+        <label class="block">Bank name
+            <input name="bank_name" maxlength="150" required class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        </label>
+        <label class="block">Bank account number or IBAN
+            <input name="account_number" maxlength="80" required class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        </label>
+        <button class="rounded-lg bg-blue-600 px-4 py-2" type="submit">Request payout</button>
+    </form>
+    {% else %}
+    <p class="rounded-lg border border-dark-border p-4 text-gray-300">Bank transfer requests are unavailable until an operator configures payout destination encryption.</p>
+    {% endif %}
+    {% endif %}
+    <div id="payouts" class="space-y-3" aria-live="polite"></div>
+    {% include 'components/pager.html' with pager_id='payout-pages' %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+const payoutForm = document.getElementById('payout-form');
+const operator = document.body.dataset.pageRole === 'admin';
+
+async function loadPayouts(page = 1) {
+    const list = document.getElementById('payouts');
+    try {
+        const data = await apiRequest(`/payments/payouts/?page=${page}`);
+        if (!data) return;
+        list.innerHTML = data.results.map(payout => `
+            <article class="space-y-2 rounded-lg border border-dark-border bg-dark-surface p-4">
+                <h2 class="font-semibold">Payout #${Number(payout.id)} · $${Number(payout.amount).toFixed(2)}</h2>
+                <p class="capitalize">${escapeHtml(payout.status)} · ${escapeHtml(payout.payout_method.replaceAll('_', ' '))}</p>
+                ${operator ? `<p class="break-all">${escapeHtml(payout.instructor_email)} · Destination ${payout.account_details.provided ? 'on file' : 'missing'}</p>` : ''}
+                ${payout.status === 'paid' ? `<p class="break-all">Transfer reference: ${escapeHtml(payout.transaction_id)}</p>` : ''}
+                ${payout.failure_reason ? `<p class="break-words">${escapeHtml(payout.failure_reason)}</p>` : ''}
+                ${payoutButtons(payout)}
+            </article>
+        `).join('') || '<p class="text-gray-400">No payouts.</p>';
+        renderPagination(document.getElementById('payout-pages'), data, page, loadPayouts);
+        if (document.getElementById('payout-available')) {
+            const balance = await apiRequest('/payments/payouts/balance/');
+            if (balance) document.getElementById('payout-available').textContent = `$${Number(balance.available).toFixed(2)}`;
+        }
+    } catch (error) {
+        list.textContent = error.message;
+    }
+}
+
+function payoutButtons(payout) {
+    const button = (value, label) => `<button value="${value}" type="submit" class="rounded-lg border border-dark-border px-3 py-2">${label}</button>`;
+    const processing = payout.status === 'processing';
+    if (payout.status !== 'pending' && !processing) return '';
+    if (!operator && processing) return '';
+    const complete = `<label class="min-w-0 flex-1">Bank transfer reference
+        <input name="transaction_id" maxlength="255" class="mt-1 block w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+    </label>${button('complete', 'Mark as sent')}`;
+    const actions = operator
+        ? `${processing ? complete : button('approve', 'Approve')}${button('reject', 'Reject')}`
+        : button('cancel', 'Cancel request');
+    return `<form data-payout-id="${Number(payout.id)}" class="flex flex-wrap items-end gap-2">${actions}</form>`;
+}
+
+payoutForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!await showConfirm('Request this bank transfer and reserve the amount from your wallet?')) return;
+    const data = new FormData(payoutForm);
+    const account_details = Object.fromEntries(
+        ['account_holder', 'bank_name', 'account_number'].map(name => [name, data.get(name).trim()])
+    );
+    if (Object.values(account_details).some(value => !value)) {
+        showAlert('Enter all bank transfer details.', 'error');
+        return;
+    }
+    event.submitter.disabled = true;
+    try {
+        const payout = await apiRequest('/payments/payouts/request/', {
+            method: 'POST', body: JSON.stringify({amount: data.get('amount'), payout_method: 'bank_transfer', account_details}),
+        });
+        if (payout) {
+            payoutForm.reset();
+            showAlert('Payout requested.', 'success');
+            await loadPayouts();
+        }
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        event.submitter.disabled = false;
+    }
+});
+
+document.getElementById('payouts').addEventListener('submit', async event => {
+    const form = event.target;
+    if (!form.dataset.payoutId) return;
+    event.preventDefault();
+    const action = event.submitter.value;
+    if (!['approve', 'complete', 'reject', 'cancel'].includes(action)) return;
+    const transaction_id = new FormData(form).get('transaction_id')?.trim();
+    if (action === 'complete' && !transaction_id) {
+        showAlert('Enter the bank transfer reference.', 'error');
+        return;
+    }
+    const message = action === 'complete'
+        ? 'Record this payout as sent? Confirm the bank transfer has already been made.'
+        : `${event.submitter.textContent} this payout?`;
+    if (!await showConfirm(message)) return;
+    const buttons = form.querySelectorAll('button');
+    buttons.forEach(button => { button.disabled = true; });
+    try {
+        const id = Number(form.dataset.payoutId);
+        if (action === 'complete') {
+            await apiRequest(`/payments/payouts/${id}/complete/`, {
+                method: 'POST', body: JSON.stringify({transaction_id}),
+            });
+        } else if (action === 'approve') {
+            await apiRequest(`/payments/payouts/${id}/approve/`, {method: 'POST', body: '{}'});
+        } else if (action === 'reject') {
+            await apiRequest(`/payments/payouts/${id}/reject/`, {method: 'POST', body: '{}'});
+        } else {
+            await apiRequest(`/payments/payouts/${id}/cancel/`, {method: 'POST'});
+        }
+        await loadPayouts();
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        buttons.forEach(button => { button.disabled = false; });
+    }
+});
+loadPayouts();
+</script>
+{% endblock %}

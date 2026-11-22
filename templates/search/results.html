@@ -163,6 +163,7 @@
         </div>
     </div>
 </div>
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -199,14 +200,19 @@ const SORT_TO_ORDERING = {
     'price-high': '-price',
 };
 
-async function performSearch() {
+let performSearchRequest = 0;
+
+async function performSearch(page = 1) {
+    const request = ++performSearchRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('results-container');
     const query = document.getElementById('search-input').value;
     const sort = document.getElementById('sort-select').value;
 
     try {
         // Search is the course list endpoint's ?search= filter (API-01/API-02).
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({page});
         if (query) params.set('search', query);
         params.set('ordering', SORT_TO_ORDERING[sort] || '-created_at');
 
@@ -217,6 +223,8 @@ async function performSearch() {
         if (filters.price) params.set('is_free', filters.price[0] === 'free' ? 'true' : 'false');
 
         const response = await apiRequest(`/courses/?${params.toString()}`);
+        if (request !== performSearchRequest || !response) return;
+        renderPagination(pagination, response, page, performSearch);
         const courses = response.results;
 
         document.getElementById('results-count').textContent = response.count ?? courses.length;
@@ -235,6 +243,7 @@ async function performSearch() {
             `;
         }
     } catch (error) {
+        if (request !== performSearchRequest) return;
         console.error('Error searching courses:', error);
         container.innerHTML = '<div class="col-span-2 text-center py-16 text-red-400">Failed to load search results</div>';
     }

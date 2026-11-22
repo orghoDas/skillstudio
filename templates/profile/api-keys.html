@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}API keys - SkillStudio{% endblock %}
+{% block sidebar %}{% include 'components/sidebar.html' %}{% endblock %}
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl space-y-6">
+    <h1 class="text-3xl font-bold">API keys</h1>
+    <form id="key-form" class="space-y-4 rounded-lg border border-dark-border bg-dark-surface p-5">
+        <label for="key-label" class="block">Key name</label>
+        <input id="key-label" name="label" required maxlength="255" class="w-full rounded-lg border border-dark-border bg-dark-bg p-2">
+        <fieldset class="flex flex-wrap gap-4">
+            <legend class="mb-2">Permissions</legend>
+            <label><input name="scopes" value="read" type="checkbox" checked> Read</label>
+            <label><input name="scopes" value="write" type="checkbox"> Write</label>
+        </fieldset>
+        <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2">Create API key</button>
+    </form>
+    <div id="new-key-panel" class="hidden space-y-2 rounded-lg border border-blue-600 p-4">
+        <p id="new-key-note">Copy this key now. SkillStudio displays it once.</p>
+        <code id="new-key" aria-describedby="new-key-note" class="block break-all"></code>
+        <button id="copy-key" type="button" class="rounded-lg border border-dark-border px-3 py-2">Copy key</button>
+    </div>
+    <div id="keys" class="space-y-3" aria-live="polite"></div>
+    {% include 'components/pager.html' with pager_id='key-pages' %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+const keyForm = document.getElementById('key-form');
+
+async function loadKeys(page = 1) {
+    try {
+        const data = await apiRequest(`/accounts/api-keys/?page=${page}`);
+        if (!data) return;
+        document.getElementById('keys').innerHTML = data.results.map(key => `
+            <article class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dark-border p-4">
+                <div class="min-w-0 break-words">
+                    <h2 class="font-semibold">${escapeHtml(key.label)}</h2>
+                    <p class="text-sm text-gray-400">${escapeHtml(key.prefix)}… · ${escapeHtml(key.scopes.join(', ') || 'Read and write')} · ${key.is_active ? 'Active' : 'Revoked'}</p>
+                </div>
+                <button type="button" data-click="toggleKey" data-key-id="${Number(key.id)}" data-active="${key.is_active}" class="rounded-lg border border-dark-border px-3 py-2">${key.is_active ? 'Revoke' : 'Restore'}</button>
+            </article>
+        `).join('') || '<p class="text-gray-400">No API keys.</p>';
+        renderPagination(document.getElementById('key-pages'), data, page, loadKeys);
+    } catch (error) {
+        showAlert(error.message, 'error');
+    }
+}
+
+keyForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const data = new FormData(keyForm);
+    const scopes = data.getAll('scopes');
+    if (!scopes.length) {
+        showAlert('Select at least one permission.', 'error');
+        return;
+    }
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+        const key = await apiRequest('/accounts/api-keys/', {
+            method: 'POST', body: JSON.stringify({label: data.get('label'), scopes}),
+        });
+        if (key) {
+            document.getElementById('new-key').textContent = key.key;
+            document.getElementById('new-key-panel').classList.remove('hidden');
+            keyForm.reset();
+            await loadKeys();
+        }
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.getElementById('copy-key').onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(document.getElementById('new-key').textContent);
+        showAlert('API key copied.', 'success');
+    } catch (error) {
+        showAlert('Could not copy the key. Select and copy the displayed text.', 'error');
+    }
+};
+
+bindActions({click: {
+    toggleKey: async (event, button) => {
+        if (!await showConfirm(button.dataset.active === 'true' ? 'Revoke this API key?' : 'Restore this API key?')) return;
+        button.disabled = true;
+        try {
+            await apiRequest(`/accounts/api-keys/${Number(button.dataset.keyId)}/toggle/`, {method: 'PATCH'});
+            await loadKeys();
+        } catch (error) {
+            showAlert(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    }
+}});
+loadKeys();
+</script>
+{% endblock %}

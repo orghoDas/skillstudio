@@ -1,0 +1,106 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'admin/operations.css' %}">
+{% endblock %}
+{% block bodyclass %}{{ block.super }} operations{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+<div id="content-main" class="operations-layout">
+  {% if metrics %}
+    <section class="operations-metrics" aria-label="Platform metrics">
+      {% for metric in metrics %}
+        <a class="operations-metric" href="{{ metric.url }}">
+          <span class="operations-label">{{ metric.label }}</span>
+          <strong>
+            {% if metric.amounts %}
+              {% for amount in metric.amounts %}
+                <span class="operations-amount">{{ amount.currency }} {{ amount.total|floatformat:"2g" }}</span>
+              {% endfor %}
+            {% else %}{{ metric.value }}{% endif %}
+          </strong>
+          <span class="operations-muted">{{ metric.detail }}</span>
+        </a>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {% if queues %}
+    <section class="operations-queues" aria-label="Work queues">
+      {% for queue in queues %}
+        <article class="operations-panel">
+          <h2>{{ queue.title }}</h2>
+          <p class="operations-muted">{{ queue.description }}</p>
+          {% if queue.items %}
+            <ul class="operations-list">
+              {% for item in queue.items %}
+                <li>
+                  <a href="{{ item.url }}">{{ item.label }}</a>
+                  <div class="operations-muted">
+                    {{ item.status }}
+                    {% if item.date %} · <time datetime="{{ item.date|date:'c' }}">{{ item.date|date:"M j, Y" }}</time>{% endif %}
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="operations-empty">You're all caught up.</p>
+          {% endif %}
+          <a class="operations-panel-link" href="{{ queue.url }}">View queue<span class="visually-hidden"> for {{ queue.title }}</span> <span aria-hidden="true">→</span></a>
+        </article>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <div class="operations-insights">
+    {% if trend %}
+      <section class="operations-panel" aria-labelledby="enrollments-heading">
+        <h2 id="enrollments-heading">New enrollments</h2>
+        <p class="operations-muted">Daily totals over the last 14 days</p>
+        <div class="operations-chart">
+          {% for day in trend %}
+            <div class="operations-chart-day" title="{{ day.day|date:'M j, Y' }} · {{ day.count }} enrollments">
+              <span class="operations-chart-count">{{ day.count }}</span>
+              <span class="operations-chart-track" aria-hidden="true">
+                <span style="height: {{ day.height }}%"></span>
+              </span>
+              <time datetime="{{ day.day|date:'Y-m-d' }}" aria-label="{{ day.day|date:'M j, Y' }}">{{ day.day|date:"j" }}</time>
+            </div>
+          {% endfor %}
+        </div>
+        {% with last=trend|last %}
+          <p class="operations-muted">{{ trend.0.day|date:"M j" }} – {{ last.day|date:"M j, Y" }}</p>
+        {% endwith %}
+      </section>
+    {% endif %}
+
+    <section class="operations-panel" aria-labelledby="activity-heading">
+      <h2 id="activity-heading">Recent admin activity</h2>
+      {% if activity %}
+        <ul class="operations-list">
+          {% for entry in activity %}
+            <li>
+              <strong>{{ entry.message }}</strong>
+              <div>{{ entry.object }}</div>
+              <div class="operations-muted">
+                {{ entry.operator }} · <time datetime="{{ entry.time|date:'c' }}">{{ entry.time|date:"M j, Y H:i" }}</time>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="operations-empty">No admin activity to show.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section aria-labelledby="records-heading">
+    <h2 id="records-heading">Manage records</h2>
+    {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+  </section>
+</div>
+{% endblock %}

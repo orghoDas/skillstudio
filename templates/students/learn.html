@@ -69,7 +69,9 @@ async function loadCourse() {
         courseId = enrollmentData.course.id;
         await loadCurriculum();
 
-        currentLesson = findNextLesson();
+        const requestedLesson = Number(new URLSearchParams(window.location.search).get('lesson'));
+        const savedLesson = findLessonSummary(requestedLesson);
+        currentLesson = savedLesson && !savedLesson.is_locked ? savedLesson : findNextLesson();
         renderLearningInterface();
         if (currentLesson) {
             loadLesson(currentLesson.id);
@@ -153,6 +155,21 @@ function renderLearningInterface() {
                     </div>
                 </div>
 
+                {% if page_role == 'student' %}
+                <details id="lesson-study-tools" class="hidden border-t border-dark-border p-5">
+                    <summary class="cursor-pointer font-semibold">Notes and bookmarks</summary>
+                    <form id="lesson-note-form" class="mt-4 space-y-2">
+                        <label for="lesson-note" class="block text-sm">Private lesson note</label>
+                        <textarea id="lesson-note" required rows="3" class="w-full rounded-lg border border-dark-border bg-dark-bg p-2"></textarea>
+                        <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2">Save note</button>
+                    </form>
+                    <div class="mt-3 flex flex-wrap items-center gap-3">
+                        <button id="bookmark-lesson" type="button" class="rounded-lg border border-dark-border px-3 py-2">Bookmark lesson</button>
+                        <a href="/library/" class="text-blue-400">Saved learning</a>
+                    </div>
+                </details>
+                {% endif %}
+
                 <div id="lesson-navigation" class="hidden bg-dark-surface border-t border-dark-border p-6">
                     <div class="flex items-center justify-between max-w-4xl mx-auto">
                         <button id="prev-lesson" data-click="navigateLesson" data-value-one="prev" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -170,6 +187,46 @@ function renderLearningInterface() {
         </div>
     `;
     renderSidebar();
+    document.getElementById('lesson-note-form')?.addEventListener('submit', saveLessonNote);
+    document.getElementById('bookmark-lesson')?.addEventListener('click', bookmarkLesson);
+}
+
+async function saveLessonNote(event) {
+    event.preventDefault();
+    if (!currentLessonData || currentLesson?.id !== currentLessonData.id) return;
+    const input = document.getElementById('lesson-note');
+    const content = input.value.trim();
+    if (!content) return;
+    event.submitter.disabled = true;
+    try {
+        const note = await apiRequest('/students/notes/', {
+            method: 'POST', body: JSON.stringify({lesson: currentLessonData.id, content}),
+        });
+        if (note) {
+            input.value = '';
+            showAlert('Lesson note saved.', 'success');
+        }
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        event.submitter.disabled = false;
+    }
+}
+
+async function bookmarkLesson(event) {
+    if (!currentLessonData || currentLesson?.id !== currentLessonData.id) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+        const bookmark = await apiRequest('/students/bookmarks/', {
+            method: 'POST', body: JSON.stringify({lesson: currentLessonData.id}),
+        });
+        if (bookmark) showAlert('Lesson bookmarked.', 'success');
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        button.disabled = false;
+    }
 }
 
 function renderSidebar() {
@@ -322,6 +379,7 @@ async function loadLesson(lessonId) {
     if (!currentLesson || currentLesson.id !== lessonId) return;  // user moved on meanwhile
 
     const data = currentLessonData;
+    document.getElementById('lesson-study-tools')?.classList.remove('hidden');
     if (data.content_type === 'video') {
         renderVideoLesson(data);
     } else if (data.content_type === 'quiz') {
@@ -330,11 +388,14 @@ async function loadLesson(lessonId) {
         const resources = renderResources(data);
         contentArea.innerHTML = `
             <div class="max-w-4xl mx-auto prose prose-invert prose-lg">
-                ${data.content_text ? `<div class="text-gray-300 whitespace-pre-wrap mb-6">${escapeHtml(data.content_text)}</div>` : ''}
+                ${data.content_text ? '<div id="article-content" class="lesson-article text-gray-300 whitespace-pre-wrap mb-6"></div>' : ''}
                 ${resources}
                 ${!data.content_text && !resources ? '<p class="text-gray-400 text-center">This lesson has no content yet.</p>' : ''}
             </div>
         `;
+        if (data.content_text) {
+            document.getElementById('article-content').append(formattedLessonContent(data.content_text));
+        }
     }
     updateNavigationButtons();
 }
@@ -927,16 +988,22 @@ async function submitQuiz(force = false) {
 
 /** Refresh attempt status from the server, then show the result. */
 async function showQuizOutcome(result) {
+    const lessonId = currentLesson.id;
     try {
-        quizData = await apiRequest(`/assessments/quiz/lesson/${Number(currentLesson.id)}/`);
+        const latestQuiz = await apiRequest(`/assessments/quiz/lesson/${Number(lessonId)}/`);
+        if (currentLesson?.id !== lessonId) return;
+        if (latestQuiz) quizData = latestQuiz;
     } catch (error) {
         console.error('Error refreshing quiz status:', error);
     }
+    if (currentLesson?.id !== lessonId) return;
     const status = attemptStatus();
     const outcome = result || status.last_attempt || {};
     renderQuizResults(outcome, status);
     if (outcome.passed) {
-        setTimeout(() => markLessonComplete(), 1500);
+        setTimeout(() => {
+            if (currentLesson?.id === lessonId) markLessonComplete();
+        }, 1500);
     }
 }
 

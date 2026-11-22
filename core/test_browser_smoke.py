@@ -152,6 +152,12 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page.wait_for_url(lambda url: "/auth/login" not in url, timeout=15000)
         page.wait_for_load_state("networkidle")
 
+    def staff_login(self, page, operator):
+        page.locator("#id_username").fill(operator.email)
+        page.locator("#id_password").fill(self.password)
+        page.get_by_role("button", name="Log in").click()
+        expect(page.get_by_role("heading", name="Operations overview")).to_be_visible()
+
     VISIBLE_MARKUP = ("<div", "<span", "<path", "<svg", "<button", "<a href", "&lt;", "&gt;")
 
     def assert_no_errors(self, page, where):
@@ -162,6 +168,93 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assertEqual(leaked, [], f"Raw markup visible as text on {where}")
 
     # ----------------------------------------------------------------- tests
+
+    def test_staff_console_can_read_dashboard_and_publish_from_review_queue(self):
+        from django.contrib.auth.models import Permission
+        from django.urls import reverse
+
+        from accounts.models import User
+
+        operator = User.objects.create_user(
+            email="reviewer@example.com", password=self.password, role="admin", admin_console_only=True,
+        )
+        operator.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="courses", codename__in=("view_course", "change_course"),
+        ))
+        self.draft.status = "under_review"
+        self.draft.save(update_fields=["status"])
+
+        page = self.new_page()
+        page.set_viewport_size({"width": 390, "height": 844})
+        self.visit(page, "/auth/login/")
+        page.get_by_role("link", name="Staff sign in").click()
+        self.staff_login(page, operator)
+        expect(page.get_by_role("heading", name="Course review")).to_be_visible()
+        expect(page.get_by_text("Net course sales")).to_have_count(0)
+        self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"))
+
+        page.get_by_role("link", name=self.draft.title, exact=True).click()
+        expect(page.get_by_role("heading", name="Review course")).to_be_visible()
+        page.get_by_label("Decision").select_option("published")
+        page.get_by_role("button", name="Apply decision").click()
+        page.wait_for_url(f"**{reverse('admin:courses_course_change', args=[self.draft.pk])}")
+        expect(page.get_by_text("Course status changed to published.", exact=True)).to_be_visible()
+        self.draft.refresh_from_db()
+        self.assertEqual((self.draft.status, self.draft.reviewed_by_id), ("published", operator.pk))
+
+        self.visit(page, "/admin/")
+        expect(page.get_by_text("Course status changed to published.", exact=True)).to_be_visible()
+        expect(page.get_by_role("link", name=self.draft.title, exact=True)).to_have_count(0)
+        self.assert_no_errors(page, "admin console")
+
+    def test_finance_operator_handles_refund_and_manual_payout_from_dashboard(self):
+        from django.contrib.auth.models import Permission
+
+        from accounts.models import User
+        from payments import services
+        from students.models import Wallet
+
+        operator = User.objects.create_user(
+            email="finance@example.com", password=self.password, role="admin", admin_console_only=True,
+        )
+        operator.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="payments",
+            codename__in=("view_refund", "change_refund", "view_payout", "change_payout", "view_payment"),
+        ))
+        self.course.price = Decimal("30.00")
+        self.course.is_free = False
+        self.course.save(update_fields=["price", "is_free"])
+        wallet, _ = Wallet.objects.get_or_create(user=self.student)
+        wallet.add_money("30.00")
+        payment = services.purchase_course(self.student, self.course.pk).payment
+        refund = services.request_refund(self.student, payment.pk, "Browser refund", Decimal("5.00"))
+        payout = services.create_payout(self.instructor, Decimal("10.00"), payout_method="bank_transfer")
+
+        page = self.new_page()
+        self.visit(page, "/admin/")
+        self.staff_login(page, operator)
+        page.get_by_role("link", name=f"Refund #{refund.pk}", exact=False).click()
+        expect(page.get_by_text("Browser refund", exact=True)).to_be_visible()
+        page.get_by_label("Decision").select_option("approve")
+        page.get_by_role("button", name="Apply decision").click()
+        expect(page.get_by_text("Wallet refund approved.", exact=True)).to_be_visible()
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, Decimal("5.00"))
+
+        self.visit(page, "/admin/")
+        expect(page.get_by_text("USD 25.00", exact=True)).to_be_visible()
+        page.get_by_role("link", name=f"Payout #{payout.pk}", exact=False).click()
+        page.get_by_label("Decision").select_option("approve")
+        page.get_by_role("button", name="Apply decision").click()
+        expect(page.get_by_text("Payout approved.", exact=True)).to_be_visible()
+        page.get_by_role("link", name="Review workflow").click()
+        page.get_by_label("Decision").select_option("complete")
+        page.get_by_label("Transfer reference").fill("browser-transfer-fixture")
+        page.get_by_role("button", name="Apply decision").click()
+        expect(page.get_by_text("Payout recorded as sent.", exact=True)).to_be_visible()
+        payout.refresh_from_db()
+        self.assertEqual((payout.status, payout.transaction_id), ("paid", "browser-transfer-fixture"))
+        self.assert_no_errors(page, "finance workflow")
 
     def test_public_pages_render_without_errors(self):
         page = self.new_page()
@@ -456,6 +549,198 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page.click("#next-lesson")
         page.wait_for_selector("#lesson-content >> text=Body two.", timeout=10000)
         self.assert_no_errors(page, "learn page")
+
+    def test_quiz_editor_preserves_zero_marks_and_explanation(self):
+        from assessments.models import Quiz
+
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.visit(page, f"/instructor/lessons/{self.draft_lesson.id}/edit/")
+        manage = f"**/api/assessments/quiz/lesson/{self.draft_lesson.id}/manage/"
+        page.allowed_api_errors = {(f"/api/assessments/quiz/lesson/{self.draft_lesson.id}/manage/", 404)}
+        page.select_option("#lesson-type", "quiz")
+        page.fill(".question-text", "How much is two plus two?")
+        page.locator(".option-text").nth(0).fill("Four")
+        page.locator(".option-text").nth(1).fill("Five")
+        page.locator(".quiz-option input[type=radio]").first.check()
+        page.fill(".question-marks", "7")
+        page.fill(".question-explanation", "Two added to two makes four.")
+        page.fill("#quiz-passing-score", "0")
+        with page.expect_response(lambda r: r.url.endswith(manage[2:]) and r.request.method == "POST") as saved:
+            page.get_by_role("button", name="Save Draft").click()
+        self.assertEqual(saved.value.status, 200)
+        quiz = Quiz.objects.get(lesson=self.draft_lesson)
+        self.assertFalse(quiz.is_published)
+        self.assertEqual((quiz.passing_percentage, quiz.total_marks), (0, 7))
+        page.reload()
+        expect(page.locator("#quiz-passing-score")).to_have_value("0")
+        expect(page.locator(".question-explanation")).to_have_value("Two added to two makes four.")
+        expect(page.locator(".question-marks")).to_have_value("7")
+        with page.expect_response(lambda r: r.url.endswith(manage[2:]) and r.request.method == "POST") as published:
+            page.get_by_role("button", name="Save & Publish").click()
+        self.assertEqual(published.value.status, 200)
+        quiz.refresh_from_db()
+        self.assertTrue(quiz.is_published)
+
+    def test_learning_library_and_formatted_article(self):
+        from enrollments.models import Enrollment
+
+        self.lesson1.content_text = "<p><strong>Formatted article.</strong></p>"
+        self.lesson1.save(update_fields=["content_text"])
+        Enrollment.objects.create(user=self.student, course=self.course)
+        page = self.new_page()
+        self.login(page, self.student)
+        self.visit(page, f"/courses/{self.course.slug}/")
+        page.get_by_role("button", name="Add to wishlist").click()
+        page.get_by_role("button", name="View wishlist").click()
+        expect(page.locator("#wishlist").get_by_role("link", name=self.course.title)).to_be_visible()
+        self.visit(page, f"/learn/{self.course.slug}/")
+        expect(page.locator("#article-content strong")).to_have_text("Formatted article.")
+        page.get_by_text("Notes and bookmarks", exact=True).click()
+        page.get_by_label("Private lesson note").fill("A private note")
+        page.get_by_role("button", name="Save note").click()
+        page.get_by_text("Lesson note saved.", exact=True).wait_for()
+        page.get_by_role("button", name="Bookmark lesson").click()
+        page.get_by_text("Lesson bookmarked.", exact=True).wait_for()
+        self.visit(page, "/library/")
+        expect(page.locator("#notes textarea")).to_have_value("A private note")
+        expect(page.locator("#bookmarks").get_by_role("link", name=self.lesson1.title)).to_be_visible()
+        page.locator("#notes textarea").fill("Updated note")
+        page.get_by_role("button", name="Save changes").click()
+        page.get_by_text("Note updated.", exact=True).wait_for()
+        page.locator("#notes").get_by_role("button", name="Remove").click()
+        page.get_by_role("button", name="Confirm", exact=True).click()
+        expect(page.get_by_text("No notes yet.", exact=True)).to_be_visible()
+        self.assert_no_errors(page, "saved learning")
+
+    def test_partial_refund_keeps_net_amount_in_mobile_history_and_receipt(self):
+        from accounts.models import User
+        from payments.services import approve_refund, purchase_course, request_refund
+        from students.models import Wallet
+
+        moderator = User.objects.create_user(email="operator@admin.com", role="admin")
+        self.course.is_free = False
+        self.course.price = Decimal("12.00")
+        self.course.save()
+        wallet, _ = Wallet.objects.get_or_create(user=self.student)
+        wallet.add_money(Decimal("25.00"), description="Test balance")
+        payment = purchase_course(self.student, self.course.id).payment
+        refund = request_refund(self.student, payment.id, "Test refund", Decimal("3.00"))
+        approve_refund(refund.id, moderator)
+
+        page = self.new_page()
+        page.set_viewport_size({"width": 390, "height": 844})
+        self.login(page, self.student)
+        self.visit(page, "/payments/history/")
+        expect(page.locator("#total-spent")).to_have_text("$9.00")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), 390)
+        page.get_by_role("link", name="Receipt", exact=True).click()
+        expect(page.get_by_role("heading", name="Wallet purchase receipt")).to_be_visible()
+        expect(page.get_by_text("9.00 USD", exact=True)).to_be_visible()
+        self.assert_no_errors(page, "receipt")
+
+    def test_coupon_refund_and_manual_payout_in_the_browser(self):
+        from cryptography.fernet import Fernet
+
+        from accounts.models import User
+        from payments.models import Coupon, Payment, Payout
+        from students.models import Wallet
+
+        moderator = User.objects.create_user(
+            email="wallet-operator@admin.com", password=self.password, role="admin"
+        )
+        self.course.is_free = False
+        self.course.price = Decimal("20.00")
+        self.course.save()
+        Coupon.objects.create(code="SAVE5", discount_type=Coupon.FIXED, discount_value=5, created_by=moderator)
+        wallet, _ = Wallet.objects.get_or_create(user=self.student)
+        wallet.add_money(Decimal("40.00"), description="Synthetic checkout funds")
+
+        buyer = self.new_page()
+        self.login(buyer, self.student)
+        self.visit(buyer, f"/courses/{self.course.slug}/")
+        buyer.get_by_label("Coupon code").fill("SAVE5")
+        buyer.get_by_role("button", name="Check coupon").click()
+        expect(buyer.locator("#coupon-quote")).to_have_text("Price with coupon: $15.00")
+        buyer.locator("#enroll-btn").click()
+        buyer.wait_for_url("**/dashboard/")
+        self.assertEqual(Payment.objects.get(user=self.student).amount, Decimal("15.00"))
+        self.visit(buyer, "/payments/history/")
+        buyer.get_by_role("link", name="Request refund", exact=True).click()
+        buyer.get_by_label("Amount in USD", exact=False).fill("3.00")
+        buyer.get_by_label("Reason", exact=True).fill("Synthetic partial refund")
+        buyer.get_by_role("button", name="Request wallet refund").click()
+        buyer.get_by_text("Refund request submitted.", exact=True).wait_for()
+
+        operator = self.new_page()
+        self.login(operator, moderator)
+        self.visit(operator, "/payments/refunds/")
+        operator.get_by_role("button", name="Approve", exact=True).click()
+        operator.get_by_role("button", name="Confirm", exact=True).click()
+        expect(operator.get_by_text("processed", exact=False)).to_be_visible()
+        self.assertEqual(Wallet.objects.get(user=self.student).balance, Decimal("28.00"))
+
+        with self.settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode()):
+            instructor = self.new_page()
+            self.login(instructor, self.instructor)
+            self.visit(instructor, "/payments/payouts/")
+            instructor.get_by_label("Amount in USD", exact=False).fill("10.00")
+            instructor.get_by_label("Account holder").fill("Synthetic Payee")
+            instructor.get_by_label("Bank name").fill("Test Bank")
+            instructor.get_by_label("Bank account number or IBAN").fill("test-account-only")
+            instructor.get_by_role("button", name="Request payout").click()
+            instructor.get_by_role("button", name="Confirm", exact=True).click()
+            instructor.get_by_text("Payout requested.", exact=True).wait_for()
+
+            self.visit(operator, "/payments/payouts/")
+            operator.get_by_role("button", name="Approve", exact=True).click()
+            operator.get_by_role("button", name="Confirm", exact=True).click()
+            operator.get_by_label("Bank transfer reference").fill("test-transfer-receipt")
+            operator.get_by_role("button", name="Mark as sent").click()
+            operator.get_by_role("button", name="Confirm", exact=True).click()
+            operator.get_by_text("Transfer reference: test-transfer-receipt").wait_for()
+            self.assertEqual(Payout.objects.get(instructor=self.instructor).status, "paid")
+            self.assert_no_errors(instructor, "manual payout request")
+        self.assert_no_errors(buyer, "coupon checkout and refund")
+        self.assert_no_errors(operator, "refund and payout decisions")
+
+    def test_navbar_search_reaches_the_second_page(self):
+        from courses.models import Course
+
+        for index in range(25):
+            Course.objects.create(title=f"Paging result {index:02}", category=self.course.category,
+                                  instructor=self.instructor, status="published")
+        page = self.new_page()
+        self.visit(page, "/courses/")
+        field = page.get_by_role("searchbox", name="Search courses and instructors").first
+        field.fill("Paging result")
+        field.press("Enter")
+        page.wait_for_url("**/search/?q=*")
+        expect(page.locator("#results-count")).to_have_text("25")
+        expect(page.locator("#results-container a")).to_have_count(20)
+        page.locator("#page-controls").get_by_role("button", name="Next", exact=True).click()
+        expect(page.locator("#page-controls [data-page-number]")).to_have_text("Page 2")
+        expect(page.locator("#results-container a")).to_have_count(5)
+        self.assert_no_errors(page, "search pagination")
+
+    def test_api_key_can_be_created_and_revoked_from_settings(self):
+        from accounts.models import APIKey
+
+        page = self.new_page()
+        self.login(page, self.student)
+        self.visit(page, "/settings/")
+        page.get_by_role("link", name="API keys").click()
+        page.get_by_label("Key name").fill("Read-only key")
+        page.get_by_role("button", name="Create API key").click()
+        expect(page.locator("#new-key-panel")).to_be_visible()
+        key = APIKey.objects.get(user=self.student)
+        self.assertEqual(key.scopes, ["read"])
+        page.get_by_role("button", name="Revoke", exact=True).click()
+        page.get_by_role("button", name="Confirm", exact=True).click()
+        page.get_by_role("button", name="Restore", exact=True).wait_for()
+        key.refresh_from_db()
+        self.assertFalse(key.is_active)
+        self.assert_no_errors(page, "API key settings")
 
     def test_exam_publishes_and_resumes_with_saved_answers_and_server_time(self):
         from datetime import timedelta

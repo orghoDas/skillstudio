@@ -60,6 +60,20 @@ class AuthThrottleTests(SimpleTestCase):
         self.assertGreater(int(response['Retry-After']), 0)
         self.assertEqual(response.json()['code'], 'throttled')
 
+    def test_staff_login_limits_repeated_requests(self):
+        from django.core.cache import cache
+        from django.urls import reverse
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        client = APIClient()
+        url = reverse('admin:login')
+        for _ in range(5):
+            self.assertEqual(client.post(url, {}).status_code, 200)
+        response = client.post(url, {})
+        self.assertEqual(response.status_code, 429)
+        self.assertGreater(int(response['Retry-After']), 0)
+
 
 # ----------------------------------------------------------------------------
 # API-01 / TEST-02: every API call a template makes must hit a real route.

@@ -58,6 +58,18 @@ class CourseLifecycleTests(APITestCase):
         self.course.refresh_from_db()
         self.assertEqual((self.course.status, self.course.rejection_reason), ('draft', 'Clarify the examples'))
 
+    def test_course_submission_requires_a_published_quiz_with_questions(self):
+        self.lesson.content_type = 'quiz'
+        self.lesson.save(update_fields=['content_type'])
+        self.assertEqual(self.client.post(f'{self.base}submit/').status_code, 400)
+        manage = f'/api/assessments/quiz/lesson/{self.lesson.pk}/manage/'
+        self.assertEqual(self.client.post(manage, {'is_published': True, 'questions': []}, format='json').status_code, 400)
+        payload = {'is_published': True, 'questions': [{
+            'text': 'Choose one', 'options': [{'text': 'A', 'is_correct': True}, {'text': 'B'}],
+        }]}
+        self.assertEqual(self.client.post(manage, payload, format='json').status_code, 200)
+        self.assertEqual(self.client.post(f'{self.base}submit/').status_code, 200)
+
     def test_revision_copies_content_and_keeps_original_learning_records(self):
         CourseTag.objects.create(course=self.course, tag=Tag.objects.create(name='revision tag'))
         LessonResource.objects.create(lesson=self.lesson, file_url='https://example.test/handout')

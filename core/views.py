@@ -170,3 +170,42 @@ def exam_create(request):
     """Exam creation page"""
     return render(request, 'exams/create.html')
 
+
+
+@cookie_login_required(role='student')
+def learning_library(request):
+    return render(request, 'students/library.html')
+
+
+@cookie_login_required
+def api_keys_page(request):
+    return render(request, 'profile/api-keys.html')
+
+
+@cookie_login_required
+def refunds_page(request):
+    return render(request, 'payments/refunds.html')
+
+
+@cookie_login_required(role='instructor')
+def payouts_page(request):
+    return render(request, 'payments/payouts.html', {
+        'payout_details_configured': bool(settings.PAYOUT_DETAILS_ENCRYPTION_KEY),
+    })
+
+
+@cookie_login_required
+def payment_receipt(request, payment_id):
+    from django.shortcuts import get_object_or_404
+    from django.views.decorators.cache import add_never_cache_headers
+    from payments.models import Payment
+    from payments.services import SETTLED_PAYMENT_STATUSES, with_payment_refunds
+
+    payment = get_object_or_404(
+        with_payment_refunds(Payment.objects.select_related('course')),
+        pk=payment_id, user=page_user(request), status__in=SETTLED_PAYMENT_STATUSES,
+        purpose=Payment.PURPOSE_COURSE_PURCHASE,
+    )
+    response = render(request, 'payments/receipt.html', {'payment': payment})
+    add_never_cache_headers(response)
+    return response

@@ -19,7 +19,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Sum, Q, Count, F
+from django.db.models import Sum, Q, Count, F, Case, DecimalField, OuterRef, Subquery, Value, When
+from django.db.models.functions import Coalesce
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.views.decorators.debug import sensitive_variables
 import logging
@@ -53,10 +54,6 @@ def split_platform_fee(amount):
     amount = to_money(amount)
     fee = to_money(amount * platform_fee_rate())
     return fee, amount - fee
-
-
-# Kept for backwards compatibility with code that imported the old constant.
-PLATFORM_FEE_RATE = platform_fee_rate()
 
 
 # ==========================================
@@ -442,12 +439,6 @@ def reject_refund(refund_id, admin_user, reason):
     return refund
 
 
-def get_pending_refunds():
-    """Get all pending refund requests"""
-    return Refund.objects.filter(status='requested').select_related(
-        'payment', 'payment__user', 'requested_by'
-    ).order_by('-requested_at')
-
 
 # ==========================================
 # PAYOUTS (instructor wallet -> outside world)
@@ -697,6 +688,33 @@ def get_coupon_usage_stats(coupon):
 # PAYMENT ANALYTICS
 # ==========================================
 
+SETTLED_PAYMENT_STATUSES = ('completed', 'partially_refunded', 'refunded')
+
+
+def with_payment_refunds(payments):
+    """Attach refund sums without multiplying the original payment amounts."""
+    refunds = Refund.objects.filter(
+        payment_id=OuterRef('pk'), status='processed',
+    ).order_by().values('payment_id').annotate(total=Sum('amount'), debit=Sum('instructor_debit'))
+    money = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(Decimal('0.00'), output_field=money)
+    return payments.annotate(
+        refunded_amount=Case(
+            When(status='refunded', then=F('amount')),
+            default=Coalesce(Subquery(refunds.values('total'), output_field=money), zero),
+            output_field=money,
+        ),
+        refunded_instructor_debit=Coalesce(
+            Subquery(refunds.values('debit'), output_field=money),
+            Case(When(status='refunded', then=F('instructor_earnings')), default=zero, output_field=money),
+        ),
+    ).annotate(
+        net_amount=F('amount') - F('refunded_amount'),
+        net_instructor_earnings=F('instructor_earnings') - F('refunded_instructor_debit'),
+        net_platform_fee=F('platform_fee') - F('refunded_amount') + F('refunded_instructor_debit'),
+    )
+
+
 def get_payment_stats(start_date=None, end_date=None):
     """Get comprehensive payment statistics.
 
@@ -710,13 +728,15 @@ def get_payment_stats(start_date=None, end_date=None):
     if end_date:
         queryset = queryset.filter(created_at__lte=end_date)
     
+    queryset = with_payment_refunds(queryset)
+    settled = Q(status__in=SETTLED_PAYMENT_STATUSES)
     stats = queryset.aggregate(
-        total_revenue=Sum('amount', filter=Q(status='completed')),
-        total_refunded=Sum('amount', filter=Q(status='refunded')),
-        total_platform_fees=Sum('platform_fee', filter=Q(status='completed')),
-        total_instructor_earnings=Sum('instructor_earnings', filter=Q(status='completed')),
+        total_revenue=Sum('net_amount', filter=settled, default=Decimal('0.00')),
+        total_refunded=Sum('refunded_amount', filter=settled, default=Decimal('0.00')),
+        total_platform_fees=Sum('net_platform_fee', filter=settled, default=Decimal('0.00')),
+        total_instructor_earnings=Sum('net_instructor_earnings', filter=settled, default=Decimal('0.00')),
         total_transactions=Count('id'),
-        completed_transactions=Count('id', filter=Q(status='completed')),
+        completed_transactions=Count('id', filter=settled),
         failed_transactions=Count('id', filter=Q(status='failed')),
     )
     
@@ -728,11 +748,11 @@ def get_payment_stats(start_date=None, end_date=None):
         stats['success_rate'] = 0
     
     stats['by_payment_method'] = list(
-        queryset.filter(status='completed')
+        queryset.filter(settled)
         .values('payment_method')
         .annotate(
             count=Count('id'),
-            total=Sum('amount')
+            total=Sum('net_amount')
         )
     )
     
@@ -748,7 +768,7 @@ def get_instructor_earnings(instructor, start_date=None, end_date=None):
     queryset = Payment.objects.filter(
         instructor=instructor,
         purpose=Payment.PURPOSE_COURSE_PURCHASE,
-        status__in=('completed', 'partially_refunded'),
+        status__in=SETTLED_PAYMENT_STATUSES,
     )
 
     if start_date:
@@ -756,10 +776,10 @@ def get_instructor_earnings(instructor, start_date=None, end_date=None):
     if end_date:
         queryset = queryset.filter(created_at__lte=end_date)
 
-    stats = queryset.aggregate(
-        period_earnings=Sum('instructor_earnings'),
-        period_sales=Sum('amount'),
-        period_transactions=Count('id')
+    stats = with_payment_refunds(queryset).aggregate(
+        period_earnings=Sum('net_instructor_earnings', default=Decimal('0.00')),
+        period_sales=Sum('net_amount', default=Decimal('0.00')),
+        period_transactions=Count('id'),
     )
 
     return {

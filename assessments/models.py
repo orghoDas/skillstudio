@@ -128,6 +128,7 @@ class QuizQuestion(models.Model):
         related_name="questions"
     )
     question_text = models.TextField()
+    explanation = models.TextField(blank=True)
     difficulty = models.CharField(
         max_length=20,
         choices=Difficulty.choices,

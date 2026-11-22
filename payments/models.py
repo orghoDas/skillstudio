@@ -49,11 +49,11 @@ class Payment(models.Model):
 
     # User and instructor
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="payments"
+        User, on_delete=models.PROTECT, related_name="payments"
     )
     instructor = models.ForeignKey(
         User,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="instructor_payments",
@@ -176,7 +176,7 @@ class Payout(models.Model):
     ]
 
     instructor = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="payouts"
+        User, on_delete=models.PROTECT, related_name="payouts"
     )
 
     amount = models.DecimalField(

@@ -6,7 +6,8 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, FloatField, Max, Q, Sum
+from django.db.models.functions import Cast, Coalesce, NullIf
 from django.http import HttpResponse
 import csv
 
@@ -70,7 +71,26 @@ class EnrollmentListView(generics.ListAPIView):
         if status:
             queryset = queryset.filter(status=status)
         
-        return with_enrollment_progress(queryset.order_by('-enrolled_at', '-pk'), completed_ids=True)
+        if self.request.query_params.get('accessible') == 'true':
+            queryset = queryset.filter(status__in=ACCESS_STATUSES)
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(course__title__icontains=search)
+
+        ordering = self.request.query_params.get('ordering')
+        queryset = with_enrollment_progress(queryset, completed_ids=True)
+        sort = '-enrolled_at'
+        if ordering == 'title':
+            sort = 'course__title'
+        elif ordering == '-last_accessed':
+            queryset = queryset.annotate(last_accessed=Coalesce(Max('lesson_progress__updated_at'), F('enrolled_at')))
+            sort = '-last_accessed'
+        elif ordering == '-progress':
+            queryset = with_enrollment_progress(queryset).annotate(
+                progress=Coalesce(Cast('required_completed_count', FloatField()) / NullIf(F('required_count'), 0), 0.0),
+            )
+            sort = '-progress'
+        return queryset.order_by(sort, '-pk')
 
 
 class EnrollmentDetailView(generics.RetrieveAPIView):

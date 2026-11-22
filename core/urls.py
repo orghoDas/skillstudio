@@ -21,6 +21,7 @@ urlpatterns = [
     path('profile/', views.profile_page, name='profile_page'),
     path('instructor/profile/', views.instructor_profile_page, name='instructor_profile_page'),
     path('settings/', views.settings_page, name='settings_page'),
+    path('settings/api-keys/', views.api_keys_page, name='api_keys_page'),
     path('settings/profile/', views.profile_page, name='settings_profile_page'),  # Alias for profile
     path('instructor/courses/', views.instructor_courses_list, name='instructor_courses_list'),
     path('instructor/courses/create/', views.instructor_course_create, name='instructor_course_create'),
@@ -29,6 +30,7 @@ urlpatterns = [
     path('instructor/courses/<slug:slug>/preview/', views.instructor_course_preview, name='instructor_course_preview'),
     path('instructor/lessons/<int:id>/edit/', views.instructor_lesson_edit, name='instructor_lesson_edit'),
     path('instructor/students/', views.instructor_students, name='instructor_students'),
+    path('library/', views.learning_library, name='learning_library'),
     path('my-courses/', views.my_courses, name='my_courses'),
     path('enrollments/', views.enrollments_list, name='enrollments_list'),
     path('learn/<slug:slug>/', views.learn_course, name='learn_course'),
@@ -36,6 +38,9 @@ urlpatterns = [
     # Payments & Certificates
     path('certificates/', views.certificates_list, name='certificates_list'),
     path('certificates/verify/<str:code>/', certificate_verification_page, name='certificate-verification-page'),
+    path('payments/refunds/', views.refunds_page, name='refunds_page'),
+    path('payments/payouts/', views.payouts_page, name='payouts_page'),
+    path('payments/receipts/<int:payment_id>/', views.payment_receipt, name='payment_receipt'),
     path('payments/history/', views.payment_history, name='payment_history'),
     path('wallet/', views.wallet_page, name='wallet_page'),
     

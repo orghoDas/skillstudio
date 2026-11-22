@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Q
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -190,26 +192,31 @@ class ExamListCreateView(generics.ListCreateAPIView):
         return ExamListSerializer
     
     def get_queryset(self):
-        if is_admin_user(self.request.user):
-            return Exam.objects.select_related('course', 'created_by').all()
+        user = self.request.user
+        queryset = Exam.objects.select_related('course', 'created_by')
+        if not is_admin_user(user):
+            if user.role == 'instructor':
+                queryset = queryset.filter(course__instructor=user)
+            else:
+                enrolled_courses = Enrollment.objects.filter(user=user, status__in=ACCESS_STATUSES)
+                queryset = queryset.filter(course_id__in=enrolled_courses.values('course_id'), status='published')
 
-        if self.request.user.role == 'instructor':
-            # Instructors see exams for courses they own.
-            return Exam.objects.select_related('course', 'created_by').filter(
-                course__instructor=self.request.user
+        availability = self.request.query_params.get('availability')
+        now = timezone.now()
+        if availability == 'upcoming':
+            queryset = queryset.filter(status='published', start_datetime__gt=now)
+        elif availability == 'active':
+            queryset = queryset.filter(status='published').filter(
+                Q(start_datetime__isnull=True) | Q(start_datetime__lte=now),
+                Q(end_datetime__isnull=True) | Q(end_datetime__gte=now),
             )
-        else:
-            # Students see published exams for their enrolled courses
-            enrolled_courses = Enrollment.objects.filter(
-                user=self.request.user,
-                status__in=ACCESS_STATUSES
-            ).values_list('course_id', flat=True)
-            
-            return Exam.objects.select_related('course', 'created_by').filter(
-                course_id__in=enrolled_courses,
-                status='published'
-            )
-    
+        elif availability == 'completed':
+            attempts = ExamAttempt.objects.filter(exam_id=OuterRef('pk'), status='completed')
+            if not is_admin_user(user) and user.role != 'instructor':
+                attempts = attempts.filter(user=user)
+            queryset = queryset.filter(Exists(attempts))
+        return queryset.order_by('-created_at', '-pk')
+
     @transaction.atomic
     def perform_create(self, serializer):
         if self.request.user.role != 'instructor' and not is_admin_user(self.request.user):

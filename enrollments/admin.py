@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from core.admin import ReadOnlyAdmin
 from .constants import ACCESS_STATUSES
 from .models import Enrollment, LessonProgress, Wishlist
-from .services import cancel_enrollments, evaluate_and_complete_enrollment, mark_lesson_completed
+from .services import cancel_enrollments, evaluate_and_complete_enrollment, mark_lesson_completed, with_enrollment_progress, lesson_progress_percentage
 
 
 # ===========================
@@ -117,21 +117,15 @@ class EnrollmentAdmin(EnrollmentActionAdmin):
         )
     status_badge.short_description = 'Status'
     
+    def get_queryset(self, request):
+        return with_enrollment_progress(super().get_queryset(request))
+
     def progress_bar(self, obj):
-        """Display progress as a visual bar."""
-        from courses.models import Lesson
-        
-        total_lessons = Lesson.objects.filter(
-            module__course=obj.course,
-            is_free=False
-        ).count()
-        
-        if total_lessons == 0:
-            return 'No lessons'
-        
-        completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
-        progress = round((completed_lessons / total_lessons) * 100, 2)
-        
+        """Display required lesson progress as a visual bar."""
+        if not obj.required_count:
+            return 'No required lessons'
+        progress = lesson_progress_percentage(obj.required_completed_count, obj.required_count)
+
         return format_html(
             '<div style="width:100px; background-color: #e9ecef; border-radius: 3px;">'
             '<div style="width:{}%; background-color: #28a745; height: 20px; border-radius: 3px; text-align: center; color: white; font-size: 11px; line-height: 20px;">'
@@ -144,21 +138,12 @@ class EnrollmentAdmin(EnrollmentActionAdmin):
     progress_bar.short_description = 'Progress'
     
     def progress_display(self, obj):
-        """Display detailed progress information."""
-        from courses.models import Lesson
-        
-        total_lessons = Lesson.objects.filter(
-            module__course=obj.course,
-            is_free=False
-        ).count()
-        
-        completed_lessons = obj.lesson_progress.filter(is_completed=True).count()
-        
-        if total_lessons == 0:
-            return 'No lessons in this course'
-        
-        progress = round((completed_lessons / total_lessons) * 100, 2)
-        
+        """Display detailed required lesson progress."""
+        total_lessons = obj.required_count
+        completed_lessons = obj.required_completed_count
+        if not total_lessons:
+            return 'No required lessons'
+        progress = lesson_progress_percentage(completed_lessons, total_lessons)
         return format_html(
             '<strong>{}%</strong> ({} of {} lessons completed)',
             progress,
@@ -357,8 +342,8 @@ class WishlistAdmin(admin.ModelAdmin):
     
     search_fields = [
         'user__email',
-        'user__first_name',
-        'user__last_name',
+        'user__profile__first_name',
+        'user__profile__last_name',
         'course__title',
     ]
     
@@ -398,5 +383,5 @@ class WishlistAdmin(admin.ModelAdmin):
     
     def course_price(self, obj):
         """Display course price."""
-        return format_html('${:.2f}', obj.course.price)
+        return f'${obj.course.price:.2f}'
     course_price.short_description = 'Price'

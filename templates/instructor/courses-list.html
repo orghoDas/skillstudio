@@ -112,6 +112,7 @@
         <div class="animate-pulse bg-dark-surface border border-dark-border rounded-lg h-32"></div>
     </div>
 </div>
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -121,9 +122,9 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCourses();
 
     // Filters
-    document.getElementById('search-courses').addEventListener('input', debounce(loadCourses, 500));
-    document.getElementById('filter-status').addEventListener('change', loadCourses);
-    document.getElementById('sort-by').addEventListener('change', loadCourses);
+    document.getElementById('search-courses').addEventListener('input', debounce(() => loadCourses(), 500));
+    document.getElementById('filter-status').addEventListener('change', () => loadCourses());
+    document.getElementById('sort-by').addEventListener('change', () => loadCourses());
 });
 
 function debounce(func, wait) {
@@ -139,14 +140,19 @@ async function loadStats() {
         const stats = await apiRequest('/instructors/dashboard/');
         document.getElementById('total-courses').textContent = stats.total_courses || 0;
         document.getElementById('total-students').textContent = stats.total_students || 0;
-        document.getElementById('published-courses').textContent = stats.published_courses || 0;
-        document.getElementById('draft-courses').textContent = stats.draft_courses || 0;
+        document.getElementById('published-courses').textContent = stats.courses.filter(course => course.status === 'published').length;
+        document.getElementById('draft-courses').textContent = stats.courses.filter(course => course.status === 'draft').length;
     } catch (error) {
         console.error('Error loading stats:', error);
     }
 }
 
-async function loadCourses() {
+let loadCoursesRequest = 0;
+
+async function loadCourses(page = 1) {
+    const request = ++loadCoursesRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('courses-container');
     container.innerHTML = '<div class="flex justify-center py-12"><div class="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>';
 
@@ -155,7 +161,7 @@ async function loadCourses() {
         const status = document.getElementById('filter-status').value;
         const sortBy = document.getElementById('sort-by').value;
 
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({page});
         params.append('instructor', 'me');
         if (search) params.append('search', search);
         if (status) params.append('status', status);
@@ -164,6 +170,8 @@ async function loadCourses() {
         const response = await apiRequest(`/courses/?${params.toString()}`);
         
         // Handle both paginated (response.results) and direct array responses
+        if (request !== loadCoursesRequest || !response) return;
+        renderPagination(pagination, response, page, loadCourses);
         const courses = response.results;
         
         if (courses && courses.length > 0) {
@@ -182,6 +190,7 @@ async function loadCourses() {
             `;
         }
     } catch (error) {
+        if (request !== loadCoursesRequest) return;
         console.error('Error loading courses:', error);
         container.innerHTML = '<div class="text-center py-16 text-red-400">Failed to load courses</div>';
     }

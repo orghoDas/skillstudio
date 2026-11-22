@@ -10,22 +10,22 @@ Known issues and the fix plan are tracked in [AUDIT_REPORT.md](AUDIT_REPORT.md).
 
 **Students**
 - Browse and search the catalogue, with filters for category, level, price, duration and instructor.
-- Enroll in free courses, or buy paid ones from their wallet. Coupons apply to purchases.
+- Enroll in free courses, or buy paid ones from their wallet. The course page checks coupon codes, and the payment history links to receipts and wallet refund requests.
 - Learn in order: each lesson unlocks after the previous one is completed. Video lessons support YouTube and Vimeo URLs.
 - Take lesson quizzes. A quiz has an optional time limit (enforced by the server) and a limited number of retakes.
 - Take course exams. An exam has a time window, and its questions stay hidden until an attempt starts.
 - Download a PDF certificate with a QR verification link once a course is complete.
-- Use notes, bookmarks, a wishlist, a dashboard and wallet history.
+- Save private notes and bookmarks from lessons, add courses to the wishlist, and manage those items in Saved learning. Use account settings to create and revoke API keys.
 
 **Instructors**
 - Create courses, modules and lessons. A course goes through draft → review → published.
 - Build quizzes and exams. A quiz stays a draft until it is published.
 - See dashboards for enrollments, engagement and revenue, and export a CSV of lesson analytics.
-- Receive 90% of each sale into their wallet, then request a payout from it.
+- Receive sale proceeds into their wallet after the platform fee. The Payouts page requests manual bank transfers when payout destination encryption is configured.
 
 **Admins**
 - Publish or reject courses that instructors submit for review, and manage users and roles.
-- Approve refunds and payouts. Both move money through the wallet ledger.
+- Approve wallet refunds from Refunds and review manual transfers from Payouts. Mark a bank transfer sent after making it outside SkillStudio.
 
 **Not built yet:** wallet top-ups (planned as Stripe *test mode*, [D-01](AUDIT_REPORT.md#d-01)). Until they exist, there is no user-facing way to add funds. The Stripe webhook endpoint returns `503` on purpose.
 
@@ -102,6 +102,14 @@ pip-compile --generate-hashes --strip-extras --allow-unsafe requirements.in
 pip-compile --generate-hashes --strip-extras --allow-unsafe requirements-dev.in
 pip-sync requirements.txt requirements-dev.txt   # make your venv match exactly
 ```
+
+## Admin console
+
+Sign in at `/admin/` with a staff account. The overview shows the platform totals, enrollment activity, work queues and recent console changes your account can access. Each queue leads to searchable records or a decision form.
+
+- Course reviewers can publish a submission, return it to draft with feedback, or archive a published course. Finance operators can approve or reject wallet refunds, approve or reject payout requests, and record a transfer reference after sending a payout externally. The console records the operator and decision in the record’s history.
+- Create the initial superuser with `python manage.py createsuperuser`. To delegate, a superuser creates permission groups, creates an account with the **Admin** role, and assigns the appropriate groups on its account page. Grant **view** for monitoring and **change** for decisions on the relevant models, such as Course, Refund or Payout. Grant **view log entry** to let staff see other operators’ recent activity for models they can access.
+- Admin accounts created or promoted in the console are console-only by default. This restriction also blocks JWT and API-key authentication. Existing website administrators retain their current access unless a superuser enables **Admin console only** on their account.
 
 ## Tests
 

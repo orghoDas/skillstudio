@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Wallet purchase receipt - SkillStudio{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-xl rounded-lg border border-dark-border bg-dark-surface p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold">Wallet purchase receipt</h1>
+        <button id="print-receipt" type="button" class="rounded-lg border border-dark-border px-4 py-2 print:hidden">Print or save PDF</button>
+    </div>
+    <dl class="mt-6 grid grid-cols-2 gap-3">
+        <dt>Payment</dt><dd>#{{ payment.pk }}</dd>
+        <dt>Course</dt><dd>{{ payment.course.title|default:"Course purchase" }}</dd>
+        <dt>Paid on</dt><dd>{{ payment.completed_at|default:payment.created_at }}</dd>
+        <dt>Original amount</dt><dd>{{ payment.amount|floatformat:2 }} {{ payment.currency }}</dd>
+        <dt>Refunded</dt><dd>{{ payment.refunded_amount|floatformat:2 }} {{ payment.currency }}</dd>
+        <dt>Net paid</dt><dd>{{ payment.net_amount|floatformat:2 }} {{ payment.currency }}</dd>
+    </dl>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+document.getElementById('print-receipt').addEventListener('click', () => window.print());
+</script>
+{% endblock %}

@@ -57,6 +57,7 @@
                     </svg>
                     <span>My Courses</span>
                 </a>
+                <a href="{% url 'learning_library' %}" class="sidebar-link block rounded-lg px-3 py-2 hover:bg-dark-hover">Saved learning</a>
                 <a href="/enrollments/" class="sidebar-link flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-dark-hover transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -93,6 +94,11 @@
                     </svg>
                     <span>My Wallet</span>
                 </a>
+                <a href="{% url 'payment_history' %}" class="sidebar-link block rounded-lg px-3 py-2 hover:bg-dark-hover">Payment history</a>
+                <a href="{% url 'refunds_page' %}" class="sidebar-link block rounded-lg px-3 py-2 hover:bg-dark-hover">Refunds</a>
+                {% if page_role == 'instructor' or page_role == 'admin' %}
+                <a href="{% url 'payouts_page' %}" class="sidebar-link block rounded-lg px-3 py-2 hover:bg-dark-hover">Payouts</a>
+                {% endif %}
                 <a href="{% if page_role == 'instructor' or page_role == 'admin' %}/instructor/profile/{% else %}/profile/{% endif %}" id="sidebar-profile-link" class="sidebar-link flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-dark-hover transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>

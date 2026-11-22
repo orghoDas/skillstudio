@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Saved learning - SkillStudio{% endblock %}
+{% block sidebar %}{% include 'components/sidebar.html' %}{% endblock %}
+{% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-8">
+    <h1 class="text-3xl font-bold">Saved learning</h1>
+    <section id="notes" class="space-y-3">
+        <h2 class="text-xl font-semibold">Notes</h2>
+        <div data-library-items class="space-y-3" aria-live="polite"></div>
+        {% include 'components/pager.html' with pager_id='notes-pages' %}
+    </section>
+    <section id="bookmarks" class="space-y-3">
+        <h2 class="text-xl font-semibold">Bookmarks</h2>
+        <div data-library-items class="space-y-3" aria-live="polite"></div>
+        {% include 'components/pager.html' with pager_id='bookmarks-pages' %}
+    </section>
+    <section id="wishlist" class="space-y-3">
+        <h2 class="text-xl font-semibold">Wishlist</h2>
+        <div data-library-items class="space-y-3" aria-live="polite"></div>
+        {% include 'components/pager.html' with pager_id='wishlist-pages' %}
+    </section>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+const libraryPaths = {
+    notes: '/students/notes/',
+    bookmarks: '/students/bookmarks/',
+    wishlist: '/enrollments/wishlist/',
+};
+
+async function loadLibrary(section, page = 1) {
+    const container = document.querySelector(`#${section} [data-library-items]`);
+    try {
+        const data = await apiRequest(`${libraryPaths[section]}?page=${page}`);
+        if (!data) return;
+        if (!data.results.length && page > 1) return loadLibrary(section, page - 1);
+        container.innerHTML = data.results.map(item => {
+            const slug = encodeURIComponent(item.course_slug);
+            const link = item.lesson ? `/learn/${slug}/?lesson=${Number(item.lesson)}` : `/courses/${slug}/`;
+            return `<article class="space-y-3 rounded-lg border border-dark-border bg-dark-surface p-4">
+                <a href="${link}" class="font-semibold text-blue-400">${escapeHtml(item.lesson_title || item.course_title)}</a>
+                ${section === 'notes' ? `
+                    <form data-note-edit="${escapeHtml(item.id)}" class="space-y-2">
+                        <textarea name="content" required aria-label="Lesson note" rows="3" class="w-full rounded-lg border border-dark-border bg-dark-bg p-2">${escapeHtml(item.content)}</textarea>
+                        <button class="rounded-lg bg-blue-600 px-3 py-2">Save changes</button>
+                    </form>
+                ` : item.note ? `<p class="whitespace-pre-wrap break-words">${escapeHtml(item.note)}</p>` : ''}
+                <button type="button" data-click="removeSaved" data-section="${section}" data-item-id="${escapeHtml(item.id)}" class="rounded-lg border border-dark-border px-3 py-2">Remove</button>
+            </article>`;
+        }).join('') || `<p class="text-gray-400">No ${section === 'wishlist' ? 'saved courses' : section} yet.</p>`;
+        renderPagination(document.getElementById(`${section}-pages`), data, page, next => loadLibrary(section, next));
+    } catch (error) {
+        container.textContent = error.message;
+    }
+}
+
+document.getElementById('notes').addEventListener('submit', async event => {
+    const form = event.target;
+    if (!form.dataset.noteEdit) return;
+    event.preventDefault();
+    const uuid = encodeURIComponent(form.dataset.noteEdit);
+    const content = new FormData(form).get('content').trim();
+    if (!content) return;
+    event.submitter.disabled = true;
+    try {
+        const note = await apiRequest(`/students/notes/${uuid}/`, {method: 'PATCH', body: JSON.stringify({content})});
+        if (note) showAlert('Note updated.', 'success');
+    } catch (error) {
+        showAlert(error.message, 'error');
+    } finally {
+        event.submitter.disabled = false;
+    }
+});
+
+bindActions({click: {
+    removeSaved: async (event, button) => {
+        const section = button.dataset.section;
+        if (!Object.hasOwn(libraryPaths, section) || !await showConfirm('Remove this saved item?')) return;
+        const id = encodeURIComponent(button.dataset.itemId);
+        const endpoint = section === 'wishlist' ? `/enrollments/wishlist/${id}/remove/` : `${libraryPaths[section]}${id}/`;
+        button.disabled = true;
+        try {
+            await apiRequest(endpoint, {method: 'DELETE'});
+            await loadLibrary(section);
+        } catch (error) {
+            showAlert(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    }
+}});
+for (const section of Object.keys(libraryPaths)) loadLibrary(section);
+</script>
+{% endblock %}

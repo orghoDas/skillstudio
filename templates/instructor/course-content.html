@@ -196,7 +196,9 @@ function canEditCourseContent() {
 
 function renderCourseActions() {
     const style = 'px-4 py-2 bg-dark-hover hover:bg-dark-border text-white rounded-lg';
-    const controls = [];
+    const controls = [
+        `<a class="${style}" href="/api/enrollments/instructor/courses/${Number(courseData.id)}/lesson-analytics-csv/">Export lesson analytics CSV</a>`,
+    ];
     if (canEditCourseContent()) {
         controls.push(
             `<a class="${style}" href="/instructor/courses/${escapeHtml(courseSlug)}/edit/">Edit details</a>`,

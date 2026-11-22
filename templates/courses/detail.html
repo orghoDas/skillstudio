@@ -44,10 +44,23 @@
                     <div class="text-center mb-4">
                         <p class="text-3xl font-bold" id="course-price">$0</p>
                     </div>
-                    <button id="enroll-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors mb-3">
+                    {% if page_role %}
+                    <form id="coupon-form" class="hidden mb-3 space-y-2">
+                        <label for="coupon-code" class="block text-sm">Coupon code</label>
+                        <div class="flex flex-wrap gap-2">
+                            <input id="coupon-code" maxlength="50" class="min-w-0 flex-1 rounded-lg border border-dark-border bg-dark-bg p-2">
+                            <button type="submit" class="rounded-lg border border-dark-border px-3 py-2">Check coupon</button>
+                        </div>
+                        <p id="coupon-quote" role="status" class="text-sm"></p>
+                    </form>
+                    {% endif %}
+                    <button id="enroll-btn" disabled class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors mb-3">
                         Enroll Now
                     </button>
                     <div id="enrollment-status" class="hidden mb-3"></div>
+                    {% if page_role == 'student' %}
+                    <button id="wishlist-btn" type="button" class="hidden mb-3 w-full rounded-lg border border-dark-border px-3 py-2">Add to wishlist</button>
+                    {% endif %}
                     <div class="space-y-2 text-sm text-gray-400">
                         <div class="flex items-center space-x-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,23 +115,12 @@
                             <p class="text-sm text-gray-400">Instructor</p>
                         </div>
                     </div>
-                    <p id="instructor-bio" class="text-sm text-gray-400">Experienced educator passionate about teaching.</p>
                 </div>
 
                 <!-- Share Course -->
                 <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
                     <h3 class="text-lg font-bold mb-4">Share this course</h3>
-                    <div class="flex space-x-2">
-                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
-                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                        </button>
-                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
-                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
-                        </button>
-                        <button class="flex-1 bg-dark-hover hover:bg-dark-border border border-dark-border py-2 rounded-lg transition-colors">
-                            <svg class="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                        </button>
-                    </div>
+                    <button id="copy-course-link" type="button" class="rounded-lg border border-dark-border px-3 py-2">Copy course link</button>
                 </div>
             </div>
         </div>
@@ -163,11 +165,18 @@ async function loadCourse(slug) {
             document.getElementById('course-price').textContent = `$${price}`;
         }
         
-        // Check enrollment status
         await checkEnrollmentStatus();
-        
-        // Setup enroll button
-        document.getElementById('enroll-btn').addEventListener('click', handleEnrollment);
+        document.getElementById('copy-course-link').onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(window.location.href);
+                showAlert('Course link copied.', 'success');
+            } catch (error) {
+                showAlert('Could not copy the course link.', 'error');
+            }
+        };
+        if (document.getElementById('wishlist-btn') && courseData.status === 'published') {
+            loadWishlist().catch(error => showAlert(error.message, 'error'));
+        }
         
     } catch (error) {
         console.error('Error loading course:', error);
@@ -193,54 +202,96 @@ function renderCurriculum(modules) {
 }
 
 async function checkEnrollmentStatus() {
+    const button = document.getElementById('enroll-btn');
     if (!document.body.dataset.pageRole) {
-        document.getElementById('enroll-btn').textContent = 'Login to Enroll';
-        document.getElementById('enroll-btn').onclick = () => window.location.href = '/auth/login/?next=' + window.location.pathname;
+        button.textContent = 'Login to Enroll';
+        button.onclick = () => window.location.assign('/auth/login/?next=' + encodeURIComponent(window.location.pathname));
+        button.disabled = false;
         return;
     }
-    
+
+    const response = await apiRequest(`/enrollments/?course=${courseData.id}`);
+    if (!response) return;
+    const enrollment = response.results[0];
+    if (enrollment && ['active', 'completed'].includes(enrollment.status)) {
+        button.textContent = 'Continue Learning';
+        button.onclick = () => window.location.assign(`/learn/${encodeURIComponent(courseData.slug)}/`);
+        const status = document.getElementById('enrollment-status');
+        status.textContent = `${enrollment.status === 'completed' ? 'Course completed' : "You're enrolled"} · ${enrollment.progress_percentage}% complete`;
+        status.classList.remove('hidden');
+        button.disabled = false;
+        return;
+    }
+    button.textContent = enrollment?.status === 'canceled' ? 'Enroll Again' : 'Enroll Now';
+    button.onclick = handleEnrollment;
+    button.disabled = false;
+    const coupon = document.getElementById('coupon-form');
+    if (coupon && Number(courseData.price) > 0) {
+        coupon.classList.remove('hidden');
+        coupon.addEventListener('submit', checkCoupon);
+        document.getElementById('coupon-code').addEventListener('input', () => {
+            document.getElementById('coupon-quote').textContent = '';
+        });
+    }
+}
+
+async function checkCoupon(event) {
+    event.preventDefault();
+    const code = document.getElementById('coupon-code').value.trim();
+    const quote = document.getElementById('coupon-quote');
+    if (!code) {
+        quote.textContent = 'Enter a coupon code.';
+        return;
+    }
     try {
-        const response = await apiRequest(`/enrollments/?course=${courseData.id}`);
-        // Handle both paginated and non-paginated responses
-        const enrollments = response?.results || [];
-        
-        if (enrollments.length > 0) {
-            const enrollment = enrollments[0];
-            document.getElementById('enroll-btn').textContent = 'Continue Learning';
-            document.getElementById('enroll-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            document.getElementById('enroll-btn').classList.add('bg-green-600', 'hover:bg-green-700');
-            document.getElementById('enroll-btn').onclick = () => window.location.href = `/learn/${courseData.slug || courseData.id}/`;
-            
-            // Show enrollment status
-            const statusEl = document.getElementById('enrollment-status');
-            statusEl.innerHTML = `
-                <div class="bg-green-900/30 border border-green-600 rounded-lg p-3 text-sm">
-                    <p class="text-green-400 font-semibold">✓ You're enrolled</p>
-                    <div class="mt-2">
-                        <div class="w-full bg-dark-bg rounded-full h-2">
-                            <div class="bg-green-600 h-2 rounded-full" style="width: ${escapeHtml(enrollment.progress || 0)}%"></div>
-                        </div>
-                        <p class="text-gray-400 text-xs mt-1">${escapeHtml(enrollment.progress || 0)}% Complete</p>
-                    </div>
-                </div>
-            `;
-            statusEl.classList.remove('hidden');
+        const result = await apiRequest('/payments/coupons/validate/', {
+            method: 'POST', body: JSON.stringify({course_id: courseData.id, code}),
+        });
+        if (result && document.getElementById('coupon-code').value.trim() === code) {
+            quote.textContent = `Price with coupon: $${Number(result.final_amount).toFixed(2)}`;
         }
     } catch (error) {
-        console.error('Error checking enrollment:', error);
+        if (document.getElementById('coupon-code').value.trim() === code) quote.textContent = error.message;
     }
+}
+
+async function loadWishlist() {
+    const button = document.getElementById('wishlist-btn');
+    const saved = await apiRequest(`/enrollments/wishlist/check/${Number(courseData.id)}/`);
+    if (!saved) return;
+    button.textContent = saved.in_wishlist ? 'View wishlist' : 'Add to wishlist';
+    button.classList.remove('hidden');
+    button.onclick = async () => {
+        if (saved.in_wishlist) {
+            window.location.assign('/library/#wishlist');
+            return;
+        }
+        button.disabled = true;
+        try {
+            const item = await apiRequest('/enrollments/wishlist/add/', {
+                method: 'POST', body: JSON.stringify({course_id: courseData.id}),
+            });
+            if (item) await loadWishlist();
+        } catch (error) {
+            showAlert(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    };
 }
 
 async function handleEnrollment() {
     
     const btn = document.getElementById('enroll-btn');
+    const action = btn.textContent;
+    const coupon = document.getElementById('coupon-code')?.value.trim();
     btn.disabled = true;
     btn.textContent = 'Enrolling...';
     
     try {
         const response = await apiRequest('/enrollments/enroll/', {
             method: 'POST',
-            body: JSON.stringify({ course_id: courseData.id })
+            body: JSON.stringify({course_id: courseData.id, ...(coupon && {coupon_code: coupon})})
         });
         
         if (response) {
@@ -267,7 +318,7 @@ async function handleEnrollment() {
             showAlert(detail || 'Failed to enroll. Please try again.', 'error');
         }
         btn.disabled = false;
-        btn.textContent = 'Enroll Now';
+        btn.textContent = action;
     }
 }
 
@@ -293,15 +344,6 @@ function showInsufficientFundsModal(message) {
         </div>
     `;
     document.body.appendChild(modal);
-}
-
-function escapeHtml(unsafe) {
-    return String(unsafe)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
 
 bindActions({

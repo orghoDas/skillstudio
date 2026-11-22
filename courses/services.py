@@ -37,6 +37,16 @@ def validate_course_for_submission(course: Course):
             )
 
 
+    missing_quizzes = Lesson.objects.filter(module__course=course, content_type='quiz').exclude(
+        quiz__is_published=True,
+    )
+    empty_quizzes = Lesson.objects.filter(
+        module__course=course, content_type='quiz', quiz__questions__isnull=True,
+    )
+    if (missing_quizzes | empty_quizzes).exists():
+        raise ValidationError("Publish a quiz with questions for each quiz lesson before submitting the course.")
+
+
 @transaction.atomic
 def transition(course, to_state, actor, reason=''):
     """Apply a review or archive action with ownership checked under a row lock."""

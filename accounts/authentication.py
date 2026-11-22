@@ -7,9 +7,14 @@ from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import SAFE_METHODS
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication, default_user_authentication_rule
+from rest_framework_simplejwt.exceptions import AuthenticationFailed as JWTAuthenticationFailed
 
 from .models import APIKey
+
+
+def can_authenticate_on_website(user):
+    return default_user_authentication_rule(user) and not user.admin_console_only
 
 
 class _EnforcedCsrfCheck(CsrfViewMiddleware):
@@ -38,6 +43,12 @@ class CookieJWTAuthentication(JWTAuthentication):
     (API clients) are not CSRF-checked — a bearer header is not auto-attached
     cross-site, so it is not CSRF-exploitable.
     """
+
+    def get_user(self, validated_token):
+        user = super().get_user(validated_token)
+        if user.admin_console_only:
+            raise JWTAuthenticationFailed("This account uses the admin console.")
+        return user
 
     def authenticate(self, request):
         header = self.get_header(request)
@@ -83,6 +94,8 @@ class APIKeyAuthentication(BaseAuthentication):
 
         if not api_key.user.is_active:
             raise AuthenticationFailed("API key user is inactive.")
+        if api_key.user.admin_console_only:
+            raise AuthenticationFailed("This account uses the admin console.")
 
         scope = APIKey.Scope.READ if request.method in SAFE_METHODS else APIKey.Scope.WRITE
         scopes = api_key.scopes

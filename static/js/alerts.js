@@ -113,17 +113,6 @@ function getAlertTitle(type) {
     return titles[type] || titles.info;
 }
 
-/**
- * Clear all alerts
- */
-window.clearAllAlerts = function() {
-    const container = document.getElementById('alert-container');
-    if (!container) return;
-
-    const alerts = container.querySelectorAll('.alert-item');
-    alerts.forEach(alert => removeAlert(alert));
-};
-
 function showConfirm(message) {
     const dialog = document.getElementById('confirm-dialog');
     if (dialog.open) return Promise.resolve(false);

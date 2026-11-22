@@ -1,11 +1,12 @@
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db import transaction
+from django.db.models import Count, Q
 from django.http import Http404
 from django.urls import reverse
 from django.utils.html import format_html
 from accounts.utils import is_platform_admin
-from core.admin import ReadOnlyAdmin
+from core.admin import ReadOnlyAdmin, WorkflowAdmin
 from .models import (
     Course, Category, Tag, Module, Lesson,
     CourseVersion, CourseTag, LessonResource
@@ -40,7 +41,23 @@ class CourseTagInline(admin.TabularInline):
 
 
 @admin.register(Course)
-class CourseAdmin(ReadOnlyAdmin):
+class CourseAdmin(WorkflowAdmin):
+    decision_help = 'Use the record details to inspect the course before deciding. Returning it to draft requires feedback for the instructor.'
+
+    def decision_details(self, obj):
+        return [*super().decision_details(obj), ('Instructor', obj.instructor.email), ('Category', obj.category.name)]
+
+    def workflow_choices(self, obj):
+        if obj.status == 'under_review':
+            return [('published', 'Publish course'), ('draft', 'Return to draft')]
+        if obj.status == 'published':
+            return [('archived', 'Archive course')]
+        return []
+
+    def apply_decision(self, request, obj, data):
+        course = transition(obj, data['action'], request.user, reason=data['note'])
+        return f'Course status changed to {course.get_status_display().lower()}.'
+
     list_display = (
         'title', 'instructor', 'category', 'status_badge', 
         'is_free', 'price', 'level', 'enrollment_count', 'created_at'
@@ -90,8 +107,13 @@ class CourseAdmin(ReadOnlyAdmin):
         )
     status_badge.short_description = 'Status'
     
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('instructor', 'category').annotate(
+            active_enrollments=Count('enrollments', filter=Q(enrollments__status='active')),
+        )
+
     def enrollment_count(self, obj):
-        return obj.enrollments.filter(status='active').count()
+        return obj.active_enrollments
     enrollment_count.short_description = 'Enrollments'
     
     actions = ['publish_courses', 'archive_courses']
@@ -115,7 +137,9 @@ class CourseAdmin(ReadOnlyAdmin):
         updated = skipped = 0
         for course in queryset:
             try:
-                transition(course, to_state, request.user)
+                with transaction.atomic():
+                    transition(course, to_state, request.user)
+                    self.log_change(request, course, f'Course {to_state}.')
             except (ValidationError, Http404):
                 skipped += 1
             else:

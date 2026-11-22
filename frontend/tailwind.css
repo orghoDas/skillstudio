@@ -49,3 +49,41 @@ body {
         max-width: none;
     }
 }
+
+.lesson-article h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.lesson-article h2,
+.lesson-article h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.lesson-article p + p,
+.lesson-article p + ul,
+.lesson-article p + ol {
+    margin-top: 0.75rem;
+}
+
+.lesson-article ul,
+.lesson-article ol {
+    padding-inline-start: 1.5rem;
+}
+
+.lesson-article ul {
+    list-style: disc;
+}
+
+.lesson-article ol {
+    list-style: decimal;
+}
+
+.lesson-article a {
+    text-decoration: underline;
+}
+
+.lesson-article pre {
+    overflow: auto;
+}

@@ -76,13 +76,13 @@ class PaymentListView(ListAPIView):
         month_start = timezone.localtime(timezone=learning_timezone(request)).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0,
         )
-        completed = Q(status='completed')
-        purchases = completed & Q(purpose=Payment.PURPOSE_COURSE_PURCHASE)
-        summary = payments.aggregate(
-            successful_count=Count('pk', filter=completed),
+        successful = Q(status__in=('completed', 'partially_refunded'))
+        purchases = Q(status__in=services.SETTLED_PAYMENT_STATUSES, purpose=Payment.PURPOSE_COURSE_PURCHASE)
+        summary = services.with_payment_refunds(payments).aggregate(
+            successful_count=Count('pk', filter=successful),
             pending_count=Count('pk', filter=Q(status='pending')),
-            total_spent=Sum('amount', filter=purchases, default=0),
-            month_spent=Sum('amount', filter=purchases & Q(created_at__gte=month_start), default=0),
+            total_spent=Sum('net_amount', filter=purchases, default=0),
+            month_spent=Sum('net_amount', filter=purchases & Q(created_at__gte=month_start), default=0),
         )
         for field in ('total_spent', 'month_spent'):
             summary[field] = format(summary[field], '.2f')

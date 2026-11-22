@@ -33,7 +33,9 @@ Every finding below was read in source, and the ones marked **✔ verified** wer
 
 ---
 
-## 2. Executive summary
+## 2. Original audit summary
+
+The following findings describe the 2026-11-21 baseline. The status table and dated notes record subsequent remediation.
 
 The domain layering (services, policies, serializers per app) is good, and the auth primitives are solid. However, **the platform is not usable end to end and is not safe to take money**:
 
@@ -53,6 +55,10 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P3 | 7 |
 | **Total** | **67** |
 | *Resolved so far* | *63 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, and OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 items are resolved.* |
+
+### Follow-up after the 2026-11-22 re-audit
+
+The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
 
 ### Fix these first (in order)
 

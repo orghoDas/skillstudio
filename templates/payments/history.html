@@ -14,7 +14,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-3xl font-bold mb-2">Payment History</h1>
-            <p class="text-gray-400">View all your transactions and download invoices</p>
+            <p class="text-gray-400">Review wallet purchases, receipts and refunds</p>
         </div>
         <div class="flex items-center space-x-3">
             <select id="filter-status" data-change="loadTransactions"
@@ -70,6 +70,8 @@
             <p class="text-2xl font-bold text-purple-400" id="month-spent">$0.00</p>
         </div>
     </div>
+
+    <a href="{% url 'refunds_page' %}" class="mb-4 inline-block text-blue-400">View refund requests</a>
 
     <!-- Transactions Table -->
     <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
@@ -228,12 +230,16 @@ function renderTransaction(tx) {
             <td class="px-6 py-4">
                 <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium border ${statusColors[tx.status] || statusColors.pending}">
                     ${statusIcons[tx.status] || statusIcons.pending /* trusted constant SVG */}
-                    <span class="capitalize">${escapeHtml(tx.status || 'Pending')}</span>
+                    <span class="capitalize">${escapeHtml((tx.status || 'Pending').replaceAll('_', ' '))}</span>
                 </span>
             </td>
             <td class="px-6 py-4">
-                <!-- Invoices/receipts are not implemented yet (no backend endpoint). -->
-                <span class="text-gray-600 text-sm">—</span>
+                <div class="flex flex-col gap-2 text-sm">
+                    ${tx.purpose === 'course_purchase' && ['completed', 'partially_refunded', 'refunded'].includes(tx.status)
+                        ? `<a class="text-blue-400" href="/payments/receipts/${Number(tx.id)}/">Receipt</a>` : ''}
+                    ${tx.purpose === 'course_purchase' && tx.can_be_refunded
+                        ? `<a class="text-blue-400" href="/payments/refunds/?payment=${Number(tx.id)}">Request refund</a>` : ''}
+                </div>
             </td>
         </tr>
     `;

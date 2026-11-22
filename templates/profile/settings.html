@@ -21,12 +21,7 @@
             <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="security">
                 Security
             </button>
-            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="notifications">
-                Notifications
-            </button>
-            <button class="settings-tab px-6 py-4 font-semibold border-b-2 border-transparent text-gray-400 hover:text-gray-300" data-tab="privacy">
-                Privacy
-            </button>
+            <a href="{% url 'api_keys_page' %}" class="px-6 py-4 text-gray-400 hover:text-gray-300">API keys</a>
         </div>
 
         <!-- Account Tab -->
@@ -38,7 +33,6 @@
                     <label class="block text-sm font-medium mb-2">Email Address</label>
                     <input type="email" id="account-email" disabled
                         class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg disabled:opacity-50">
-                    <p class="text-xs text-gray-500 mt-1">Contact support to change your email</p>
                 </div>
 
                 <div>
@@ -86,122 +80,6 @@
                 </button>
             </form>
 
-            <div class="border-t border-dark-border mt-8 pt-6">
-                <h3 class="text-lg font-semibold mb-4">Two-Factor Authentication</h3>
-                <p class="text-gray-400 mb-4">Add an extra layer of security to your account</p>
-                <button class="px-4 py-2 bg-dark-hover hover:bg-dark-border border border-dark-border rounded-lg transition-colors">
-                    Enable 2FA
-                </button>
-            </div>
-        </div>
-
-        <!-- Notifications Tab -->
-        <div class="settings-content p-6 hidden" data-content="notifications">
-            <h2 class="text-xl font-bold mb-6">Notification Preferences</h2>
-            
-            <div class="space-y-6">
-                <div>
-                    <h3 class="font-semibold mb-4">Email Notifications</h3>
-                    <div class="space-y-3">
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Course Updates</p>
-                                <p class="text-sm text-gray-400">Get notified about new courses and updates</p>
-                            </div>
-                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Enrollment Notifications</p>
-                                <p class="text-sm text-gray-400">Updates about your enrolled courses</p>
-                            </div>
-                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-
-
-
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Marketing Emails</p>
-                                <p class="text-sm text-gray-400">Promotional content and special offers</p>
-                            </div>
-                            <input type="checkbox" class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-                    </div>
-                </div>
-
-                <div class="border-t border-dark-border pt-6">
-                    <h3 class="font-semibold mb-4">Push Notifications</h3>
-                    <div class="space-y-3">
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Browser Notifications</p>
-                                <p class="text-sm text-gray-400">Receive notifications in your browser</p>
-                            </div>
-                            <input type="checkbox" class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-                    </div>
-                </div>
-
-                <button class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                    Save Preferences
-                </button>
-            </div>
-        </div>
-
-        <!-- Privacy Tab -->
-        <div class="settings-content p-6 hidden" data-content="privacy">
-            <h2 class="text-xl font-bold mb-6">Privacy Settings</h2>
-            
-            <div class="space-y-6">
-                <div>
-                    <h3 class="font-semibold mb-4">Profile Visibility</h3>
-                    <div class="space-y-3">
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Public Profile</p>
-                                <p class="text-sm text-gray-400">Make your profile visible to everyone</p>
-                            </div>
-                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Show Enrolled Courses</p>
-                                <p class="text-sm text-gray-400">Display your course enrollments</p>
-                            </div>
-                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-
-                        <label class="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-                            <div>
-                                <p class="font-medium">Show Certificates</p>
-                                <p class="text-sm text-gray-400">Display your earned certificates</p>
-                            </div>
-                            <input type="checkbox" checked class="w-5 h-5 bg-dark-bg border-dark-border rounded text-blue-600">
-                        </label>
-                    </div>
-                </div>
-
-                <div class="border-t border-dark-border pt-6">
-                    <h3 class="font-semibold mb-4">Data & Privacy</h3>
-                    <div class="space-y-3">
-                        <a href="#" class="block p-3 bg-dark-bg hover:bg-dark-hover rounded-lg transition-colors">
-                            <p class="font-medium">Download Your Data</p>
-                            <p class="text-sm text-gray-400">Get a copy of your data</p>
-                        </a>
-                        <a href="#" class="block p-3 bg-dark-bg hover:bg-dark-hover rounded-lg transition-colors">
-                            <p class="font-medium">Privacy Policy</p>
-                            <p class="text-sm text-gray-400">Review our privacy policy</p>
-                        </a>
-                    </div>
-                </div>
-
-                <button class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                    Save Privacy Settings
-                </button>
-            </div>
         </div>
     </div>
 </div>

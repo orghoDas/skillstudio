@@ -17,8 +17,6 @@ function getCookie(name) {
     return cookieValue;
 }
 
-const csrftoken = getCookie('csrftoken');
-
 // ---------------------------------------------------------------
 // XSS-safety helpers for interpolating untrusted API data into markup.
 // Use escapeHtml() for any user-authored value placed inside innerHTML
@@ -173,4 +171,52 @@ if (userMenuButton && userMenu) {
             userMenu.classList.add('hidden');
         }
     });
+}
+
+function formattedLessonContent(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    const formatting = new Set(['a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3',
+        'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul']);
+    const ignored = new Set(['script', 'style', 'iframe', 'object', 'template']);
+
+    function appendFormatted(target, node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            target.append(node.textContent);
+            return;
+        }
+        const tag = node.localName;
+        if (node.nodeType !== Node.ELEMENT_NODE || ignored.has(tag)) return;
+        let output = target;
+        if (formatting.has(tag)) {
+            output = document.createElement(tag);
+            const urlAttr = tag === 'a' ? 'href' : tag === 'img' ? 'src' : null;
+            if (urlAttr && node.hasAttribute(urlAttr)) {
+                try {
+                    const url = new URL(node.getAttribute(urlAttr), window.location.origin);
+                    if (['http:', 'https:'].includes(url.protocol)) output.setAttribute(urlAttr, url.href);
+                } catch (error) {
+                    // Keep the formatted content if the URL is invalid.
+                }
+            }
+            if (tag === 'img') output.alt = node.getAttribute('alt') || '';
+            target.append(output);
+        }
+        for (const child of node.childNodes) appendFormatted(output, child);
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const child of template.content.childNodes) appendFormatted(fragment, child);
+    return fragment;
+}
+
+// Render controls from the server's page envelope and keep the current filters in the caller.
+function renderPagination(pager, data, page, loadPage) {
+    pager.classList.toggle('hidden', !data.previous && !data.next);
+    pager.querySelector('[data-previous-page]').disabled = !data.previous;
+    pager.querySelector('[data-next-page]').disabled = !data.next;
+    pager.querySelector('[data-page-number]').textContent = `Page ${page}`;
+    pager.querySelector('[data-previous-page]').onclick = () => loadPage(page - 1);
+    pager.querySelector('[data-next-page]').onclick = () => loadPage(page + 1);
 }

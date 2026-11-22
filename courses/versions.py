@@ -75,7 +75,7 @@ def _copy_quizzes(lesson_map):
             **_fields(original, ('title', 'time_limit_minutes', 'passing_percentage', 'is_published', 'max_attempts')),
         )
         for item in original.questions.all():
-            question = QuizQuestion.objects.create(quiz=quiz, **_fields(item, ('question_text', 'difficulty', 'marks')))
+            question = QuizQuestion.objects.create(quiz=quiz, **_fields(item, ('question_text', 'difficulty', 'marks', 'explanation')))
             QuestionOption.objects.bulk_create([
                 QuestionOption(question=question, **_fields(option, ('option_text', 'is_correct')))
                 for option in item.options.all()

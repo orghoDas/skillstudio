@@ -56,28 +56,35 @@
     </div>
 </div>
 
+{% include 'components/pager.html' with pager_id='page-controls' %}
 {% endblock %}
 
 {% block extra_js %}
 <script nonce="{{ csp_nonce }}">
-let currentFilter = 'all';
 let isInstructor = false;
 
 // Uses the global cookie/CSRF-aware apiRequest() defined in base.html.
 
-async function loadExams() {
+let loadExamsRequest = 0;
+
+async function loadExams(page = 1) {
+    const request = ++loadExamsRequest;
+    const pagination = document.getElementById('page-controls');
+    pagination.classList.add('hidden');
     const container = document.getElementById('exams-container');
     const emptyState = document.getElementById('empty-state');
     const loadingState = document.getElementById('loading-state');
     
-    currentFilter = document.getElementById('filter-status').value;
+    const availability = document.getElementById('filter-status').value;
     
     try {
         loadingState.classList.remove('hidden');
         container.innerHTML = '';
         emptyState.classList.add('hidden');
         
-        const data = await apiRequest('/exams/');
+        const data = await apiRequest(`/exams/?${new URLSearchParams({page, availability})}`);
+        if (request !== loadExamsRequest || !data) return;
+        renderPagination(pagination, data, page, loadExams);
         const exams = data.results;
         
         loadingState.classList.add('hidden');
@@ -87,32 +94,12 @@ async function loadExams() {
             return;
         }
         
-        // Filter exams based on status
-        let filteredExams = exams;
-        const now = new Date();
-        
-        if (currentFilter === 'upcoming') {
-            filteredExams = exams.filter(exam => new Date(exam.start_datetime) > now);
-        } else if (currentFilter === 'active') {
-            filteredExams = exams.filter(exam => {
-                const start = new Date(exam.start_datetime);
-                const end = new Date(exam.end_datetime);
-                return start <= now && end >= now && exam.status === 'published';
-            });
-        } else if (currentFilter === 'completed') {
-            filteredExams = exams.filter(exam => exam.attempt_count > 0);
-        }
-        
-        if (filteredExams.length === 0) {
-            emptyState.classList.remove('hidden');
-            return;
-        }
-        
-        filteredExams.forEach(exam => {
+        exams.forEach(exam => {
             container.appendChild(createExamCard(exam));
         });
         
     } catch (error) {
+        if (request !== loadExamsRequest) return;
         console.error('Error loading exams:', error);
         loadingState.classList.add('hidden');
         container.innerHTML = `

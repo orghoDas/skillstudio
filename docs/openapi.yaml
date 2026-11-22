@@ -9800,6 +9800,9 @@ components:
           type: string
           readOnly: true
           nullable: true
+        course_slug:
+          type: string
+          readOnly: true
         lesson:
           type: integer
           nullable: true
@@ -9814,6 +9817,7 @@ components:
           format: date-time
           readOnly: true
       required:
+      - course_slug
       - course_title
       - created_at
       - id
@@ -9894,6 +9898,10 @@ components:
         lesson_title:
           type: string
           readOnly: true
+        course_slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
         content:
           type: string
         timestamp:
@@ -9909,6 +9917,7 @@ components:
           readOnly: true
       required:
       - content
+      - course_slug
       - created_at
       - id
       - lesson
@@ -10247,6 +10256,10 @@ components:
           readOnly: true
         course:
           type: integer
+        course_slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
         course_title:
           type: string
           readOnly: true
@@ -10274,6 +10287,7 @@ components:
       - course
       - course_level
       - course_price
+      - course_slug
       - course_thumbnail
       - course_title
       - id

@@ -314,26 +314,3 @@ def is_lesson_assessment_completed(user, lesson) -> bool:
     if quiz is None or not quiz.counts_for_completion():
         return True
     return is_quiz_passed(user, quiz)
-
-
-# ======================================================
-# COURSE VALIDATION HOOK
-# ======================================================
-
-def validate_course_completion(user, course) -> bool:
-    """
-    Ensures all lessons with assessments are completed.
-    """
-
-    from courses.models import Lesson
-
-    lessons = Lesson.objects.filter(
-        module__course=course,
-        is_free=False
-    ).select_related("module").order_by("module__position", "position")
-
-    for lesson in lessons:
-        if not is_lesson_assessment_completed(user, lesson):
-            return False
-
-    return True

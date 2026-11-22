@@ -26,6 +26,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_AUTHENTICATION_RULE": "accounts.authentication.can_authenticate_on_website",
     # Rotate refresh tokens on use and blacklist the old one so a leaked
     # refresh token has a bounded useful life. Requires the token_blacklist app.
     "ROTATE_REFRESH_TOKENS": True,
@@ -88,7 +89,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 # Application definition
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "core.apps.SkillStudioAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -127,6 +128,7 @@ REST_FRAMEWORK = {
         "login": "5/min",
         "register": "10/hour",
         "refresh": "60/min",
+        "staff_login": "5/min",
         "enroll": "30/min",
         "payments": "30/min",
     },

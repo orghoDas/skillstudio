@@ -31,7 +31,7 @@
         {% endblock %}
         
         <!-- Main Content Area -->
-        <main class="flex-1 {% block main_classes %}p-6 lg:p-8{% endblock %}">
+        <main class="min-w-0 flex-1 {% block main_classes %}p-6 lg:p-8{% endblock %}">
             <!-- Alert Messages -->
             {% if messages %}
                 <div class="mb-6 space-y-3">
@@ -57,29 +57,7 @@
                     <h3 class="text-lg font-semibold mb-4">SkillStudio</h3>
                     <p class="text-gray-400 text-sm">Empowering learners and educators worldwide.</p>
                 </div>
-                <div>
-                    <h4 class="font-semibold mb-4">Platform</h4>
-                    <ul class="space-y-2 text-sm text-gray-400">
-                        <li><a href="#" class="hover:text-blue-400">Browse Courses</a></li>
-                        <li><a href="#" class="hover:text-blue-400">Become Instructor</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="font-semibold mb-4">Support</h4>
-                    <ul class="space-y-2 text-sm text-gray-400">
-                        <li><a href="#" class="hover:text-blue-400">Help Center</a></li>
-                        <li><a href="#" class="hover:text-blue-400">Contact Us</a></li>
-                        <li><a href="#" class="hover:text-blue-400">Terms of Service</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="font-semibold mb-4">Connect</h4>
-                    <ul class="space-y-2 text-sm text-gray-400">
-                        <li><a href="#" class="hover:text-blue-400">Twitter</a></li>
-                        <li><a href="#" class="hover:text-blue-400">LinkedIn</a></li>
-                        <li><a href="#" class="hover:text-blue-400">GitHub</a></li>
-                    </ul>
-                </div>
+                <a href="{% url 'courses_list' %}" class="text-sm text-gray-400 hover:text-blue-400">Browse Courses</a>
             </div>
             <div class="border-t border-dark-border mt-8 pt-8 text-center text-sm text-gray-400">
                 <p>&copy; 2026 SkillStudio. All rights reserved.</p>

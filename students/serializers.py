@@ -72,6 +72,7 @@ class StudentNoteSerializer(serializers.ModelSerializer):
 class StudentNoteListSerializer(serializers.ModelSerializer):
     """Simplified serializer for note lists."""
     
+    course_slug = serializers.SlugField(source='lesson.module.course.slug', read_only=True)
     lesson_title = serializers.CharField(source='lesson.title', read_only=True)
     
     class Meta:
@@ -80,6 +81,7 @@ class StudentNoteListSerializer(serializers.ModelSerializer):
             'id',
             'lesson',
             'lesson_title',
+            'course_slug',
             'content',
             'timestamp',
             'is_pinned',
@@ -91,6 +93,7 @@ class StudentNoteListSerializer(serializers.ModelSerializer):
 class StudentBookmarkSerializer(serializers.ModelSerializer):
     """Serializer for student bookmarks."""
     
+    course_slug = serializers.SerializerMethodField()
     course_title = serializers.CharField(source='course.title', read_only=True, allow_null=True)
     lesson_title = serializers.CharField(source='lesson.title', read_only=True, allow_null=True)
     
@@ -101,12 +104,16 @@ class StudentBookmarkSerializer(serializers.ModelSerializer):
             'user',
             'course',
             'course_title',
+            'course_slug',
             'lesson',
             'lesson_title',
             'note',
             'created_at',
         ]
         read_only_fields = ['id', 'user', 'created_at']
+
+    def get_course_slug(self, obj) -> str:
+        return obj.course.slug if obj.course_id else obj.lesson.module.course.slug
 
     def get_fields(self):
         fields = super().get_fields()
