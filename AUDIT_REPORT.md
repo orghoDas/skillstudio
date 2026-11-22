@@ -4,7 +4,7 @@
 **Scope:** Whole repository:
 - Django config and all 10 apps (`accounts`, `courses`, `enrollments`, `assessments`, `exams`, `certificates`, `students`, `instructors`, `payments`, `core`).
 - For every app: models, views, serializers, services, policies/permissions, URLs, admin, migrations, management commands, template tags, PDF generation and tests.
-- The 42 templates and their inline JS, and the backend↔frontend contract.
+- The 42 templates (43 at the 2026-11-22 re-audit) and their inline JS, and the backend↔frontend contract.
 - `scripts/`, dependencies, repo hygiene, and docs.
 **Supersedes:** `BACKEND_CONDITION_REPORT.md`, `BACKEND_REVIEW_AND_REMEDIATION_PLAN.md`, `FRONTEND_AND_INTEGRATION_REPORT.md`. Their still-open items are carried over here and marked *(carried over)*.
 
@@ -23,6 +23,22 @@ Every finding below was read in source, and the ones marked **✔ verified** wer
 | Route resolution | `django.urls.resolve()` on every API URL the templates call | ❌ **24 calls hit no route**, 3 resolve to the wrong view, 2 use a method the view does not support |
 | Runtime probes | Instantiating the suspect serializers, models and querysets | ❌ 5 confirmed crashes or silently dropped fields (see the ✔ marks) |
 | JS parse probe | Node `vm`: two classic scripts declaring the same top-level `const` | ❌ `SyntaxError: Identifier 'API_BASE' has already been declared` |
+
+**Re-audit 2026-11-22 (second pass, after the fixes at `d0ad799`):**
+
+| Check | Command / method | Result |
+|---|---|---|
+| Full suite, SQLite | `manage.py test` | ✅ 498 tests OK (3 skipped: Postgres-only lock tests) |
+| Full suite, Postgres 16 | Throwaway local cluster, `TEST_DATABASE_URL=postgres://…@127.0.0.1` | ✅ 498 tests OK, 0 skipped |
+| System, migration, deploy checks | `check`, `makemigrations --check`, `check --deploy` | ✅ clean |
+| API contract snapshots | `spectacular --validate --fail-on-warn`, `api_routes` diffed with `docs/` | ✅ identical |
+| Static analysis | pyflakes / ruff `F,B`, vulture, a repo-wide reference search | ❌ about 45 unused imports, about 20 unreferenced functions/classes ([REPO-04](#repo-04)) |
+| Live end-to-end in Chromium | `runserver` on a fresh migrated Postgres DB, driven by Playwright through the real UI. The run covered signup, login, course building (sections, text, video and quiz lessons), submit for review, console publish, coupon, wallet purchase, learning, quiz, certificate (PDF and public verify), notes and bookmarks, exams, refund (student request → console approval), payout (instructor request → console approve → record sent), API keys, password change and revision. Every JS error and every API ≥400 response was recorded. | ✅ The main journeys work, and the money totals reconcile after purchase, coupon, refund and payout. ❌ new findings, listed below. |
+| Abuse and edge probes | Out-of-order completion, admin-API escalation, malformed parameters, deleted category, closed exam window | ❌ [LRN-04](#lrn-04), [SEC-10](#sec-10), [ERR-02](#err-02), [ADM-02](#adm-02), [EXM-04](#exm-04) |
+| Route and guard matrix | Each of 36 page routes visited as anonymous, student, instructor and admin. The final URL and status were recorded. | ✅ Anonymous visitors always go to `/auth/login/?next=…`, and the login returns them to the deep link. A hostile `?next=//evil…` is ignored. Students get 403 on instructor pages. Instructors are redirected from student-only pages, receipts return 404 to non-owners, and an exam take page without an attempt goes back to `/exams/`. Logout clears both cookies, and refresh then returns 401. ❌ Inconsistencies: [FE-06](#fe-06) |
+| Business-scenario suite | 59 scenario checks run through the real DRF stack (full middleware) on a fresh Postgres DB. Each one asserts DB state afterwards. Money: insufficient balance, 7 coupon rules, 100% coupon, partial → full refund → re-buy → certificate re-issue, refund after the instructor withdrew (shortfall/absorb), the payout state machine. Learning: quiz attempts used up, quiz time limit, a course of only free previews, the published-course edit lock, locked-lesson quiz, exam retry and hidden results. Accounts: deactivated and console-only users, email case, role promotion. Courses: archive/delete, cross-instructor edits, admin moderation. Ledger invariants at the end. | ✅ 55 pass. The ledger holds everywhere: balance = credits − debits, never negative, fee + earnings = amount, refunds ≤ amount, the reconcile command finds nothing. ❌ 4 real failures: [EXM-04](#exm-04) (free-preview-only course), [LRN-04](#lrn-04) (quiz on a locked lesson), [ACC-03](#acc-03) (email case), [API-05](#api-05) (error code) |
+| Per-module suite | 149 table-driven checks across accounts, courses, tags/categories, modules/lessons, enrollments, wishlist, CSV, quizzes, exams, certificates, payments, students and instructors. They cover validation, cross-user access (IDOR), role permissions and computed numbers checked against the DB. | ✅ 144 pass, including every cross-user access check (other users' enrollments, notes, payments, refunds, payouts, API keys, attempts, certificates, question banks, CSV) and the dashboard, earnings and progress numbers. ❌ [EXM-04](#exm-04) (inverted exam window accepted and publishable), [PAY-10](#pay-10) (150% coupon), [STU-03](#stu-03) (duplicate bookmarks, profile PATCH before GET), and [API-05](#api-05) (unordered pagination) |
+| Business-workflow transitions | Each state machine was driven through the UI and the console, and the stored state, ledger rows and landing page were checked after every step | ✅ **Course:** draft → review → returned to draft with a reason → editing under review returns it to draft → resubmit → publish revision (the original is archived, the catalogue shows only the revision, an active learner keeps the original, a refunded learner gets 403). **Enrollment:** active → completed. A full refund cancels it and revokes the certificate. Cancel → "Enroll Again" reactivates it for free and keeps progress. **Refund:** approve moves money and cancels access; reject moves nothing and shows the reason to the student. **Payout:** request reserves the amount, instructor cancel returns it, console reject returns it, and approve → record sent pays it (ledger $37 → $27 → $37, then $20 paid). **Quiz/exam:** start, answer, submit, results. ❌ [CRS-09](#crs-09) (the rejection reason is never shown), [EXM-04](#exm-04) |
 
 ### Severity scale
 
@@ -47,18 +63,63 @@ The domain layering (services, policies, serializers per app) is good, and the a
 3. **About a quarter of the frontend talks to endpoints that don't exist.** Assessments, checkout, payment history, resources, and featured instructors are all dead. The four exam pages also crash on load because of a duplicate JS `const`.
 4. **The payments app is still runtime-broken and insecure** *(carried over)*: event-domain drift, client-supplied amounts, unsigned webhooks, and no fulfilment.
 
-| Severity | Count |
-|---|---|
-| P0 | 12 |
-| P1 | 23 |
-| P2 | 25 |
-| P3 | 7 |
-| **Total** | **67** |
-| *Resolved so far* | *63 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, and OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 items are resolved.* |
+| Severity | Count | Added by the 2026-11-22 re-audit |
+|---|---|---|
+| P0 | 12 | 0 |
+| P1 | 27 | 4 (LRN-04, SEC-10, FE-03, EXM-04) |
+| P2 | 36 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01) |
+| P3 | 13 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03) |
+| **Total** | **88** | **21** |
+| *Resolved so far* | *63 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, and OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All 55 original P1–P3 items are resolved. The 21 items added by the 2026-11-22 re-audit are open.* |
 
 ### Follow-up after the 2026-11-22 re-audit
 
 The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
+
+### Second re-audit 2026-11-22: full-repo pass and live E2E run after `d0ad799`
+
+**Verdict:** The fixes hold. Both test suites pass (SQLite and Postgres), the API snapshots are current, and a browser walkthrough from an empty database works end to end:
+- An instructor builds a course and submits it.
+- A console operator publishes it.
+- A student buys it from the wallet (with a coupon), learns it, passes the quiz and gets a verifiable PDF certificate.
+- The student requests a refund and the console approves it.
+- The instructor requests a payout and the console approves it and records it as sent.
+
+Wallet and ledger totals reconcile at every step: $40 + $30 sales at a 10% fee left the instructor $63, the refund brought that to $27, and the $20 payout left $7.
+
+A route matrix (36 pages × 4 roles) and every business state machine were also checked; each one lands on the right page and stores the right state, with the exceptions listed below. Two API-level suites then ran 208 more checks (59 business scenarios and 149 per-module cases). Every cross-user access check passed, and the wallet ledger stayed consistent through every money path.
+
+The pass found **21 new issues** that the green suite doesn't cover:
+- **P1, fix first:**
+  - [FE-03](#fe-03): a wrong password silently freezes the login form.
+  - [LRN-04](#lrn-04): locked lessons can be completed out of order.
+  - [SEC-10](#sec-10): website admins can mint admins and deactivate the superuser through the API.
+  - [EXM-04](#exm-04): a closed exam window or used-up attempts make completion impossible, with no recovery.
+- **P2:**
+  - [ERR-02](#err-02): 9 inputs still 500.
+  - [STU-03](#stu-03): profile and note writes are unvalidated.
+  - [CRS-08](#crs-08): instructor emails leak through `get_full_name()`, and the certificate PDF prints the learner's email.
+  - [CRS-09](#crs-09): a rejected course never shows the instructor why.
+  - [PAY-10](#pay-10): lower-case console coupons can't be redeemed.
+  - [ADM-02](#adm-02): the console decision page 500s without a category.
+  - [LRN-05](#lrn-05): watch-time cheating.
+  - [FE-04](#fe-04): field errors are hidden behind "Invalid input.".
+  - [ACC-02](#acc-02): password change and API-key revoke semantics.
+  - [ACC-03](#acc-03): `S1@x.com` and `s1@x.com` become two accounts.
+  - [RPT-01](#rpt-01): learner and revenue counts disagree.
+- **P3:**
+  - [REPO-04](#repo-04): dead code and about 45 unused imports.
+  - [DOC-03](#doc-03): docs drift.
+  - [FE-05](#fe-05): dead UI controls.
+  - [FE-06](#fe-06): routing and status inconsistencies.
+  - [API-05](#api-05): create responses without ids, unordered pagination, contract drift.
+  - [TEST-03](#test-03): test blind spots and local venv drift.
+
+**Caveats that are by design but worth knowing:**
+- Publishing a course revision doesn't move existing learners. They stay on the archived original and never see the update. The new version is a separate course that new buyers pay for again.
+- No user-facing way to add funds exists yet ([SEC-01](#sec-01)). The E2E run had to credit wallets from the Django shell.
+- When the student hasn't set a profile name, the public verify page shows "SkillStudio learner", but the **PDF prints the student's email** ([CRS-08](#crs-08)). A cached PDF is re-rendered only when its verification URL or grade changes, so a name set later doesn't appear until an admin regenerates it.
+- Throttle counters (login 5/min, signup 10/hour per IP) are in-process memory. They reset when the server restarts, and they are shared by everyone behind one IP.
 
 ### Fix these first (in order)
 
@@ -182,6 +243,10 @@ The follow-up repairs populated wishlist and webhook admin lists, locks quiz and
 | [TEST-01](#test-01) | P1 | ~~Payments tests don't run, and tests write into the real `media/`~~ ✅ resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | ~~No tests cover the frontend↔API contract~~ ✅ resolved 2026-11-21 (contract + browser smoke tests) |
 | [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
+| [LRN-04](#lrn-04) | P1 | Locked lessons can be completed out of order — 🔴 open (re-audit 2026-11-22) |
+| [SEC-10](#sec-10) | P1 | Website admins can mint admins and deactivate the superuser through the REST API — 🔴 open (re-audit 2026-11-22) |
+| [FE-03](#fe-03) | P1 | Login and signup errors are never shown; the button stays stuck — 🔴 open (re-audit 2026-11-22) |
+| [EXM-04](#exm-04) | P1 | Course completion can become permanently impossible (exams and quiz attempts) — 🔴 open (re-audit 2026-11-22) |
 | [ADM-01](#adm-01) | P2 | ~~Django admin actions and fields bypass the domain logic~~ ✅ resolved 2026-11-21 |
 | [SEC-09](#sec-09) | P2 | ~~Gateway secrets and payout bank details stored in plaintext~~ ✅ resolved in code 2026-11-21 |
 | [EXM-03](#exm-03) | P2 | ~~Exam grading and marks integrity (no snapshot, unpassable exams)~~ ✅ resolved in code 2026-11-21 |
@@ -207,6 +272,17 @@ The follow-up repairs populated wishlist and webhook admin lists, locks quiz and
 | [FE-02](#fe-02) | P2 | Role-based navbar, page guards and stale frontend code ✅ resolved 2026-11-22 |
 | [ASM-03](#asm-03) | P2 | Quiz editing respects the course lock ✅ resolved 2026-11-22 |
 | [INS-01](#ins-01) | P2 | Instructor dashboard error handling and aggregate counts ✅ resolved 2026-11-22 |
+| [ERR-02](#err-02) | P2 | Malformed query parameters and request bodies still return 500 — 🔴 open (re-audit 2026-11-22) |
+| [STU-03](#stu-03) | P2 | Student profile and note writes bypass their serializers — 🔴 open (re-audit 2026-11-22) |
+| [CRS-08](#crs-08) | P2 | Instructor (and student) emails still reach other users — 🔴 open (re-audit 2026-11-22) |
+| [CRS-09](#crs-09) | P2 | A rejected course never shows the instructor why — 🔴 open (re-audit 2026-11-22) |
+| [PAY-10](#pay-10) | P2 | Console-created coupons can be unredeemable; coupon form exposes every account — 🔴 open (re-audit 2026-11-22) |
+| [ADM-02](#adm-02) | P2 | Console course decision page crashes when the course has no category — 🔴 open (re-audit 2026-11-22) |
+| [LRN-05](#lrn-05) | P2 | Watch-time anti-cheat lets a client skip most of a video — 🔴 open (re-audit 2026-11-22) |
+| [FE-04](#fe-04) | P2 | API field-validation messages never reach the user — 🔴 open (re-audit 2026-11-22) |
+| [ACC-02](#acc-02) | P2 | Password change and API-key revocation don't do what the UI says — 🔴 open (re-audit 2026-11-22) |
+| [ACC-03](#acc-03) | P2 | Email addresses are case-sensitive: duplicate accounts and failed logins — 🔴 open (re-audit 2026-11-22) |
+| [RPT-01](#rpt-01) | P2 | The same statistic is calculated differently in different places — 🔴 open (re-audit 2026-11-22) |
 | [REPO-01](#repo-01) | P3 | ~~5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git~~ ✅ resolved 2026-11-21 |
 | [REPO-02](#repo-02) | P3 | ~~Dead code and stale comments~~ ✅ resolved 2026-11-21 |
 | [REPO-03](#repo-03) | P3 | ~~Migration churn in `accounts`~~ ✅ resolved 2026-11-21 (squashed 0001–0008) |
@@ -214,6 +290,12 @@ The follow-up repairs populated wishlist and webhook admin lists, locks quiz and
 | [DOC-02](#doc-02) | P3 | ~~App READMEs document a different API~~ ✅ resolved 2026-11-21 (generated route reference) |
 | [DEP-01](#dep-01) | P3 | ~~Dependencies installed but unused; no lock file~~ ✅ resolved 2026-11-21 (hash-locked) |
 | [ASM-04](#asm-04) | P3 | ~~Assessment model and analytics gaps~~ ✅ resolved 2026-11-21 |
+| [REPO-04](#repo-04) | P3 | Dead code and leftovers after the fix rounds — 🔴 open (re-audit 2026-11-22) |
+| [DOC-03](#doc-03) | P3 | Docs and this report have drifted from the code — 🔴 open (re-audit 2026-11-22) |
+| [FE-05](#fe-05) | P3 | Dead, misleading or inconsistent UI controls — 🔴 open (re-audit 2026-11-22) |
+| [FE-06](#fe-06) | P3 | Routing and status-display inconsistencies — 🔴 open (re-audit 2026-11-22) |
+| [API-05](#api-05) | P3 | API contract gaps found by the scenario suites — 🔴 open (re-audit 2026-11-22) |
+| [TEST-03](#test-03) | P3 | Gaps the green suite doesn't catch; noisy output; local env drift — 🔴 open (re-audit 2026-11-22) |
 
 ---
 
@@ -1113,6 +1195,64 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Make `.env.example` default to a local DB.
 - Optionally refuse to run `test` when the DB host isn't `localhost`/CI.
 
+<a id="lrn-04"></a>
+### LRN-04: Locked lessons can be completed out of order — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified in the live E2E run):**
+- A student enrolled in "Git Essentials" called `POST /api/enrollments/lessons/<2nd lesson>/complete/` before finishing the 1st lesson. `GET .../lessons/<id>/content/` correctly returned **403 `lesson_locked`**, but `complete/` returned **200 "Lesson marked as completed."**
+- [enrollments/views.py](enrollments/views.py) `CompleteLessonView` and `LessonWatchTimeView` only check for an access enrollment. Neither calls `lesson_lock_state`, so the single progression rule from [ENR-03](#enr-03) is enforced on reads only.
+- ✔ The same applies to quizzes. `POST /api/assessments/quiz/<id>/start/` (and submit) on a quiz whose lesson is still **locked** returned **200**. The quiz views only call `require_active_enrollment`.
+- `CompleteLessonView` also runs `LessonProgress.get_or_create` *before* it checks the watch threshold or quiz, so a refused request still creates a progress row. Those rows count as "Started" in the lesson-analytics CSV.
+
+**Impact:** Students can skip ahead and complete text lessons, and video lessons through watch-time, without unlocking them. Course progress, completion and certificates then no longer prove that lessons were taken in order.
+
+**Fix approach:** In both views, and in quiz start/submit, return 403 `lesson_locked` when `lesson_lock_state(enrollment)[lesson.id]` is true, using the same check as `LessonDetailView`. Create the progress row only after the request is accepted. Add API tests for both endpoints.
+
+<a id="sec-10"></a>
+### SEC-10: Website admins can mint admins and deactivate the superuser through the REST API — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):** A non-superuser `role=admin` account that can use the website signed in on the website and called the following:
+- `PATCH /api/accounts/users/<student>/role/ {"role":"admin"}` returned **200**. The student became `role=admin, is_staff=True, admin_console_only=False`, which gives website admin powers and staff console access.
+- `POST /api/accounts/users/<superuser>/deactivate/` returned **200**, and the superuser was locked out.
+
+The new console ([accounts/admin.py](accounts/admin.py)) deliberately restricts these actions. Only superusers can change roles, groups or staff accounts, and accounts promoted to admin become console-only. `UpdateUserRoleView`, `PromoteToInstructorView`, `DeactivateUserView` and `ActivateUserView` in [accounts/views.py](accounts/views.py) bypass all of that, because `IsAdmin` admits any platform admin. The views also let admins deactivate themselves.
+
+**Impact:** The console's governance model can be bypassed. Any website admin, or anyone holding their session, can escalate other accounts and lock out every superuser.
+
+**Fix approach:** Use one rule for both paths. Require `is_superuser` to grant or revoke the admin role or to change staff accounts. Refuse to deactivate superusers, staff accounts and yourself through the API. Set `admin_console_only=True` whenever the API grants the admin role, as the console does. Alternatively, remove these REST endpoints and keep user management in the console only.
+
+<a id="fe-03"></a>
+### FE-03: Login and signup errors are never shown; the button stays stuck — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified in Chromium):**
+- Signing in with a wrong password showed no message. `#login-error` stayed hidden, the button stayed disabled with "Signing in...", and the page threw `TypeError: Cannot set properties of null (setting 'textContent')`.
+- Cause: [templates/auth/login.html](templates/auth/login.html) and [templates/auth/register.html](templates/auth/register.html) clear old errors with `querySelectorAll('[id$="-error"]').forEach(el => el.textContent = '')`. That selector also matches the `#login-error` / `#register-error` container and deletes its inner `<p>`. Every later `container.querySelector('p').textContent = ...` throws, including in the `catch` block, so the button reset never runs.
+- Signup has the same problem. It also happens on the throttled-signup 429 response and on the "accept the Terms" message. Field errors such as `email` still display, because they use their own elements.
+- No test covers the wrong-password or failed-signup UI. The browser smoke tests only sign in successfully.
+
+**Impact:** Every failed sign-in fails silently. That covers a mistyped password, the 5/min throttle and a deactivated account. Users have to reload the page to try again.
+
+**Fix approach:** Exclude the containers from the selector (`[id$="-error"]:not(#login-error):not(#register-error)`) or write to a dedicated message element. Add Playwright tests for a wrong password and for a throttled signup.
+
+<a id="exm-04"></a>
+### EXM-04: Course completion can become permanently impossible (exams and quiz attempts) — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):**
+- An instructor published a second exam on an already-published course with a 45-second window. A student then completed every lesson and passed the quiz: progress was 100%, but the enrollment stayed `active`. `POST /api/exams/<id>/start/` now returns **409 "This exam closed at ..."**, so the student can never complete the course or earn its certificate.
+- `course_exam_requirements_met` ([exams/services.py](exams/services.py)) requires every **published** exam on the course to be passed. That includes exams whose window has closed and exams where the student has used up `max_attempts`.
+- Quizzes have the same dead end. Once a student fails `Quiz.max_attempts` times (default 3), the lesson can never be completed ([ASM-01](#asm-01) moved the block from 1 attempt to 3 attempts). No admin or instructor tool can reset attempts or grant an extra one. A repo-wide search finds none.
+- ✔ **An exam whose `end_datetime` is before its `start_datetime` is accepted (201) and can be published (200).** Nobody can ever start it, so every student of that course is blocked permanently.
+- ✔ **A paid course whose lessons are all free previews can never be completed.** A student paid $15 and finished every lesson, and the enrollment stayed `active`. `get_lesson_completion_stats` requires `total_lessons > 0`, and free lessons don't count. Submission and publishing allow such a course, and every lesson is readable for free anyway.
+- Exams are not covered by the course lock or by admin review. An instructor can create and publish an exam on a published course without a draft revision or review. Doing so changes the completion rule for every enrolled student after they enrolled. In the run above, the course status stayed `published` while its completion rule changed.
+
+**Impact:** Students can lose the ability to finish a course they paid for, through no action of their own. The resulting support cases have no in-app remedy.
+
+**Fix approach:**
+- Decide which rule applies and write it down. Options: count only exams that the student can still take, or that were published before the student enrolled; or make exams optional with `Exam.required_for_completion`.
+- Add an operator action in the console to grant an extra attempt or reset an attempt (quiz and exam), and record it in the log.
+- Validate `start_datetime < end_datetime` on create, update and publish. Require at least one required (non-preview) lesson to submit a paid course, or treat a course with no required lessons as complete once the student has finished every lesson.
+- Put exam create, publish and edit on a published course behind the same course edit lock and revision used for lessons, or at least behind review.
+
 ---
 
 ## 6. P2: Medium
@@ -1156,7 +1296,7 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 > - Attempts snapshot bank and custom questions, answer keys, marks, the passing threshold, and timing rules. Students receive the question text and options from their active snapshot. Once an exam has attempts, editing its questions or grading rules requires a new exam. Exam records are view-only in Django admin.
 > - The server derives total marks and validates the passing threshold. The create page saves a draft and uses the publish endpoint to publish it.
 > - Answer changes save to the server and reload restores them with the time remaining. Submit and autosave lock the attempt. On expiry, the next attempt, result, or analytics request finalizes the saved answers. Repeated submissions return the existing grade.
-> - Migration `exams/0004` snapshots open attempts from the question data available at migration time, converts out-of-range legacy passing marks to the equivalent proportion of the actual total, and preserves stored grades for completed attempts. The migration has been tested locally and still needs to be applied to Neon.
+> - Migration `exams/0004` snapshots open attempts from the question data available at migration time, converts out-of-range legacy passing marks to the equivalent proportion of the actual total, and preserves stored grades for completed attempts. The migration has been tested locally. *(Neon was rebuilt from all migrations later on 2026-11-21, see [REPO-03](#repo-03).)*
 
 **Evidence:** [exams/services.py](exams/services.py), [exams/views.py](exams/views.py)
 - **No snapshot.** `calculate_exam_attempt_score` grades against the *live* `exam.questions` and `custom_questions`. Unlike quizzes ([ASM-01](#asm-01) snapshots), an instructor can edit or remove questions or change correct options on a published exam while attempts are in progress. `ExamDetailView` allows `PUT`/`PATCH` on published exams that have attempts.
@@ -1213,7 +1353,7 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 
 > - Submission, approval, rejection, and archive use the shared row-locked lifecycle. Changes to a course under review return it to draft in the same transaction. Failed changes preserve its review. The browser editor uses the review actions and Django admin displays course records with service-backed moderation actions.
 > - A published course can have one separate draft revision. Publishing it records a `CourseVersion` snapshot and archives its predecessor. New buyers enroll in the revision at its own slug. Existing learners retain access to their original course and progress. Archived courses leave the public catalog.
-> - Migration `courses/0004` adds the revision link and still needs to be applied to Neon.
+> - Migration `courses/0004` adds the revision link. *(Neon was rebuilt from all migrations later on 2026-11-21, see [REPO-03](#repo-03).)*
 
 **Evidence:**
 - Create and update are allowed in `draft` **and** `under_review`, but delete is allowed only in `draft`.
@@ -1566,6 +1706,124 @@ The UI can show a lesson as unlocked that the server then refuses.
 
 **Fix approach:** Remove the try/except and let errors 500 and get logged. Fix the data source mismatch from [PAY-07](#pay-07), and collapse the three duplicate count queries into one aggregate.
 
+<a id="err-02"></a>
+### ERR-02: Malformed query parameters and request bodies still return 500 — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ each one returned `500 internal_error` against the live server):**
+
+| Request | Cause |
+|---|---|
+| `GET /api/payments/stats/?start_date=garbage` | `timezone.datetime.fromisoformat()` raises `ValueError` ([payments/views.py](payments/views.py)) |
+| `GET /api/payments/instructor/earnings/?end_date=nope` | same |
+| `GET /api/enrollments/?course=abc` | the raw value goes to `filter(course_id=...)` |
+| `GET /api/exams/questions/?course_id=abc` | same pattern ([exams/views.py](exams/views.py)) |
+| `GET /api/students/notes/?lesson=abc` | same pattern ([students/views.py](students/views.py)) |
+| `PATCH /api/students/profile/ {"weekly_study_hours":"abc"}` | see [STU-03](#stu-03) |
+| `PATCH /api/students/notes/<id>/ {"timestamp":"abc"}` | see [STU-03](#stu-03) |
+| `POST /api/students/notes/ {"lesson":1}` (no content) | see [STU-03](#stu-03) |
+| `POST /api/students/notes/ {"lesson":"x","content":"y"}` | see [STU-03](#stu-03) |
+
+The date parameters also produce naive datetimes while `USE_TZ=True`. Similar parameters elsewhere already return 400: `?attempt=abc` on exams, and `?course=abc` on bookmarks.
+
+**Impact:** Typos and bad clients produce logged server errors instead of 400s. [ERR-01](#err-01) set the goal that bad input returns a readable 400.
+
+**Fix approach:** Parse query parameters with a small helper or a DRF `Serializer` (`IntegerField`, `DateTimeField`) and raise `ValidationError`. Add one table-driven test that sends bad values to every list filter.
+
+<a id="stu-03"></a>
+### STU-03: Student profile and note writes bypass their serializers — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence:** `StudentProfileView.put/patch` calls `update_student_profile(request.user, **request.data)`. `StudentNoteListCreateView.post` and `StudentNoteDetailView.put/patch` call the note services with raw request values ([students/views.py](students/views.py), [students/services.py](students/services.py)). The services use a field allowlist, so there is no mass assignment, but no type validation runs.
+- ✔ Wrong types and missing content return 500 (see [ERR-02](#err-02)).
+- ✔ Negative values are stored: `weekly_study_hours=-5` returned 200, and a note with `timestamp=-9` returned 201.
+
+- ✔ **Profile PATCH fails for new accounts.** A brand-new student's `PATCH /api/students/profile/` and a brand-new instructor's `PATCH /api/instructors/profile/` return **400 "profile not found"** until a GET has lazily created the profile. The update services use `objects.get(...)` while the readers use `get_or_create`. The web pages GET first, so the UI works, but API clients can't.
+- ✔ **Duplicate bookmarks.** Bookmarking the same lesson twice returned 201 both times and created two rows.
+
+**Fix approach:** Validate with `StudentProfileSerializer` / `StudentNoteSerializer` (`partial=True` for PATCH) and pass `validated_data` to the services. Use `get_or_create` in both profile update services. Add a unique `(user, lesson)` constraint on bookmarks and return 200 for an existing one.
+
+<a id="crs-08"></a>
+### CRS-08: Instructor (and student) emails still reach other users — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ seen in live API responses):** [CRS-06](#crs-06) removed instructor emails from public course endpoints, but `User.get_full_name()` returns the **email** whenever the profile has no name, and several serializers still use it or expose the email directly:
+- A student's `POST /api/enrollments/enroll/` and `GET /api/enrollments/...` returned `"instructor": {"name": "ina@instructor.com"}` (`EnrollmentDetailSerializer`). `EnrollmentListSerializer.instructor_name` behaves the same way.
+- A student's `GET /api/payments/` returns `instructor_email`, and `GET /api/payments/payouts/` returns `instructor_name: "<email>"`.
+- The instructor dashboard and students list return `student_email` for every learner. This may be intended, but it isn't written down.
+- **The certificate PDF prints the learner's email** when the profile has no name (`certificates/pdf.py:88`: `profile_display_name(user) or user.email`). People share that document, and its QR code points to a public page. Public verification shows "SkillStudio learner" for the same certificate, so the two disagree. `CertificateSerializer.user_name` has the same fallback, but only the owner sees it.
+- `AdminCourseStatsView` lists instructor emails, which is acceptable for admins.
+
+**Fix approach:** Use `accounts.utils.public_instructor_name()` in every learner-facing serializer and drop `instructor_email` from student payment responses. Use the same fallback on the PDF as on the verify page, and re-render the PDF when the name changes. Make `get_full_name()` stop falling back to the email, or stop using it in serializers. Document whether instructors may see learner emails.
+
+<a id="crs-09"></a>
+### CRS-09: A rejected course never shows the instructor why — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):** The console reviewer chose "Return to draft" with the note "Please add a summary lesson". The course went back to `draft`, and `GET /api/courses/<slug>/` returns `rejection_reason` to the owner. However, no template reads `rejection_reason`. A repo-wide search over `templates/` only finds the unrelated refund reason. The instructor's content page, course list and edit page show the course as a plain draft, so the review loop has no feedback in the UI. [courses/README.md](courses/README.md) says "Review notes are available on course detail to the assigned instructor", which is true only for the API.
+
+**Fix approach:** Show the latest `rejection_reason` and `reviewed_at` on the content page and in the instructor course list while the course is a draft, and clear it on resubmit (the service already does that).
+
+<a id="pay-10"></a>
+### PAY-10: Console-created coupons can be unredeemable; coupon form exposes every account — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):**
+- An operator created coupon `spring25` in the console coupon form, which is a plain `ModelAdmin`. It was stored lower-case and appeared in the public `GET /api/payments/coupons/` list as `spring25`. Every redemption attempt returned **"Invalid coupon code."**, including one typed exactly as listed, because `validate_coupon_for_course` upper-cases the input and matches exactly. The API path (`services.create_coupon`) upper-cases codes, but the console doesn't.
+- The console form requires a hand-picked **Created by** user from a dropdown of **every account's email**. The API sets it automatically. The coupon model also allows a percent value above 100, a negative `min_order_amount` and similar values that the API serializer rejects.
+- ✔ The **API** also accepts `discount_type=percent, discount_value=150` (201). The discount is capped at the price, so the coupon silently becomes "100% off".
+- ✔ After a student gets a course with a 100% coupon (no `Payment` row) and the enrollment is cancelled, re-enrolling **charges the full $40**. `purchase_course` only treats an earlier *payment* as "previously paid", not an earlier free redemption.
+- Refunds don't decrement `current_usage` or delete the redemption. A refunded buyer has still used up their per-user allowance.
+
+**Fix approach:** Normalise `code` in `Coupon.save()` or a `clean_code`, use a case-insensitive lookup (`code__iexact`) and a unique constraint on `Upper('code')`. Set `created_by` from `request.user` in `CouponAdmin.save_model` and make it read-only. Share validation between the admin form and the API. Decide what a refund does to coupon usage.
+
+<a id="adm-02"></a>
+### ADM-02: Console course decision page crashes when the course has no category — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ 500 in the live run):** `Course.category` is `on_delete=SET_NULL, null=True`, but `CourseAdmin.decision_details` ([courses/admin.py](courses/admin.py)) reads `obj.category.name`. After a category was deleted, `/admin/courses/course/<id>/decision/` raised `AttributeError: 'NoneType' object has no attribute 'name'`. Reviewers can't publish or archive such a course from the console.
+
+**Fix approach:** `obj.category.name if obj.category else '—'`, plus a regression test. Consider `PROTECT` on categories in use.
+
+<a id="lrn-05"></a>
+### LRN-05: Watch-time anti-cheat lets a client skip most of a video — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):** `update_lesson_watch_progress` ([enrollments/services.py](enrollments/services.py)):
+- skips the elapsed-time check on the **first** event for a lesson, because the progress row is created in that call. One `PATCH .../watch-time/ {"watch_time_delta": 60}` credited 60 seconds and completed a 1-minute video in **0.0 s**. Any video up to 150 seconds long completes from a single request, since the cap is 120 s and the threshold is 80%.
+- gives a 15-second grace on **every** event, so a client can send 15 seconds of credit every second and finish a 10-minute video in about 40 seconds.
+- Section 8 of this report called this "server-side delta caps tied to elapsed time". That is true only after the first event, and only up to the grace window.
+
+**Fix approach:** Credit the first event at most the grace window, and make the grace cumulative (`watch_time <= elapsed_since_started + grace`) rather than per event. Alternatively, accept the limits as demo-grade and say so in the docs.
+
+<a id="fe-04"></a>
+### FE-04: API field-validation messages never reach the user — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):** With the [API-04](#api-04) envelope, field errors arrive in `fields` and `detail` is the generic "Invalid input.". `apiRequest()` ([static/js/app.js](static/js/app.js)) builds its error from `detail` only. Saving a lesson with a non-video URL therefore showed just **"Invalid input."**, while the reason (`fields.video_url`) was dropped. Only three pages read `error.body.fields`, and each reads only specific fields: course create/edit read `price`, and settings reads the password fields. Every other form behaves like the lesson editor, including the exam builder, quiz builder, payouts, refunds, notes and profile.
+
+**Fix approach:** In `apiRequest()`, when `detail` is the generic message, use the first entry of `fields` as the error message. Better, add a shared helper that marks each invalid input.
+
+<a id="acc-02"></a>
+### ACC-02: Password change and API-key revocation don't do what the UI says — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):**
+- After a password change, the page says "Password changed successfully. Please log in again." The user stays on Settings, and `/api/accounts/me/` still returns 200. The access cookie stays valid for up to 30 minutes. The refresh token was silently blacklisted, so the session ends later at an unpredictable moment. Other browsers also keep working until their access token expires.
+- An API key "revoked" in settings can be restored by calling the same toggle endpoint again. `PATCH /api/accounts/api-keys/<id>/toggle/` flips `is_active` back and clears `revoked_at`. Revocation is expected to be permanent, and the README says "create and revoke API keys".
+- The **Delete Account** button in Settings has no handler and no backend endpoint. Accounts with financial history can't be deleted on purpose.
+
+**Fix approach:** After a password change, clear the auth cookies in the response and redirect to the login page. Make revocation one-way: split the toggle into a `revoke` endpoint. Remove the Delete Account block, or replace it with "contact an admin".
+
+<a id="acc-03"></a>
+### ACC-03: Email addresses are case-sensitive: duplicate accounts and failed logins — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ verified):** With `s1@student.com` registered, `POST /api/accounts/register/ {"email": "S1@student.com", …}` returned **201** and created a second account. The DB then held both `s1@student.com` and `S1@student.com`. Logging in as `S1@STUDENT.COM` returned **401** for the original user. `BaseUserManager.normalize_email` lower-cases only the domain part, `User.email` is a case-sensitive unique field, and the login backend matches exactly.
+
+**Impact:** One person can end up with two accounts, each with its own wallet, purchases and certificates. Users who type their email with a capital letter can't sign in. The [D-02](#d-02) role-by-domain rule is unaffected because it compares the domain case-insensitively.
+
+**Fix approach:** Lower-case the whole address on save and registration, add a unique constraint on `Lower('email')`, and authenticate with `email__iexact`. Check existing rows for case duplicates before adding the constraint.
+
+<a id="rpt-01"></a>
+### RPT-01: The same statistic is calculated differently in different places — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (read in source; the revenue figures were confirmed in the live run):**
+- `enrollments_count` on course list and detail counts only `active` enrollments, so the number shown **drops when students complete the course**. `ordering=popular` and the console use `ACCESS_STATUSES` (active + completed) ([courses/views.py](courses/views.py)).
+- `AdminCourseStatsView.total_revenue` ([courses/views_analytics.py](courses/views_analytics.py)) sums gross `amount` over `status='completed'` only. That excludes partially refunded sales entirely and isn't net of refunds, and it returns a `float`. `PaymentStatsView` and the console use net amounts across `SETTLED_PAYMENT_STATUSES`. `top_courses` also counts only `active` enrollments, and its docstring names a non-existent route (`/api/courses/admin/stats/`).
+
+**Fix approach:** Define "learners", "revenue" and "sales" once, for example in `payments.services` and `courses.services`, reuse those definitions, and return money as strings.
+
 ---
 
 ## 7. P3: Low
@@ -1591,7 +1849,7 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Add a pre-commit hook that blocks `venv/`, `.env` and `*.pyc`.
 
 <a id="repo-02"></a>
-### REPO-02: Dead code and stale comments
+### REPO-02: Dead code and stale comments — ✅ RESOLVED 2026-11-21
 
 **Evidence:**
 - `assessments/views_attempt.SubmitQuizAttemptView` (not routed).
@@ -1617,7 +1875,7 @@ The UI can show a lesson as unlocked that the server then refuses.
 > - `views_analytics.py` now has an accurate docstring and no unused re-export.
 
 <a id="repo-03"></a>
-### REPO-03: Migration churn in `accounts`
+### REPO-03: Migration churn in `accounts` — ✅ RESOLVED 2026-11-21
 
 **Evidence:** `accounts/migrations` has two `0002_*` files plus a merge (`0003`), and a wallet field that is added, removed, added and removed again (`0002`, `0004`, `0005`, `0009`).
 
@@ -1673,7 +1931,7 @@ Move aspirational features to a "Roadmap" section.
 > There are no deploy notes, by [D-03](#d-03).
 
 <a id="doc-02"></a>
-### DOC-02: App READMEs document a different API
+### DOC-02: App READMEs document a different API — ✅ RESOLVED 2026-11-21
 
 **Evidence:** There are about 5,200 lines of per-app docs.
 - `courses/README.md` documents `/api/v1/courses/...`, slug-based update/delete, and `submit-review/` / `unpublish/` endpoints, none of which exist.
@@ -1713,7 +1971,7 @@ Move aspirational features to a "Roadmap" section.
 - Move to `uv` / `pip-tools` with `requirements.in` → hashed `requirements.txt`, and a separate `requirements-dev.txt`.
 
 <a id="asm-04"></a>
-### ASM-04: Assessment model and analytics gaps
+### ASM-04: Assessment model and analytics gaps — ✅ RESOLVED 2026-11-21
 
 **Evidence:** [assessments/models.py](assessments/models.py), [assessments/analytics.py](assessments/analytics.py)
 - `Quiz` has no timestamps and no `__str__`.
@@ -1739,6 +1997,104 @@ Move aspirational features to a "Roadmap" section.
 > - Both analytics functions count finished attempts only. Both analytics views and `ManageQuizView` use `can_manage_course`, so admins have access.
 > - Tests: `assessments/test_quiz_model.py`.
 
+<a id="repo-04"></a>
+### REPO-04: Dead code and leftovers after the fix rounds — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (pyflakes, vulture and a repo-wide reference search over tracked files):**
+- **Unreferenced functions and classes** (no caller in code, templates or tests):
+  - `accounts/decorators.py` (the whole module, `role_required`)
+  - `accounts.serializers.UserBasicSerializer`
+  - `courses.serializers.LessonListSerializer`
+  - `courses.services.is_course_completed`, which also encodes a different completion rule from `evaluate_and_complete_enrollment`
+  - `enrollments.services.get_previous_lesson`
+  - `instructors.serializers.CourseOverviewSerializer` and `StudentEngagementSerializer`
+  - in `payments.services`: `fail_payout`, `get_payment_by_provider_id`, `get_pending_payouts`, `log_webhook_event`, `mark_webhook_processed`, `create_dispute`, `resolve_dispute`, and the `request_payout` alias. The webhook and dispute helpers may be kept for the Stripe work, but should say so.
+- **Test-only or vestigial code:**
+  - `assessments/services_scoring.py`, a one-line shim used only by tests
+  - `assessments/constants.PASS_PERCENTAGE = 70`, which is unused and contradicts the real default pass mark of 50
+  - `core/models.py`, empty boilerplate
+  - `settings.ASGI_APPLICATION`, which only Channels/Daphne read, and both were removed
+- **Test endpoint shipped in the URLconf:** `GET /api/accounts/instructor-only/` (`InstructorOnlyView`, "Test endpoint"). It is also published in `docs/API_ROUTES.md` and the OpenAPI schema.
+- **About 45 unused imports** in non-test modules. Examples: `students/views.py` has 10, `enrollments/serializers.py` 6, `courses/views.py` 4, `instructors/views.py` 4 and `students/services.py` 4. There is also an f-string without placeholders at `certificates/services.py:218` and unused locals in tests.
+- **Unused model surface:**
+  - `Payment.billing_address`, `ip_address` and `provider_refund_id`
+  - `Refund` statuses `approved`, `processing` and `failed`, which no code path sets
+  - the deprecated `Payout.payments` M2M, which `PayoutSerializer.payment_count` still serializes (always 0)
+  - `Payout.METHOD_CHOICES`, whose default is `stripe_connect` although only manual bank transfers exist (the UI sends `bank_transfer`, but the API default doesn't)
+- **Untracked local leftovers** (git-ignored, but they confuse a reader):
+  - `venv/`, an old Windows virtualenv next to `.venv/`
+  - `tmp/pdfs`, `output/pdf` and `scripts/render_backend_review_*.py`, which render the deleted reports
+  - `core/__pycache__/test_zz_dbg.cpython-313.pyc` from a deleted debug test
+  - `media/certificates/` from before OPS-02
+
+**Fix approach:** Delete the unreferenced code and imports in one PR. Remove the test endpoint and regenerate `docs/API_ROUTES.md` and `docs/openapi.yaml`. Add `ruff check --select F` (pyflakes) to CI so unused imports can't build up again.
+
+<a id="doc-03"></a>
+### DOC-03: Docs and this report have drifted from the code — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence:**
+- [README.md](README.md) **Roadmap** still lists "An OpenAPI schema (API-04)" as open, while the same README documents `docs/openapi.yaml` and API-04 is resolved.
+- README ("Video lessons support YouTube and Vimeo URLs") and [courses/README.md](courses/README.md) ("must be YouTube or Vimeo") are out of date. `courses/video.py`, the serializer, the lesson editor and the learn page all also accept direct video-file URLs (`.mp4`, `.webm` and so on).
+- The [ASM-04](#asm-04) resolution says the lesson editor has a **Published to students** checkbox. The editor actually uses **Save Draft** / **Save & Publish** buttons.
+- In this report:
+  - The REPO-02, REPO-03, DOC-02 and ASM-04 headings lacked the ✅ status that the index showed. Fixed in this pass.
+  - Phase 3 of the plan listed ENR-01 without striking it through. Fixed.
+  - The CRS-03 and EXM-03 notes said their migrations "still need to be applied to Neon", which the REPO-03 rebuild made stale. Fixed.
+  - Section 8 called SEC-06 "the remaining gap" and described the watch-time caps as sound (see [LRN-05](#lrn-05)). Fixed.
+
+**Fix approach:** Fix the two READMEs. Keep this report's headings, index and plan in sync in the same commit as each fix.
+
+<a id="fe-05"></a>
+### FE-05: Dead, misleading or inconsistent UI controls — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ each one seen while driving the UI):**
+- **Remember me** on the login page has no code reading it. **Delete Account** in Settings has no handler (see [ACC-02](#acc-02)).
+- **Section description:** the Add Section modal collects a description, but `Module` has no such field and `ModuleCreateUpdateSerializer` silently drops it. The content page has a branch that renders `section.description`, which is never set.
+- **Insufficient funds:** the modal offers **Add funds** and links to a wallet page that has no way to add funds until the Stripe top-up exists ([SEC-01](#sec-01)). That's a dead end in the main purchase path.
+- **Paid enrolment** charges the wallet on one click, with no confirmation showing the price. The rest of the app uses `showConfirm` for money actions, such as payout and refund requests.
+- **Native dialogs:** "Return to draft" (course content) and "Insert link/image" (lesson editor) use the browser's `prompt()`, while everything else uses the app's `<dialog>`.
+- **Wishlist:** a purchased course stays in the wishlist (Saved learning showed the owned course).
+- **Quiz editor:** opening a new quiz lesson logs a 404 console error (`GET .../quiz/lesson/<id>/manage/` before a quiz exists). The page handles it, but it's noise.
+
+**Fix approach:** Remove or wire each control. Add a `description` field to `Module`, or drop the textarea. Hide the Add-funds action until top-ups exist. Confirm paid purchases with the price.
+
+<a id="fe-06"></a>
+### FE-06: Routing and status-display inconsistencies — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ from the route matrix and workflow run):**
+- **Role mismatch behaves two ways.** `/dashboard/` and `/enrollments/` *redirect* an instructor to their dashboard. A student on any `/instructor/...`, `/exams/create/` or `/payments/payouts/` page, and an instructor on `/library/`, instead get Django's bare **"403 Forbidden"** page. There is no `403.html`, so the page has no navigation back.
+- **Admins land on the student dashboard** after login and from `/`. Its widgets are student-only, such as enrolled courses and streak. The website has no admin home. The work queues are in the console.
+- **Learn page needs an enrollment.** `/learn/<slug>/` sends course owners and admins to the course page, even though the API (`can_access_course_content`) lets them study it. Owners have the separate preview page, but this isn't documented.
+- **Login page probe.** Every redirected anonymous visit to the login page sends `POST /api/accounts/token/refresh/` and gets a **401**, which appears as a console error. The run recorded 30 of them.
+- **Payout status names.** A payout the console *rejects* is stored as `cancelled`, the same status as an instructor's own cancellation. Only `failure_reason` tells them apart.
+- **Enrollment cancel without a UI.** `PATCH /api/enrollments/enrollments/<id>/cancel/` exists, and it revokes the certificate, but no page offers it.
+
+**Fix approach:** Add a `403.html` that links back to the role's home, or redirect consistently. Give admins a small website landing page or send them to the console. Skip the refresh probe when no refresh cookie is likely, for example from a non-httpOnly hint cookie. Add a `rejected` payout status. Either expose enrollment cancel with a warning or remove the endpoint.
+
+<a id="api-05"></a>
+### API-05: API contract gaps found by the scenario suites — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence (✔ each one observed):**
+- **Created objects have no id in the response.** `POST /api/courses/<id>/modules/`, `/sections/<id>/lessons/` and `/lessons/create/` answer 201 with a body that has no `id`, because the serializers list only writable fields. A client can't address what it just created. The course content page reloads the whole list to cope.
+- **Error codes differ from the documentation.** `EnrollCourseView` says it returns `code: course_unavailable` for an unpublished course. The serializer intercepts first and returns `code: validation_error` with `fields.course_id`.
+- **Unordered pagination.** `GET /api/accounts/users/` and `GET /api/courses/tags/` paginate querysets with no `order_by`. They emit `UnorderedObjectListWarning`, and pages can repeat or skip rows.
+- **Duplicate quiz start route.** `POST /api/assessments/quiz/<id>/attempt/start/` (`StartQuizAttemptView`) duplicates `quiz/<id>/start/` with a different response shape, and no page uses it.
+- **Re-issued certificates.** After a refund and re-purchase, the certificate gets a new verification code. The **old** code then returns 404 "not found" rather than "superseded" or "revoked", so a QR code on an old PDF looks fake.
+- **Payout requests without a destination.** The API accepts a `bank_transfer` payout with no `account_details` (201), which leaves the operator nothing to pay to. The payouts page requires them.
+- `docs/API_ROUTES.md` lists `/api/courses/tags/` GET as `IsAuthenticated`, but anonymous GET is allowed, because the generator reads the class attribute rather than `get_permissions()`.
+
+**Fix approach:** Return the read serializer, including `id`, from every create endpoint. Use explicit codes, or update the docstring. Add `ordering` to both querysets. Delete the duplicate route. Keep revoked or superseded codes resolvable with `valid: false` and a reason. Validate payout destinations server-side.
+
+<a id="test-03"></a>
+### TEST-03: Gaps the green suite doesn't catch; noisy output; local env drift — 🔴 OPEN (re-audit 2026-11-22)
+
+**Evidence:**
+- The suite passes on both databases: SQLite **498 tests OK, 3 skipped** (Postgres-only lock tests) and local Postgres 16 **498 OK, 0 skipped**. `check`, `makemigrations --check`, `check --deploy`, `spectacular --validate --fail-on-warn` and the `docs/API_ROUTES.md` / `docs/openapi.yaml` snapshots are all clean. Even so, none of [LRN-04](#lrn-04), [SEC-10](#sec-10), [FE-03](#fe-03), [EXM-04](#exm-04), [ERR-02](#err-02), [PAY-10](#pay-10) or [ADM-02](#adm-02) is caught. The browser smoke tests seed data straight into the database, and none of them tries a failure path in the UI.
+- Test output is flooded with JSON `django.request` warnings for every expected 4xx (hundreds of lines), which hides real failures. Raise the `django.request` level during tests.
+- The local `.venv` doesn't match the hash-locked requirements. It still has `gunicorn==21.2.0` (the CVE version from OPS-03), `daphne`, `channels`, `celery` and `redis` installed. CI is unaffected, but `pip-sync requirements.txt requirements-dev.txt` hasn't been run locally since DEP-01.
+
+**Fix approach:** Add tests for each finding above as it is fixed. Add an E2E journey that starts from an empty database and goes through the UI (see the re-audit run in section 1). Quiet request logging in the test runner. Run `pip-sync` locally.
+
 ---
 
 ## 8. What is in good shape
@@ -1746,11 +2102,11 @@ Move aspirational features to a "Roadmap" section.
 - **Domain layering.** `services.py` / `policies.py` / `serializers.py` per app is a sound structure; most fixes above are about routing work *through* it consistently.
 - **Custom `User`.** DB `CheckConstraint`s on role/staff/superuser invariants, plus role normalisation on save.
 - **API keys.** SHA-256 hashed secrets, a prefix index, and `hmac.compare_digest`.
-- **Cookie JWT + CSRF.** httpOnly cookies, CSRF enforced only on cookie-authenticated unsafe methods, and refresh rotation with blacklist. ([SEC-06](#sec-06) is the remaining gap.)
+- **Cookie JWT + CSRF.** httpOnly cookies, CSRF enforced only on cookie-authenticated unsafe methods, and refresh rotation with blacklist. ([SEC-06](#sec-06) is resolved.)
 - **Wallet ledger.** `Wallet._apply_delta` row-locks and always writes a `WalletTransaction`. The *model* is right; the problem is who is allowed to call it ([SEC-01](#sec-01), [PAY-07](#pay-07)).
 - **Assessments integrity.** Attempt question snapshots, frozen grading evidence, `select_for_update` on answers, and no `is_correct` leakage in student serializers.
 - **Exams.** Student serializers strip answer keys recursively, and attempt numbering is constrained in the DB.
-- **Watch-time anti-cheat.** Server-side delta caps tied to elapsed time ([LRN-02](#lrn-02) only needs the client side).
+- **Watch-time anti-cheat.** Server-side delta caps tied to elapsed time. *(Re-audit: the first event and the per-event grace weaken it, see [LRN-05](#lrn-05).)*
 - **XSS hygiene.** API data is consistently passed through `escapeHtml` / `safeUrl` (387 + 8 call sites).
 
 ---
@@ -1762,9 +2118,10 @@ Move aspirational features to a "Roadmap" section.
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, ~~OPS-03~~ ✅; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, ~~EXM-03~~ ✅, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ~~ENR-03~~ ✅, ~~TEST-02~~ ✅ | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, ~~SEC-09~~ ✅, ~~ADM-01~~ ✅, ~~TEST-01~~ ✅ | 1–2 weeks |
-| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
+| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ~~ENR-01~~ ✅, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
+| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | P1 first: FE-03 (small template fix), LRN-04, SEC-10, EXM-04. Then ERR-02 + STU-03 together, CRS-08, CRS-09, PAY-10, ADM-02, FE-04, ACC-02, ACC-03, LRN-05, RPT-01. Finally REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
 
 ### Definition of done for release
 
