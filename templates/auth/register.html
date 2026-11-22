@@ -109,7 +109,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('register-form');
     const registerBtn = document.getElementById('register-btn');
@@ -223,8 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Check if already logged in
-    const accessToken = localStorage.getItem('user');
-    if (accessToken) {
+    if (document.body.dataset.pageRole) {
         window.location.href = '/dashboard/';
     }
 });

@@ -54,7 +54,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentTab = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -190,7 +190,7 @@ function renderCourseCard(enrollment) {
                         ${escapeHtml(isCompleted ? 'Review Course' : (progress > 0 ? 'Continue Learning' : 'Start Learning'))}
                     </a>
                     ${isCompleted && enrollment.certificate_available ? `
-                        <button onclick="downloadCertificate(${Number(enrollment.course.id)})" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
+                        <button data-click="downloadCertificate" data-value-one="${Number(enrollment.course.id)}" class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors" title="Download Certificate">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
@@ -229,5 +229,11 @@ async function downloadCertificate(courseId) {
         showAlert('Failed to download certificate', 'error');
     }
 }
+
+bindActions({
+    click: {
+        downloadCertificate: (event, control) => downloadCertificate(Number(control.dataset.valueOne)),
+    },
+});
 </script>
 {% endblock %}

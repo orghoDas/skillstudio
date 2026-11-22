@@ -23,7 +23,7 @@
                         <span id="timer" class="text-xl font-mono font-semibold">--:--</span>
                     </div>
                     <!-- Submit Button -->
-                    <button onclick="submitExam()" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                    <button data-click="submitExam" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
                         Submit Exam
                     </button>
                 </div>
@@ -60,11 +60,11 @@
     <div class="fixed bottom-0 left-0 right-0 bg-dark-surface border-t border-dark-border">
         <div class="max-w-7xl mx-auto px-6 py-4">
             <div class="flex items-center justify-between">
-                <button onclick="if(confirm('Are you sure you want to leave this exam?')) window.location.href='/exams/'" 
+                <button data-click="leaveExam"
                     class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors">
                     Exit Exam
                 </button>
-                <button onclick="submitExam()" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors text-lg">
+                <button data-click="submitExam" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors text-lg">
                     Submit Exam
                 </button>
             </div>
@@ -72,7 +72,10 @@
     </div>
 </div>
 
-<script>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
 let examId = null;
 let attemptId = null;
 let exam = null;
@@ -269,16 +272,17 @@ async function submitExam(autoSubmit = false) {
         const total = questions.length;
         
         if (answered < total) {
-            if (!confirm(`You have only answered ${answered} out of ${total} questions. Submit anyway?`)) {
+            if (!await showConfirm(`You have only answered ${answered} out of ${total} questions. Submit anyway?`)) {
                 return;
             }
         } else {
-            if (!confirm('Are you sure you want to submit your exam? This action cannot be undone.')) {
+            if (!await showConfirm('Are you sure you want to submit your exam? This action cannot be undone.')) {
                 return;
             }
         }
     }
-    
+    if (submitting || leaving) return; // The timer may have submitted while the dialog was open.
+
     try {
         submitting = true;
         clearInterval(timerInterval);
@@ -292,7 +296,7 @@ async function submitExam(autoSubmit = false) {
         showResults();
     } catch (error) {
         submitting = false;
-        alert(error.message || 'Failed to submit exam. Please try again.');
+        showAlert(error.message || 'Failed to submit exam. Please try again.', 'error');
         if (performance.now() < deadline) {
             startTimer();
         }
@@ -315,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Validate attemptId is a valid number
     if (!examId || !attemptId || attemptId === 'undefined' || isNaN(attemptId)) {
-        alert('Invalid exam or attempt ID');
+        showAlert('Invalid exam or attempt ID', 'error');
         window.location.href = '/exams/';
         return;
     }
@@ -324,6 +328,18 @@ document.addEventListener('DOMContentLoaded', function() {
     attemptId = parseInt(attemptId);
     
     loadExam();
+});
+
+bindActions({
+    click: {
+        submitExam: () => submitExam(),
+        leaveExam: async () => {
+            if (await showConfirm('Are you sure you want to leave this exam?')) {
+                leaving = true;
+                window.location.href = '/exams/';
+            }
+        },
+    },
 });
 </script>
 

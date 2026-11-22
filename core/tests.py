@@ -2,20 +2,17 @@ import re
 from pathlib import Path
 
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
+from rest_framework.test import APIClient
 
 TEMPLATES_DIR = Path(settings.BASE_DIR) / "templates"
-DECLARATION = re.compile(r"^\s*(?:const|let|class)\s+([A-Za-z_$][\w$]*)", re.MULTILINE)
+SHARED_JS_DIR = Path(settings.BASE_DIR) / "static" / "js"
+DECLARATION = re.compile(r"^(?:const|let|class)\s+([A-Za-z_$][\w$]*)", re.MULTILINE)
 
 
 def top_level_globals_of_base():
-    """Names base.html declares with const/let/class in its global <script>."""
-    base = (TEMPLATES_DIR / "base.html").read_text()
-    names = set()
-    for script in re.findall(r"<script>(.*?)</script>", base, re.S):
-        # Only indentation level 8 = top level inside base.html's <script>.
-        names.update(re.findall(r"^ {8}(?:const|let|class)\s+([A-Za-z_$][\w$]*)", script, re.M))
-    return names
+    """Names declared by the shared scripts loaded in base.html."""
+    return {name for script in SHARED_JS_DIR.glob("*.js") for name in DECLARATION.findall(script.read_text())}
 
 
 class TemplateGlobalsTests(SimpleTestCase):
@@ -35,12 +32,33 @@ class TemplateGlobalsTests(SimpleTestCase):
             text = template.read_text()
             if "{% extends 'base.html' %}" not in text and '{% extends "base.html" %}' not in text:
                 continue
-            for script in re.findall(r"<script>(.*?)</script>", text, re.S):
-                for line in script.splitlines():
-                    match = re.match(r"^(?:const|let|class)\s+([A-Za-z_$][\w$]*)", line)  # column 0 = top level
-                    if match and match.group(1) in base_globals:
-                        offenders.append(f"{template.relative_to(TEMPLATES_DIR)}: {line.strip()}")
-        self.assertEqual(offenders, [], "Templates must not re-declare base.html globals")
+            for script in re.findall(r"<script\b[^>]*>(.*?)</script>", text, re.S):
+                offenders.extend(
+                    f"{template.relative_to(TEMPLATES_DIR)}: {name}"
+                    for name in base_globals.intersection(DECLARATION.findall(script))
+                )
+        self.assertEqual(offenders, [], "Templates must not re-declare shared JavaScript globals")
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    'LOCATION': 'login-throttle-test',
+}})
+class AuthThrottleTests(SimpleTestCase):
+    def test_login_limits_repeated_requests_and_sets_retry_after(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        client = APIClient()
+        for _ in range(5):
+            response = client.post('/api/accounts/token/', {'token_in_body': True}, format='json')
+            self.assertEqual(response.status_code, 400)
+
+        response = client.post('/api/accounts/token/', {'token_in_body': True}, format='json')
+        self.assertEqual(response.status_code, 429)
+        self.assertGreater(int(response['Retry-After']), 0)
+        self.assertEqual(response.json()['code'], 'throttled')
 
 
 # ----------------------------------------------------------------------------
@@ -90,8 +108,9 @@ def _view_handles(func, method):
 
 class TemplateApiContractTests(SimpleTestCase):
     def _template_calls(self):
-        for template in TEMPLATES_DIR.rglob("*.html"):
-            text = template.read_text()
+        sources = [*TEMPLATES_DIR.rglob("*.html"), *SHARED_JS_DIR.glob("*.js")]
+        for source in sources:
+            text = source.read_text()
             for pattern in _CALL_PATTERNS:
                 for match in pattern.finditer(text):
                     raw = match.group("u")
@@ -99,7 +118,7 @@ class TemplateApiContractTests(SimpleTestCase):
                     if not path:
                         continue  # fully dynamic (e.g. apiRequest(endpoint)) — can't check statically
                     line = text[: match.start()].count("\n") + 1
-                    where = f"{template.relative_to(TEMPLATES_DIR)}:{line}"
+                    where = f"{source.relative_to(settings.BASE_DIR)}:{line}"
                     yield where, raw, path, _call_method(text, match.end())
 
     def test_every_template_api_call_resolves(self):

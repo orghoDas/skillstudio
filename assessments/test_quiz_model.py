@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from assessments.models import QuestionOption, Quiz, QuizAttempt, QuizQuestion
 from courses.models import Category, Course, Lesson, Module
+from enrollments.models import Enrollment
 
 
 class QuizModelTests(APITestCase):
@@ -29,6 +30,7 @@ class QuizModelTests(APITestCase):
             {"text": "4", "is_correct": True}, {"text": "5", "is_correct": False}]}], **extra}
 
     def test_new_quiz_is_a_draft_until_published(self):
+        Course.objects.filter(pk=self.course.pk).update(status="draft")
         self.assertFalse(Quiz.objects.create(lesson=self.lesson).is_published)
 
         self.client.force_authenticate(self.instructor)
@@ -36,9 +38,12 @@ class QuizModelTests(APITestCase):
         quiz = Quiz.objects.get(lesson=self.lesson)
         self.assertFalse(quiz.is_published)
 
+        Course.objects.filter(pk=self.course.pk).update(status="published")
+        Enrollment.objects.create(user=self.student, course=self.course)
         self.client.force_authenticate(self.student)
         response = self.client.get(f"/api/assessments/quiz/lesson/{self.lesson.id}/")
-        self.assertIn(response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        Course.objects.filter(pk=self.course.pk).update(status="draft")
 
         self.client.force_authenticate(self.instructor)
         self.manage({"is_published": True})  # settings-only update keeps the questions
@@ -66,6 +71,7 @@ class QuizModelTests(APITestCase):
         quiz.delete()  # cascading question deletes must not fail
 
     def test_manage_view_reports_synced_total(self):
+        Course.objects.filter(pk=self.course.pk).update(status="draft")
         self.client.force_authenticate(self.instructor)
         response = self.manage(self.payload())
         self.assertEqual(response.data["quiz"]["total_marks"], 3)

@@ -4,9 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
 
 from courses.models import Lesson
-from courses.policies import can_manage_course
+from courses.views import prepare_course_edit, require_course_manager
 from .models import Quiz, QuizQuestion, QuestionOption
 from .serializers import ManageQuizDetailSerializer
 
@@ -167,19 +168,13 @@ def _validate_quiz_payload(data, lesson, quiz, replacing_questions):
 
 
 class ManageQuizView(APIView):
-    """Create or update quiz for a lesson (instructor only)"""
+    """Read or edit a lesson quiz as a course manager."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, lesson_id):
         """Get quiz for a lesson"""
-        lesson = get_object_or_404(Lesson, id=lesson_id)
-        
-        # Check if user is the instructor
-        if not can_manage_course(request.user, lesson.module.course):
-            return Response(
-                {'error': 'You do not have permission to access this quiz'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        lesson = get_object_or_404(Lesson.objects.select_related('module__course'), id=lesson_id)
+        require_course_manager(request.user, lesson.module.course)
         
         quiz = Quiz.objects.filter(lesson=lesson).first()
         if not quiz:
@@ -193,23 +188,19 @@ class ManageQuizView(APIView):
     @transaction.atomic
     def post(self, request, lesson_id):
         """Create or update quiz questions"""
+        lesson = get_object_or_404(Lesson.objects.select_related('module__course'), id=lesson_id)
+        prepare_course_edit(lesson.module.course, request.user)
+        # Another editor could have deleted this lesson while we waited for the course lock.
         lesson = get_object_or_404(Lesson, id=lesson_id)
-        
-        # Check if user is the instructor
-        if not can_manage_course(request.user, lesson.module.course):
-            return Response(
-                {'error': 'You do not have permission to manage this quiz'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        quiz = Quiz.objects.filter(lesson=lesson).first()
+        quiz = Quiz.objects.select_for_update().filter(lesson=lesson).first()
         replacing_questions = 'questions' in request.data
         if quiz and replacing_questions and quiz.attempts.exists():
+            transaction.set_rollback(True)
             return Response(
                 {
                     'error': (
                         'Quiz questions cannot be replaced after attempts exist. '
-                        'Create a new quiz version instead.'
+                        'To change the questions, add a new quiz lesson.'
                     )
                 },
                 status=status.HTTP_409_CONFLICT
@@ -217,7 +208,7 @@ class ManageQuizView(APIView):
 
         validated_data, errors = _validate_quiz_payload(request.data, lesson, quiz, replacing_questions)
         if errors:
-            return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({'non_field_errors': errors})
 
         if quiz is None:
             quiz = Quiz.objects.create(

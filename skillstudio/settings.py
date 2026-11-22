@@ -20,6 +20,7 @@ import dj_database_url
 from datetime import timedelta
 from decimal import Decimal
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.csp import CSP
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
@@ -46,7 +47,8 @@ SIGNUP_FORBIDDEN_EMAIL_DOMAINS = {"admin.com"}
 # JWTs are delivered to browsers as httpOnly cookies (not readable by JS), so
 # XSS cannot exfiltrate them. API clients may still use the Authorization header.
 JWT_AUTH_COOKIE = "access_token"
-JWT_AUTH_REFRESH_COOKIE = "refresh_token"
+JWT_AUTH_REFRESH_COOKIE = "skillstudio_refresh"
+JWT_AUTH_REFRESH_COOKIE_PATH = "/api/accounts/"
 JWT_AUTH_COOKIE_SAMESITE = "Lax"
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -118,6 +120,16 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
+    # Local requests connect directly. Ignore client-supplied forwarding headers.
+    "NUM_PROXIES": 0,
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "5/min",
+        "register": "10/hour",
+        "refresh": "60/min",
+        "enroll": "30/min",
+        "payments": "30/min",
+    },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
 }
@@ -145,6 +157,7 @@ ASGI_APPLICATION = "skillstudio.asgi.application"
 MIDDLEWARE = [
     "core.api_exceptions.APIErrorEnvelopeMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.csp.ContentSecurityPolicyMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     "corsheaders.middleware.CorsMiddleware",
@@ -154,6 +167,21 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.NONCE],
+    "script-src-attr": [CSP.NONE],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE, "https://fonts.googleapis.com"],
+    "font-src": [CSP.SELF, "https://fonts.gstatic.com"],
+    "img-src": [CSP.SELF, "https:", "http:", "data:", "blob:"],
+    "media-src": [CSP.SELF, "https:", "http:", "blob:"],
+    "frame-src": ["https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+    "frame-ancestors": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+}
 
 # Same-origin by default (the frontend is served by this app). Cross-origin
 # access is opt-in: set CORS_ALLOWED_ORIGINS to a comma-separated list of full
@@ -174,8 +202,10 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
+                'django.template.context_processors.csp',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.auth.page_auth_context',
             ],
         },
     },
@@ -206,6 +236,8 @@ if RUNNING_TESTS:
             os.getenv("TEST_DATABASE_URL") or f"sqlite:///{BASE_DIR / 'test-db.sqlite3'}"
         ),
     }
+    # Isolate endpoint tests from rate counters left behind by other tests.
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -259,6 +291,20 @@ STORAGES = {
 # Tests use a temporary MEDIA_ROOT and plain static storage (no manifest), so
 # they never write into the real media/ folder (OPS-02 / TEST-01).
 TEST_RUNNER = "skillstudio.test_runner.SkillStudioTestRunner"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"json": {"()": "core.logging.JsonFormatter"}},
+    "handlers": {
+        "stdout": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "json"},
+    },
+    "root": {"handlers": ["stdout"], "level": "WARNING"},
+    "loggers": {
+        "django": {"handlers": ["stdout"], "level": "INFO", "propagate": False},
+        "django.server": {"handlers": ["stdout"], "level": "INFO", "propagate": False},
+    },
+}
 
 # Uploaded/generated files (currently only certificate PDFs). They are NOT
 # served publicly at MEDIA_URL; certificates are downloaded only through the

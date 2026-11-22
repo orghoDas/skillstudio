@@ -23,7 +23,7 @@ from .serializers import (
 )
 from .models import Profile, User, APIKey
 from .authentication import enforce_cookie_csrf
-from .cookies import clear_jwt_cookies
+from .cookies import clear_jwt_cookies, get_refresh_cookie
 from .permissions import IsInstructor, IsAdmin
 
 
@@ -41,6 +41,7 @@ class RegisterView(generics.CreateAPIView):
     """Register a new user account"""
     serializer_class = RegisterSerializer
     permission_classes = (permissions.AllowAny,)
+    throttle_scope = "register"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -66,7 +67,7 @@ class LogoutView(APIView):
 
     @extend_schema(responses={205: OpenApiTypes.OBJECT})
     def post(self, request):
-        cookie_refresh = request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
+        cookie_refresh = get_refresh_cookie(request)
         if cookie_refresh or request.COOKIES.get(settings.JWT_AUTH_COOKIE):
             enforce_cookie_csrf(request)
 

@@ -93,6 +93,7 @@ class EnrollCourseView(generics.CreateAPIView):
     400 {"detail", "code"} (insufficient_balance, own_course, invalid_coupon,
     course_unavailable).
     """
+    throttle_scope = "enroll"
     permission_classes = [IsAuthenticated]
     serializer_class = EnrollmentCreateSerializer
 

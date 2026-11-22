@@ -65,7 +65,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', async function() {
     await loadWallet();
     await loadTransactions();

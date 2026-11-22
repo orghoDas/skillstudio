@@ -16,7 +16,6 @@ Two explicit modes, so neither can be used to reach the other:
   password; refresh needs a refresh token the client already holds.
 """
 
-from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken, TokenError
@@ -24,7 +23,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .authentication import _EnforcedCsrfCheck
-from .cookies import set_jwt_cookies
+from .cookies import LEGACY_REFRESH_COOKIE, clear_legacy_refresh_cookie, get_refresh_cookie, set_jwt_cookies
 
 
 def _truthy(value):
@@ -54,6 +53,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_scope = "login"
 
     def post(self, request, *args, **kwargs):
         token_mode = _truthy(request.data.get("token_in_body", False))
@@ -67,6 +67,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             return response  # token mode: tokens in body, no cookies
 
         set_jwt_cookies(response, response.data.get("access"), response.data.get("refresh"))
+        if LEGACY_REFRESH_COOKIE in request.COOKIES:
+            clear_legacy_refresh_cookie(response)
         response.data = {"detail": "Logged in."}
         return response
 
@@ -75,10 +77,12 @@ class CookieTokenRefreshView(TokenRefreshView):
     """Refresh from the cookie (browser, CSRF-checked, tokens only in cookies)
     or from a refresh token in the body (API client, tokens in the body)."""
 
+    throttle_scope = "refresh"
+
     def post(self, request, *args, **kwargs):
         body_refresh = request.data.get("refresh")
         token_mode = bool(body_refresh)
-        refresh = body_refresh or request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
+        refresh = body_refresh or get_refresh_cookie(request)
         if not refresh:
             return Response(
                 {"detail": "No refresh token provided."},
@@ -101,4 +105,6 @@ class CookieTokenRefreshView(TokenRefreshView):
 
         response = Response({"detail": "Token refreshed."}, status=status.HTTP_200_OK)
         set_jwt_cookies(response, tokens.get("access"), tokens.get("refresh"))
+        if LEGACY_REFRESH_COOKIE in request.COOKIES:
+            clear_legacy_refresh_cookie(response)
         return response

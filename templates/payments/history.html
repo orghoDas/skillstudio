@@ -17,7 +17,7 @@
             <p class="text-gray-400">View all your transactions and download invoices</p>
         </div>
         <div class="flex items-center space-x-3">
-            <select id="filter-status" onchange="loadTransactions()" 
+            <select id="filter-status" data-change="loadTransactions"
                 class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                 <option value="">All Transactions</option>
                 <option value="completed">Completed</option>
@@ -110,7 +110,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let paymentPage = 1;
 let paymentRequest = 0;
 
@@ -238,5 +238,11 @@ function renderTransaction(tx) {
         </tr>
     `;
 }
+
+bindActions({
+    change: {
+        loadTransactions: () => loadTransactions(),
+    },
+});
 </script>
 {% endblock %}

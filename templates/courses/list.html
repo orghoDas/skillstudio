@@ -82,7 +82,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentPage = 1;
 let currentFilters = {};
 // Filters carried in the page URL, e.g. /courses/?instructor=5 (featured
@@ -155,10 +155,6 @@ async function loadCourses(page = 1) {
         const response = await fetch(`/api/courses/?${params.toString()}`);
         const data = await response.json();
         
-        console.log('API Response:', data);
-        console.log('Has results?', data.results);
-        console.log('Results length:', data.results ? data.results.length : 'no results array');
-        
         // Handle both paginated {results: [...]} and unpaginated [...] responses
         const courses = data.results;
         
@@ -228,20 +224,26 @@ function renderPagination(data, currentPage) {
     
     // Previous button
     if (currentPage > 1) {
-        html += `<button onclick="loadCourses(${escapeHtml(currentPage - 1)})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Previous</button>`;
+        html += `<button data-click="loadCourses" data-value-one="${escapeHtml(currentPage - 1)}" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Previous</button>`;
     }
     
     // Page numbers
     for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
-        html += `<button onclick="loadCourses(${escapeHtml(i)})" class="px-4 py-2 rounded-lg transition-colors ${escapeHtml(i === currentPage ? 'bg-blue-600 text-white' : 'bg-dark-surface border border-dark-border hover:border-blue-500')}">${escapeHtml(i)}</button>`;
+        html += `<button data-click="loadCourses" data-value-one="${escapeHtml(i)}" class="px-4 py-2 rounded-lg transition-colors ${escapeHtml(i === currentPage ? 'bg-blue-600 text-white' : 'bg-dark-surface border border-dark-border hover:border-blue-500')}">${escapeHtml(i)}</button>`;
     }
     
     // Next button
     if (currentPage < totalPages) {
-        html += `<button onclick="loadCourses(${escapeHtml(currentPage + 1)})" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Next</button>`;
+        html += `<button data-click="loadCourses" data-value-one="${escapeHtml(currentPage + 1)}" class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg hover:border-blue-500 transition-colors">Next</button>`;
     }
     
     container.innerHTML = html;
 }
+
+bindActions({
+    click: {
+        loadCourses: (event, control) => loadCourses(Number(control.dataset.valueOne)),
+    },
+});
 </script>
 {% endblock %}

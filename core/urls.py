@@ -40,7 +40,9 @@ urlpatterns = [
     path('wallet/', views.wallet_page, name='wallet_page'),
     
     # Exams
-    path('exams/', views.exams_list, name='exams_list'),    path("exams/create/", views.exam_create, name="exam_create"),    path('exams/take/<int:exam_id>/', views.exam_take, name='exam_take'),
+    path('exams/', views.exams_list, name='exams_list'),
+    path("exams/create/", views.exam_create, name="exam_create"),
+    path('exams/take/<int:exam_id>/', views.exam_take, name='exam_take'),
     path('exams/results/<int:exam_id>/', views.exam_results, name='exam_results'),
     
     # Search & Discovery

@@ -52,7 +52,7 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 25 |
 | P3 | 7 |
 | **Total** | **67** |
-| *Resolved so far* | *58 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04; all 2026-11-21); 9 open (4 P0 and 5 P2), of which SEC-01, SEC-03, PAY-04, PAY-05 are partially done. All P1 and P3 items are resolved.* |
+| *Resolved so far* | *63 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, and OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 items are resolved.* |
 
 ### Fix these first (in order)
 
@@ -196,11 +196,11 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | [ACC-01](#acc-01) | P2 | Account-management inconsistencies — ✅ resolved 2026-11-21 |
 | [PERF-01](#perf-01) | P2 | N+1 queries and unpaginated list endpoints — ✅ resolved 2026-11-21 |
 | [API-04](#api-04) | P2 | No API contract: inconsistent error and pagination shapes — ✅ resolved 2026-11-21 |
-| [OPS-04](#ops-04) | P2 | No throttling, logging, health check or real background jobs — re-scoped (deploy items dropped) |
-| [SEC-08](#sec-08) | P2 | Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope |
-| [FE-02](#fe-02) | P2 | Role-based navbar never works; debug logs and stale routes |
-| [ASM-03](#asm-03) | P2 | Quiz editing ignores course lock; error points to a non-existent feature |
-| [INS-01](#ins-01) | P2 | Instructor dashboard swallows errors and returns fake zeros |
+| [OPS-04](#ops-04) | P2 | Local throttling, logging and CI ✅ resolved 2026-11-22 |
+| [SEC-08](#sec-08) | P2 | Frontend CSP, local Tailwind, event listeners and cookie scope ✅ resolved 2026-11-22 |
+| [FE-02](#fe-02) | P2 | Role-based navbar, page guards and stale frontend code ✅ resolved 2026-11-22 |
+| [ASM-03](#asm-03) | P2 | Quiz editing respects the course lock ✅ resolved 2026-11-22 |
+| [INS-01](#ins-01) | P2 | Instructor dashboard error handling and aggregate counts ✅ resolved 2026-11-22 |
 | [REPO-01](#repo-01) | P3 | ~~5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git~~ ✅ resolved 2026-11-21 |
 | [REPO-02](#repo-02) | P3 | ~~Dead code and stale comments~~ ✅ resolved 2026-11-21 |
 | [REPO-03](#repo-03) | P3 | ~~Migration churn in `accounts`~~ ✅ resolved 2026-11-21 (squashed 0001–0008) |
@@ -1475,7 +1475,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Have CI diff the schema on PRs.
 
 <a id="ops-04"></a>
-### OPS-04: No throttling, logging, health check or real background jobs — re-scoped by D-03
+### OPS-04: No throttling, logging, health check or real background jobs — re-scoped by D-03 — ✅ RESOLVED 2026-11-22
+
+> **Resolved 2026-11-22.** DRF scopes limit login (5/min), registration (10/hour), refresh (60/min), enrollment (30/min) and payment mutations (30/min). Requests use the direct client IP for anonymous limits and the authenticated user for enrollment and payment limits. Django and API errors use JSON logs on stdout. CI runs Django checks, migrations drift, the suite on PostgreSQL with Chromium, Tailwind bundle drift and a locked dependency audit. The existing secret scan still runs independently. Celery and Redis were already removed under DEP-01. Local SQLite remains the default. D-03 excludes deployment work. The seven dependency pins reported by the initial scan were updated, and the locked runtime requirements passed pip-audit.
 
 > *Re-scoped 2026-11-21 ([D-03](#d-03)):* the deploy-only items (Procfile/deploy manifest, `/healthz` and `/readyz`, `check --deploy` in CI) no longer apply. **Still useful locally:** auth throttling, a `LOGGING` config (and replacing the stray `print`), CI running the test suite plus `pip-audit`/`gitleaks` (secret scanning already exists), and the Celery decision.
 
@@ -1500,7 +1502,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 7. Commit a Procfile: `web: gunicorn skillstudio.wsgi`, `release: python manage.py migrate`.
 
 <a id="sec-08"></a>
-### SEC-08: Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope
+### SEC-08: Frontend hardening: CSP, CDN Tailwind, inline handlers, cookie scope — ✅ RESOLVED 2026-11-22
+
+> **Resolved 2026-11-22.** The frontend serves a checked-in Tailwind bundle built with the pinned CLI and local shared JavaScript. Django enforces a per-response CSP nonce for page scripts and blocks inline event attributes and eval. The learning page allows the player scripts it needs. Controls use explicit event listeners, and the lesson editor rebuilds stored rich text from permitted formatting elements. The refresh cookie is scoped to the accounts API and legacy sessions rotate into that scope. The root access cookie supplies identity to page views. Existing inline styles and Google Fonts remain allowed.
 
 **Evidence:**
 - No Content-Security-Policy.
@@ -1516,7 +1520,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Over time, prefer `textContent` / DOM building over `innerHTML`.
 
 <a id="fe-02"></a>
-### FE-02: Role-based navbar never works; debug logs and stale routes
+### FE-02: Role-based navbar never works; debug logs and stale routes — ✅ RESOLVED 2026-11-22
+
+> **Resolved 2026-11-22.** Navbar and sidebar roles come from the authenticated account on the server. Instructor pages and exam creation enforce the instructor or platform-admin role. Expired access is renewed through the accounts API before retrying a protected page. Removed debug traces and the orphan profile template. The recommendations route was already removed by REPO-02. Native dialogs were replaced with the shared notification and confirmation component.
 
 **Evidence:**
 - [components/navbar.html:74](templates/components/navbar.html#L74) reads `localStorage.user_role`, which nothing ever sets (login stores `user`). Role-specific nav items never render correctly.
@@ -1534,7 +1540,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 - Add a `role_required` page decorator for instructor shells.
 
 <a id="asm-03"></a>
-### ASM-03: Quiz editing ignores course lock; error points to a non-existent feature
+### ASM-03: Quiz editing ignores course lock; error points to a non-existent feature — ✅ RESOLVED 2026-11-22
+
+> **Resolved 2026-11-22.** Quiz management uses the same course edit lock as lesson and module edits for owners and platform admins. Published and archived courses require a draft revision. A successful edit returns a course under review to draft, while a rejected edit leaves its status intact. Questions with attempt history keep their 409 protection, and the response now points to adding a new quiz lesson.
 
 **Evidence:**
 - `ManageQuizView` lets the owner create a quiz or change `passing_percentage` / `time_limit` on a **published** course, unlike every other content endpoint.
@@ -1544,7 +1552,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 **Fix approach:** Apply the same editability rule as [CRS-03](#crs-03) through the shared mixin from [CRS-02](#crs-02), and reword the 409 to describe what the instructor can actually do.
 
 <a id="ins-01"></a>
-### INS-01: Instructor dashboard swallows errors and returns fake zeros
+### INS-01: Instructor dashboard swallows errors and returns fake zeros — ✅ RESOLVED 2026-11-22
+
+> **Resolved 2026-11-22.** Unexpected failures use the standard logged 500 API response. The dashboard reuses wallet and payout calculations from PAY-07, counts the courses it already fetches, and computes distinct learners and active enrollments in one aggregate.
 
 **Evidence:** [instructors/views.py:37-55](instructors/views.py#L37) catches every exception, `print`s a traceback, and returns `200` with zero revenue and empty lists. Real failures look like "no data".
 
@@ -1746,8 +1756,8 @@ Move aspirational features to a "Roadmap" section.
 | **0: Stop the bleeding** | Close money and security holes; nothing new built | SEC-01 🟡, ~~PAY-01~~ ✅, ~~SEC-02~~ ✅, SEC-03 🟡, ~~OPS-05~~ ✅, ~~FE-01~~ ✅, ~~SEC-04~~ ✅, ~~SEC-05~~ ✅, ~~BUG-01~~ ✅, ~~BUG-02~~ ✅, ~~OPS-03~~ ✅; ~~put `/api/payments/*` behind a flag~~ (superseded by D-01: the card route is deleted and the webhook rejects all) | 1–2 days |
 | **1: Make learning work** | A student can enroll → learn → complete → get a certificate, and keep access | ~~LRN-01~~ ✅, ~~LRN-02~~ ✅, ~~LRN-03~~ ✅, ~~ASM-01~~ ✅, ~~ASM-02~~ ✅, ~~EXM-01~~ ✅, ~~EXM-03~~ ✅, ~~API-02~~ ✅, ~~API-03~~ ✅, ~~CRS-01~~ ✅, ~~ENR-03~~ ✅, ~~TEST-02~~ ✅ | 3–5 days |
 | **2: One coherent money domain** | Single pricing, fulfilment, ledger, payout and refund path | ~~PAY-02~~ ✅ → ~~PAY-03~~ ✅ → PAY-05 🟡 → PAY-04 🟡 (Stripe top-up + verified webhook) → ~~PAY-07~~ ✅ → ~~PAY-06~~ ✅ → ~~PAY-08~~ ✅ → ~~PAY-09~~ ✅, ~~SEC-07~~ ✅, ~~SEC-09~~ ✅, ~~ADM-01~~ ✅, ~~TEST-01~~ ✅ | 1–2 weeks |
-| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, FE-02, ~~ERR-01~~ ✅ | 3–5 days |
-| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, OPS-04 (local items), ~~SEC-06~~ ✅, SEC-08, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ASM-03, INS-01 | 1 week |
+| **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ENR-01, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
+| **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
 
 ### Definition of done for release

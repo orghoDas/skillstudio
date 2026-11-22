@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 /*
  * Learn page.
  *  - Sidebar: GET /api/courses/<id>/curriculum/ (is_completed / is_locked per lesson,
@@ -155,13 +155,13 @@ function renderLearningInterface() {
 
                 <div id="lesson-navigation" class="hidden bg-dark-surface border-t border-dark-border p-6">
                     <div class="flex items-center justify-between max-w-4xl mx-auto">
-                        <button id="prev-lesson" onclick="navigateLesson('prev')" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button id="prev-lesson" data-click="navigateLesson" data-value-one="prev" class="px-6 py-3 bg-dark-hover hover:bg-dark-border border border-dark-border text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             ← Previous Lesson
                         </button>
-                        <button id="mark-complete" onclick="markLessonComplete()" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:cursor-not-allowed">
+                        <button id="mark-complete" data-click="markLessonComplete" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:cursor-not-allowed">
                             Mark as Complete
                         </button>
-                        <button id="next-lesson" onclick="navigateLesson('next')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button id="next-lesson" data-click="navigateLesson" data-value-one="next" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             Next Lesson →
                         </button>
                     </div>
@@ -206,7 +206,7 @@ function renderSection(section, sectionIndex) {
     const lessons = section.lessons || [];
     return `
         <div class="mb-4">
-            <button onclick="toggleSection(${Number(sectionIndex)})" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
+            <button data-click="toggleSection" data-value-one="${Number(sectionIndex)}" class="w-full text-left p-3 bg-dark-hover rounded-lg hover:bg-dark-border transition-colors flex items-center justify-between">
                 <span class="font-semibold">Section ${Number(sectionIndex) + 1}: ${escapeHtml(section.title)}</span>
                 <svg class="section-chevron w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -238,7 +238,7 @@ function renderLesson(lesson) {
         icon = `<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${path}"/></svg>`;
     }
     return `
-        <button data-lesson-id="${id}" onclick="loadLesson(${id})" ${lesson.is_locked ? 'disabled title="Complete the previous lessons to unlock"' : ''}
+        <button data-lesson-id="${id}" data-click="loadLesson" data-value-one="${id}" ${lesson.is_locked ? 'disabled title="Complete the previous lessons to unlock"' : ''}
                 class="lesson-item w-full text-left p-3 rounded-lg transition-colors flex items-center space-x-3 hover:bg-dark-hover disabled:opacity-50 disabled:cursor-not-allowed">
             <div class="w-8 h-8 flex-shrink-0 ${lesson.is_completed ? 'bg-green-900/50' : 'bg-dark-bg'} rounded-lg flex items-center justify-center">${icon}</div>
             <div class="flex-1 min-w-0">
@@ -640,11 +640,16 @@ async function mountYouTube(host, videoId, onPlaying, tracker) {
 }
 
 async function mountVimeo(host, videoId, onPlaying, tracker) {
-    host.innerHTML = '<div id="vimeo-player" class="w-full h-full"></div>';
+    const frame = document.createElement('iframe');
+    frame.src = `https://player.vimeo.com/video/${Number(videoId)}`;
+    frame.title = 'Lesson video';
+    frame.allowFullscreen = true;
+    frame.className = 'w-full h-full';
+    host.replaceChildren(frame);
     try {
         await loadScriptOnce('https://player.vimeo.com/api/player.js');
         if (tracker !== watchTracker) return;
-        const player = new window.Vimeo.Player('vimeo-player', { id: Number(videoId), responsive: true });
+        const player = new window.Vimeo.Player(frame);
         player.on('play', () => onPlaying(true));
         player.on('pause', () => onPlaying(false));
         player.on('ended', () => onPlaying(false));
@@ -666,6 +671,7 @@ function mountFile(host, url, onPlaying) {
 
 let quizData = null;
 let quizAttempt = null;
+let submittingQuiz = false;
 let quizAnswers = {};
 let quizTimerInterval = null;
 
@@ -715,7 +721,7 @@ function renderQuizStartScreen() {
             <div class="bg-green-900/30 border border-green-500 rounded-lg p-4 text-center">
                 <p class="text-green-400 font-semibold">✓ You passed this quiz</p>
                 ${currentLesson.is_completed ? '' : `
-                    <button onclick="markLessonComplete()" class="mt-3 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold">
+                    <button data-click="markLessonComplete" class="mt-3 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold">
                         Complete this lesson
                     </button>`}
             </div>`;
@@ -727,7 +733,7 @@ function renderQuizStartScreen() {
             </div>`;
     } else {
         action = `
-            <button onclick="startQuiz()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
+            <button data-click="startQuiz" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
                 ${status.has_open_attempt ? 'Resume Quiz' : (status.attempts_used ? 'Try Again' : 'Start Quiz')}
             </button>`;
     }
@@ -800,7 +806,7 @@ function renderQuizQuestions() {
                 ${quizData.questions.map((question, index) => renderQuestion(question, index)).join('')}
             </div>
             <div class="mt-8 bg-dark-surface rounded-lg p-6 border border-dark-border">
-                <button id="submit-quiz-btn" onclick="submitQuiz()" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
+                <button id="submit-quiz-btn" data-click="submitQuiz" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-lg font-semibold text-lg transition-colors">
                     Submit Quiz
                 </button>
             </div>
@@ -826,7 +832,7 @@ function renderQuestion(question, index) {
                 ${question.options.map(option => `
                     <label class="flex items-center p-4 bg-dark-bg hover:bg-dark-hover border border-dark-border rounded-lg cursor-pointer transition-colors">
                         <input type="radio" name="question_${qid}" value="${Number(option.id)}"
-                               onchange="selectAnswer(${qid}, ${Number(option.id)})"
+                               data-change="selectAnswer" data-value-one="${qid}" data-value-two="${Number(option.id)}"
                                class="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500" />
                         <span class="ml-3 text-gray-300">${escapeHtml(option.option_text)}</span>
                     </label>
@@ -881,17 +887,24 @@ function startQuizTimer() {
 }
 
 async function submitQuiz(force = false) {
+    if (submittingQuiz || !quizAttempt) return;
+    const attemptId = quizAttempt.id;
+    const answeredCount = Object.keys(quizAnswers).length;
+    const totalCount = quizData.questions.length;
+    if (!force && answeredCount < totalCount &&
+        !await showConfirm(`You have answered ${answeredCount} out of ${totalCount} questions. Submit anyway?`)) {
+        return;
+    }
+    // The active attempt can change or auto-submit while the confirmation is open.
+    if (submittingQuiz || quizAttempt?.id !== attemptId || document.getElementById('submit-quiz-btn')?.disabled) {
+        return;
+    }
+    submittingQuiz = true;
     try {
-        const answeredCount = Object.keys(quizAnswers).length;
-        const totalCount = quizData.questions.length;
-        if (!force && answeredCount < totalCount &&
-            !confirm(`You have answered ${answeredCount} out of ${totalCount} questions. Submit anyway?`)) {
-            return;
-        }
         clearInterval(quizTimerInterval);
         const btn = document.getElementById('submit-quiz-btn');
         if (btn) btn.disabled = true;
-        const result = await apiRequest(`/assessments/quiz/attempt/${Number(quizAttempt.id)}/submit/`, {
+        const result = await apiRequest(`/assessments/quiz/attempt/${Number(attemptId)}/submit/`, {
             method: 'POST',
             body: JSON.stringify({ answers: quizAnswers }),
         });
@@ -907,6 +920,8 @@ async function submitQuiz(force = false) {
         showAlert(error.message || 'Failed to submit quiz', 'error');
         const btn = document.getElementById('submit-quiz-btn');
         if (btn) btn.disabled = false;
+    } finally {
+        submittingQuiz = false;
     }
 }
 
@@ -946,7 +961,7 @@ function renderQuizResults(result, status) {
                 ${passed ? '' : `
                     <p class="text-sm text-gray-400 mb-4">Attempts: ${escapeHtml(attemptsLabel(status))}</p>
                     ${canRetry ? `
-                        <button onclick="startQuiz()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">
+                        <button data-click="startQuiz" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">
                             Try Again
                         </button>` : `
                         <p class="text-sm text-red-400">No attempts left. Contact your instructor if you need another attempt.</p>`}
@@ -955,5 +970,19 @@ function renderQuizResults(result, status) {
         </div>
     `;
 }
+
+bindActions({
+    click: {
+        navigateLesson: (event, control) => navigateLesson(control.dataset.valueOne),
+        markLessonComplete: () => markLessonComplete(),
+        toggleSection: (event, control) => toggleSection(Number(control.dataset.valueOne)),
+        loadLesson: (event, control) => loadLesson(Number(control.dataset.valueOne)),
+        startQuiz: () => startQuiz(),
+        submitQuiz: () => submitQuiz(),
+    },
+    change: {
+        selectAnswer: (event, control) => selectAnswer(Number(control.dataset.valueOne), Number(control.dataset.valueTwo)),
+    },
+});
 </script>
 {% endblock %}

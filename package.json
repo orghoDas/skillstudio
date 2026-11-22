@@ -1,0 +1,10 @@
+{
+  "name": "skillstudio",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i frontend/tailwind.css -o static/css/app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.19"
+  }
+}

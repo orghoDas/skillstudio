@@ -119,6 +119,7 @@ class QuizCompletionRuleTests(QuizFixture, APITestCase):
         self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK)
 
     def test_instructor_sets_attempt_limit(self):
+        Course.objects.filter(pk=self.course.pk).update(status="draft")
         self.client.force_authenticate(self.instructor)
         url = f"/api/assessments/quiz/lesson/{self.lesson.id}/manage/"
         self.assertEqual(self.client.post(url, {"max_attempts": 5}, format="json").status_code, 200)

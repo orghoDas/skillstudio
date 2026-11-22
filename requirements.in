@@ -1,16 +1,16 @@
 # Direct runtime dependencies (DEP-01). Edit this file, then regenerate the
 # hash-locked requirements.txt:
 #   pip-compile --generate-hashes --strip-extras requirements.in
-Django==6.0
-djangorestframework==3.16.1
+Django==6.0.10
+djangorestframework==3.18.3
 drf-spectacular==0.30.0
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.3.1
 dj-database-url==3.0.1
-python-dotenv==1.2.1
+python-dotenv==1.2.4
 whitenoise==6.6.0
 psycopg2-binary==2.9.11     # PostgreSQL driver (DATABASE_URL=postgres://...)
 reportlab[shaping]==4.4.10            # certificate PDFs
 qrcode==8.0                 # verification QR code on certificates
-Pillow==12.1.0              # image backend qrcode.make() renders with
+Pillow==13.0.0              # image backend qrcode.make() renders with
 cryptography==50.0.2        # authenticated encryption for payout destinations

@@ -101,14 +101,17 @@
             <a href="/exams/" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                 Back to Exams
             </a>
-            <button id="retake-btn" onclick="retakeExam()" class="hidden px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+            <button id="retake-btn" data-click="retakeExam" class="hidden px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                 Retake Exam
             </button>
         </div>
     </div>
 </div>
 
-<script>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
 let examId = null;
 let attemptId = null;
 let exam = null;
@@ -291,7 +294,7 @@ function displayAttemptHistory(attempts) {
                     <span class="px-3 py-1 ${escapeHtml(badgeStyle)} text-sm rounded-full">
                         ${escapeHtml(statusText)}
                     </span>
-                    ${!isCurrent ? `<button onclick="viewAttempt(${escapeHtml(attempt.id)})" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
+                    ${!isCurrent ? `<button data-click="viewAttempt" data-value-one="${escapeHtml(attempt.id)}" class="text-blue-500 hover:underline text-sm">View</button>` : ''}
                 </div>
             </div>
         `;
@@ -329,7 +332,7 @@ function viewAttempt(id, page = historyPage) {
 }
 
 async function retakeExam() {
-    if (!confirm('Are you sure you want to retake this exam?')) {
+    if (!await showConfirm('Are you sure you want to retake this exam?')) {
         return;
     }
     
@@ -337,7 +340,7 @@ async function retakeExam() {
         const attempt = await apiRequest(`/exams/${examId}/start/`, { method: 'POST' });
         window.location.href = `/exams/take/${examId}/?attempt=${attempt.id}`;
     } catch (error) {
-        alert(error.message || 'Failed to start exam');
+        showAlert(error.message || 'Failed to start exam', 'error');
     }
 }
 
@@ -347,12 +350,19 @@ document.addEventListener('DOMContentLoaded', function() {
     getUrlParams();
     
     if (!examId) {
-        alert('Invalid exam ID');
+        showAlert('Invalid exam ID', 'error');
         window.location.href = '/exams/';
         return;
     }
     
     loadResults();
+});
+
+bindActions({
+    click: {
+        retakeExam: () => retakeExam(),
+        viewAttempt: (event, control) => viewAttempt(Number(control.dataset.valueOne)),
+    },
 });
 </script>
 {% endblock %}

@@ -118,27 +118,12 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', async function() {
-    // Check authentication and role
-    const accessToken = localStorage.getItem('user');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/instructor/dashboard/';
-        return;
-    }
-    
-    if (user.role !== 'instructor' && user.role !== 'admin') {
-        window.location.href = '/dashboard/';
-        return;
-    }
-
     // Load instructor stats
     async function loadStats() {
         try {
             const response = await apiRequest('/instructors/dashboard/');
-            console.log('Stats response:', response);
             if (response) {
                 document.getElementById('courses-count').textContent = response.total_courses || 0;
                 document.getElementById('students-count').textContent = response.total_students || 0;

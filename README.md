@@ -92,6 +92,8 @@ python manage.py runserver
 
 Open http://localhost:8000/. With no `DATABASE_URL`, the app uses `db.sqlite3` in the project folder.
 
+The Tailwind CSS bundle is checked in. After changing utility classes in templates or JavaScript, run `npm ci` and `npm run build:css` and include the regenerated `static/css/app.css`. The build uses the pinned Tailwind CLI and CI verifies that the bundle matches its sources.
+
 **Dependencies.** Direct dependencies live in `requirements.in` and `requirements-dev.in`. The `.txt` files are generated and hash-locked, so don't edit them by hand. To add or upgrade a package:
 
 ```bash
@@ -112,12 +114,15 @@ python manage.py test --exclude-tag browser   # skip the browser tests (faster)
 python manage.py test --tag browser           # only the browser tests
 ```
 
-- Tests always run on a throwaway SQLite database. The test runner refuses to run against a remote database host.
+- Tests use a throwaway SQLite database by default. Set `TEST_DATABASE_URL` to use a local PostgreSQL server. The test runner refuses remote database hosts by default.
 - Each run gets a temporary `MEDIA_ROOT`, so certificate PDFs from tests never land in `media/`.
 - The browser smoke tests skip themselves when Playwright or Chromium isn't installed.
+- CI runs Django checks and the full suite on PostgreSQL with Chromium. The separate dependency audit checks the hash-locked runtime requirements with `pip-audit`.
 - `core.tests` also fails in two cases:
   - A model changed without a migration.
   - [docs/API_ROUTES.md](docs/API_ROUTES.md) is out of date. Fix it with `python manage.py api_routes --write`.
+
+Login allows five requests per minute per client IP. Registration and token refresh have their own limits. Enrollment and payment mutations are limited per authenticated user. A throttled request returns HTTP 429 with a `Retry-After` header. Rate counters are held in memory by the local server process and reset on restart.
 
 ## Migrations
 

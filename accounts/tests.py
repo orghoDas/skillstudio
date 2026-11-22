@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection, transaction
@@ -7,7 +8,7 @@ from django.utils import timezone
 from datetime import timedelta
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
-from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from .models import Profile, APIKey
 from .utils import is_platform_admin
 from instructors.models import InstructorProfile
@@ -253,7 +254,7 @@ class AuthenticationAPITest(APITestCase):
         self.assertIn('refresh', response.data)
         # Token mode creates no ambient (cookie) credential.
         self.assertNotIn('access_token', response.cookies)
-        self.assertNotIn('refresh_token', response.cookies)
+        self.assertNotIn(settings.JWT_AUTH_REFRESH_COOKIE, response.cookies)
 
 
 class ProfileAPITest(APITestCase):
@@ -622,9 +623,10 @@ class CookieJWTAuthTests(APITestCase):
         resp = self._login()
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn('access_token', resp.cookies)
-        self.assertIn('refresh_token', resp.cookies)
+        self.assertIn(settings.JWT_AUTH_REFRESH_COOKIE, resp.cookies)
         self.assertTrue(resp.cookies['access_token']['httponly'])
-        self.assertTrue(resp.cookies['refresh_token']['httponly'])
+        self.assertTrue(resp.cookies[settings.JWT_AUTH_REFRESH_COOKIE]['httponly'])
+        self.assertEqual(resp.cookies[settings.JWT_AUTH_REFRESH_COOKIE]['path'], '/api/accounts/')
 
     def test_cookie_authenticates_get_request(self):
         self._login()  # client now carries the httpOnly cookies
@@ -676,31 +678,46 @@ class CookieJWTAuthTests(APITestCase):
         )
         self.assertEqual(out.status_code, status.HTTP_205_RESET_CONTENT)
         self.assertEqual(out.cookies['access_token'].value, '')
-        self.assertEqual(out.cookies['refresh_token'].value, '')
+        self.assertEqual(out.cookies[settings.JWT_AUTH_REFRESH_COOKIE].value, '')
+        self.assertEqual(out.cookies[settings.JWT_AUTH_REFRESH_COOKIE]['path'], '/api/accounts/')
+
+    def test_legacy_refresh_cookie_rotates_into_accounts_scope(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.get('/')
+        client.cookies['refresh_token'] = str(RefreshToken.for_user(self.user))
+
+        response = client.post(
+            '/api/accounts/token/refresh/', {}, format='json',
+            HTTP_X_CSRFTOKEN=client.cookies['csrftoken'].value,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.cookies['refresh_token']['max-age'], 0)
+        self.assertEqual(response.cookies[settings.JWT_AUTH_REFRESH_COOKIE]['path'], '/api/accounts/')
 
     def test_anonymous_logout_always_expires_both_auth_cookies(self):
         strict = APIClient(enforce_csrf_checks=True)
         response = strict.post('/api/accounts/logout/', {}, format='json')
         self.assertEqual(response.status_code, 205)
-        for name in ('access_token', 'refresh_token'):
+        for name in ('access_token', settings.JWT_AUTH_REFRESH_COOKIE):
             self.assertEqual(response.cookies[name]['max-age'], 0)
 
     def test_expired_access_cookie_can_log_out_and_blacklist_refresh(self):
         strict, csrf = self._strict_login()
-        refresh = strict.cookies['refresh_token'].value
+        refresh = strict.cookies[settings.JWT_AUTH_REFRESH_COOKIE].value
         access = AccessToken(strict.cookies['access_token'].value)
         access.set_exp(from_time=timezone.now() - timedelta(hours=1))
         strict.cookies['access_token'] = str(access)
         response = strict.post('/api/accounts/logout/', {}, format='json')
         self.assertEqual(response.status_code, 403)
-        self.assertNotIn('refresh_token', response.cookies)
+        self.assertNotIn(settings.JWT_AUTH_REFRESH_COOKIE, response.cookies)
 
         response = strict.post(
             '/api/accounts/logout/', {'refresh': 'invalid'}, format='json', HTTP_X_CSRFTOKEN=csrf,
         )
         self.assertEqual(response.status_code, 205)
         self.assertEqual(response.cookies['access_token']['max-age'], 0)
-        self.assertEqual(response.cookies['refresh_token']['max-age'], 0)
+        self.assertEqual(response.cookies[settings.JWT_AUTH_REFRESH_COOKIE]['max-age'], 0)
         token = APIClient().post('/api/accounts/token/refresh/', {'refresh': refresh}, format='json')
         self.assertEqual(token.status_code, 401)
 

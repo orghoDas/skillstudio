@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -7,64 +8,11 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}SkillStudio - Learn, Teach, Grow{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Tailwind Config -->
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: {
-                            bg: '#0f1419',
-                            surface: '#1a1f2e',
-                            hover: '#252b3b',
-                            border: '#2d3748',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    
-    <!-- Custom Styles -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #1a1f2e;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #4b5563;
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
-        }
-        
-        /* Smooth transitions */
-        * {
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
     
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-dark-bg text-gray-100 min-h-screen">
+<body data-page-role="{{ page_role|default_if_none:'' }}" class="bg-dark-bg text-gray-100 min-h-screen">
     <!-- Navigation -->
     {% include 'components/navbar.html' %}
     
@@ -140,167 +88,8 @@
     </footer>
     {% endblock %}
     
-    <!-- JavaScript -->
-    <script>
-        // Global API helper
-        const API_BASE = '/api';
-        
-        // Get CSRF token
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-        
-        const csrftoken = getCookie('csrftoken');
-
-        // ---------------------------------------------------------------
-        // XSS-safety helpers for interpolating untrusted API data into markup.
-        // Use escapeHtml() for any user-authored value placed inside innerHTML
-        // (text OR a quoted attribute); use safeUrl() for any value used as an
-        // href/src. A plain HTML escape does NOT neutralise javascript: URLs,
-        // which is why href/src need safeUrl instead.
-        // ---------------------------------------------------------------
-        function escapeHtml(value) {
-            if (value === null || value === undefined) return '';
-            return String(value)
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#39;');
-        }
-
-        function safeUrl(value) {
-            if (value === null || value === undefined) return '#';
-            const url = String(value).trim();
-            // Same-origin relative/root-relative paths are safe.
-            if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
-                return escapeHtml(url);
-            }
-            try {
-                const parsed = new URL(url, window.location.origin);
-                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-                    return escapeHtml(url);
-                }
-            } catch (e) {
-                // Unparseable — fall through to the safe default.
-            }
-            return '#';
-        }
-
-        // API fetch helper.
-        // Auth travels as httpOnly cookies (sent automatically on same-origin
-        // requests), so no token is read from JS. CSRF token is sent on mutations.
-        async function apiRequest(endpoint, options = {}) {
-            const isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
-            const headers = {
-                ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-                ...options.headers,
-            };
-
-            if (options.method && options.method !== 'GET') {
-                headers['X-CSRFToken'] = getCookie('csrftoken');
-            }
-
-            const fetchOpts = { ...options, headers, credentials: 'same-origin' };
-            let response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
-
-            if (response.status === 401) {
-                // Access cookie expired — try a cookie-based refresh, then retry.
-                const refreshResponse = await fetch(`${API_BASE}/accounts/token/refresh/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                    credentials: 'same-origin',
-                });
-
-                if (refreshResponse.ok) {
-                    response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
-                } else {
-                    // Refresh failed — session is gone; send them to login.
-                    logout();
-                    return null;
-                }
-            }
-
-            if (!response.ok) {
-                // Try to parse JSON error body for nicer client messages
-                let errorBody = null;
-                try {
-                    errorBody = await response.json();
-                } catch (e) {
-                    // ignore parse errors
-                }
-                const errMsg = (errorBody && errorBody.detail) || `HTTP error! status: ${response.status}`;
-                const err = new Error(errMsg);
-                err.status = response.status;
-                err.body = errorBody;
-                throw err;
-            }
-
-            return parseJsonBody(response);
-        }
-
-        // 204 No Content (e.g. a successful DELETE) or an empty body has no JSON
-        // to parse; response.json() would throw and make the call look failed.
-        async function parseJsonBody(response) {
-            if (response.status === 204) return null;
-            const text = await response.text();
-            return text ? JSON.parse(text) : null;
-        }
-        
-        // Logout helper: clears the httpOnly auth cookies server-side, drops the
-        // cached (non-sensitive) user display info, and returns to login.
-        async function logout() {
-            try {
-                await fetch(`${API_BASE}/accounts/logout/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                    credentials: 'same-origin',
-                });
-            } catch (e) {
-                // Even if the call fails, clear local state and redirect.
-            }
-            localStorage.removeItem('user');
-            localStorage.removeItem('user_role');
-            window.location.href = '/auth/login/';
-        }
-        
-        // Show toast notification
-        function showToast(message, type = 'info') {
-            const toast = document.createElement('div');
-            const colors = {
-                success: 'bg-green-500',
-                error: 'bg-red-500',
-                warning: 'bg-yellow-500',
-                info: 'bg-blue-500'
-            };
-            
-            toast.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-transform duration-300`;
-            toast.textContent = message;
-            toast.style.transform = 'translateX(400px)';
-            
-            document.body.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.transform = 'translateX(0)';
-            }, 10);
-            
-            setTimeout(() => {
-                toast.style.transform = 'translateX(400px)';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-    </script>
+    <script src="{% static 'js/app.js' %}"></script>
+    <script src="{% static 'js/alerts.js' %}"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

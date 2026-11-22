@@ -117,7 +117,7 @@
         <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
             <div class="flex items-center justify-between mb-6">
                 <h2 class="text-xl font-semibold">Questions</h2>
-                <button type="button" onclick="showQuestionBank()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <button type="button" data-click="showQuestionBank" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     Add Questions
                 </button>
             </div>
@@ -136,7 +136,7 @@
             <a href="/exams/" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                 Cancel
             </a>
-            <button type="button" onclick="saveAsDraft()" class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors">
+            <button type="button" data-click="saveAsDraft" class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors">
                 Save as Draft
             </button>
             <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
@@ -152,8 +152,8 @@
         <div class="p-6 border-b border-dark-border flex items-center justify-between">
             <h3 class="text-2xl font-bold">Question Bank</h3>
             <div class="flex items-center space-x-3">
-                <button id="show-create-question-btn" onclick="toggleCreateQuestionForm()" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm">Create Question</button>
-                <button onclick="closeQuestionBank()" class="text-gray-400 hover:text-white">
+                <button id="show-create-question-btn" data-click="toggleCreateQuestionForm" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm">Create Question</button>
+                <button data-click="closeQuestionBank" class="text-gray-400 hover:text-white">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -200,7 +200,7 @@
                             </div>
                         </div>
                         <div class="mt-2">
-                            <button type="button" onclick="addMcqOption()" class="px-3 py-1 bg-gray-700 text-white rounded text-sm">Add option</button>
+                            <button type="button" data-click="addMcqOption" class="px-3 py-1 bg-gray-700 text-white rounded text-sm">Add option</button>
                         </div>
                     </div>
                     <div id="tf-answer-container" class="hidden md:col-span-2">
@@ -211,8 +211,8 @@
                         </select>
                     </div>
                     <div class="md:col-span-2 flex items-center space-x-3">
-                        <button id="submit-create-question" type="button" onclick="submitCreateQuestion()" class="px-4 py-2 bg-blue-600 text-white rounded">Create</button>
-                        <button type="button" onclick="toggleCreateQuestionForm(true)" class="px-4 py-2 bg-gray-700 text-white rounded">Cancel</button>
+                        <button id="submit-create-question" type="button" data-click="submitCreateQuestion" class="px-4 py-2 bg-blue-600 text-white rounded">Create</button>
+                        <button type="button" data-click="toggleCreateQuestionForm" data-value-one="true" class="px-4 py-2 bg-gray-700 text-white rounded">Cancel</button>
                         <div id="create-question-status" class="text-sm text-gray-400"></div>
                     </div>
                 </div>
@@ -226,17 +226,20 @@
         </div>
         
         <div class="p-6 border-t border-dark-border flex items-center justify-end space-x-4">
-            <button onclick="closeQuestionBank()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+            <button data-click="closeQuestionBank" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                 Close
             </button>
-            <button onclick="addSelectedQuestions()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+            <button data-click="addSelectedQuestions" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                 Add Selected (<span id="selected-count">0</span>)
             </button>
         </div>
     </div>
 </div>
 
-<script>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
 let selectedQuestions = [];
 let savedDraftId = null;
 let savingExam = false;
@@ -299,7 +302,7 @@ async function loadCourses() {
             select.parentNode.appendChild(retry);
         }
         // Also show a toast/alert
-        try { showToast(msg, 'error'); } catch(e) { alert(msg); }
+        showAlert(msg, 'error');
     }
 }
 
@@ -307,7 +310,7 @@ async function showQuestionBank() {
     const courseId = document.getElementById('course-select').value;
 
     if (!courseId) {
-        showToast('Please select a course first', 'warning');
+        showAlert('Please select a course first', 'warning');
         return;
     }
 
@@ -426,7 +429,7 @@ async function submitCreateQuestion() {
     const statusEl = document.getElementById('create-question-status');
     const courseId = document.getElementById('course-select').value;
     if (!courseId) {
-        showToast('Select a course before creating a question', 'warning');
+        showAlert('Select a course before creating a question', 'warning');
         return;
     }
 
@@ -436,7 +439,7 @@ async function submitCreateQuestion() {
     const difficulty = document.getElementById('new-question-difficulty').value;
 
     if (!text) {
-        showToast('Question text cannot be empty', 'warning');
+        showAlert('Question text cannot be empty', 'warning');
         return;
     }
 
@@ -452,7 +455,7 @@ async function submitCreateQuestion() {
         const optionElems = Array.from(document.querySelectorAll('.mcq-option-text'));
         const options = optionElems.map(el => el.value.trim()).filter(v => v);
         if (options.length < 2) {
-            showToast('MCQ must have at least 2 options', 'warning');
+            showAlert('MCQ must have at least 2 options', 'warning');
             statusEl.textContent = '';
             return;
         }
@@ -470,7 +473,6 @@ async function submitCreateQuestion() {
     statusEl.textContent = 'Creating...';
 
     try {
-        console.debug('Creating question payload', payload);
         const created = await apiRequest('/exams/questions/', {
             method: 'POST',
             body: JSON.stringify(payload)
@@ -495,7 +497,7 @@ async function submitCreateQuestion() {
         label.appendChild(input); label.appendChild(div);
         container.prepend(label);
 
-        showToast('Question created', 'success');
+        showAlert('Question created', 'success');
         toggleCreateQuestionForm(true);
         statusEl.textContent = '';
     } catch (err) {
@@ -503,9 +505,7 @@ async function submitCreateQuestion() {
         statusEl.textContent = 'Failed to create';
         // Show detailed server error if available
         const serverMsg = (err && err.body && err.body.detail) || err.message || 'Failed to create question';
-        showToast(serverMsg, 'error');
-        // If server returned validation errors, log them for debugging
-        if (err && err.body) console.debug('Server error body:', err.body);
+        showAlert(serverMsg, 'error');
     }
 }
 
@@ -565,7 +565,7 @@ function renderSelectedQuestions() {
                     </div>
                 </div>
             </div>
-            <button onclick="removeQuestion(${escapeHtml(q.id)})" class="text-red-500 hover:text-red-400">
+            <button data-click="removeQuestion" data-value-one="${escapeHtml(q.id)}" class="text-red-500 hover:text-red-400">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
@@ -606,17 +606,17 @@ async function submitForm(status = 'published') {
     const showAnswers = document.getElementById('show-answers').checked;
     
     if (!courseId || !title || !startDatetimeLocal || !endDatetimeLocal) {
-        alert('Please fill in all required fields');
+        showAlert('Please fill in all required fields', 'error');
         return;
     }
     
     if (selectedQuestions.length === 0) {
-        alert('Please add at least one question');
+        showAlert('Please add at least one question', 'error');
         return;
     }
     
     if (!Number.isFinite(passingMarks) || passingMarks <= 0 || passingMarks > totalMarks) {
-        alert('Passing marks must be greater than zero and at most the question total');
+        showAlert('Passing marks must be greater than zero and at most the question total', 'error');
         return;
     }
     
@@ -656,12 +656,11 @@ async function submitForm(status = 'published') {
             await apiRequest(`/exams/${savedDraftId}/publish/`, {method: 'POST'});
         }
         
-        alert(`Exam ${status === 'draft' ? 'saved as draft' : 'published'} successfully!`);
         window.location.href = '/exams/';
         
     } catch (error) {
         console.error('Error creating exam:', error);
-        alert(error.message || 'Failed to create exam');
+        showAlert(error.message || 'Failed to create exam', 'error');
     } finally {
         savingExam = false;
     }
@@ -695,6 +694,19 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('end-datetime').value = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
     
     loadCourses();
+});
+
+bindActions({
+    click: {
+        showQuestionBank: () => showQuestionBank(),
+        saveAsDraft: () => saveAsDraft(),
+        toggleCreateQuestionForm: (event, control) => toggleCreateQuestionForm(control.dataset.valueOne === 'true'),
+        closeQuestionBank: () => closeQuestionBank(),
+        addMcqOption: () => addMcqOption(),
+        submitCreateQuestion: () => submitCreateQuestion(),
+        addSelectedQuestions: () => addSelectedQuestions(),
+        removeQuestion: (event, control) => removeQuestion(Number(control.dataset.valueOne)),
+    },
 });
 </script>
 {% endblock %}

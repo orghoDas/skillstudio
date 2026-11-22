@@ -104,19 +104,12 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let courseSlug;
 let courseData;
 let categories = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication and role
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (!['instructor', 'admin'].includes(user.role)) {
-        window.location.href = '/';
-        return;
-    }
-
     // Get course slug from URL
     const pathParts = window.location.pathname.split('/');
     courseSlug = pathParts[3];
@@ -245,14 +238,14 @@ async function saveChanges() {
             body: JSON.stringify(updatedData)
         });
         
-        showToast(courseData.status === 'under_review' ? 'Changes saved. The course is back in draft.' : 'Course details saved.', 'success');
+        showAlert(courseData.status === 'under_review' ? 'Changes saved. The course is back in draft.' : 'Course details saved.', 'success');
         setTimeout(() => {
             window.location.href = `/instructor/courses/${courseSlug}/content/`;
         }, 1500);
     } catch (error) {
         console.error('Error updating course:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
-        showToast(error.body?.fields?.price?.[0] || error.message || 'Failed to update course', 'error');
+        showAlert(error.body?.fields?.price?.[0] || error.message || 'Failed to update course', 'error');
     }
 }
 </script>

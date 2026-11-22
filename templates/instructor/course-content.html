@@ -21,7 +21,7 @@
     <div class="bg-dark-surface border border-dark-border rounded-lg max-w-lg w-full">
         <div class="p-6 border-b border-dark-border flex items-center justify-between">
             <h2 class="text-xl font-bold">Add Section</h2>
-            <button onclick="closeModal('section-modal')" class="text-gray-400 hover:text-white">
+            <button data-click="closeModal" data-value-one="section-modal" class="text-gray-400 hover:text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -42,7 +42,7 @@
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
                     Add Section
                 </button>
-                <button type="button" onclick="closeModal('section-modal')" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                <button type="button" data-click="closeModal" data-value-one="section-modal" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
                     Cancel
                 </button>
             </div>
@@ -55,7 +55,7 @@
     <div class="bg-dark-surface border border-dark-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div class="p-6 border-b border-dark-border flex items-center justify-between">
             <h2 class="text-xl font-bold">Add Lesson</h2>
-            <button onclick="closeModal('lesson-modal')" class="text-gray-400 hover:text-white">
+            <button data-click="closeModal" data-value-one="lesson-modal" class="text-gray-400 hover:text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -97,7 +97,7 @@
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
                     Add Lesson
                 </button>
-                <button type="button" onclick="closeModal('lesson-modal')" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
+                <button type="button" data-click="closeModal" data-value-one="lesson-modal" class="px-6 bg-dark-hover hover:bg-dark-border border border-dark-border text-white py-3 rounded-lg font-semibold transition-colors">
                     Cancel
                 </button>
             </div>
@@ -107,7 +107,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let courseSlug;
 let courseData;
 let sections = [];
@@ -181,7 +181,7 @@ function renderContent() {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
                     <p class="text-gray-400 text-lg mb-4">No sections yet</p>
-                    ${canEditCourseContent() ? `<button onclick="openModal('section-modal')" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    ${canEditCourseContent() ? `<button data-click="openModal" data-value-one="section-modal" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                         Add Your First Section
                     </button>` : ''}
                 </div>
@@ -196,27 +196,26 @@ function canEditCourseContent() {
 
 function renderCourseActions() {
     const style = 'px-4 py-2 bg-dark-hover hover:bg-dark-border text-white rounded-lg';
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const controls = [];
     if (canEditCourseContent()) {
         controls.push(
             `<a class="${style}" href="/instructor/courses/${escapeHtml(courseSlug)}/edit/">Edit details</a>`,
-            `<button class="${style}" onclick="openModal('section-modal')">Add Section</button>`
+            `<button class="${style}" data-click="openModal" data-value-one="section-modal">Add Section</button>`
         );
     }
     if (courseData.status === 'draft') {
-        controls.push(`<button class="${style}" onclick="changeCourseStatus('submit')">Submit for review</button>`);
+        controls.push(`<button class="${style}" data-click="changeCourseStatus" data-value-one="submit">Submit for review</button>`);
     }
-    if (courseData.status === 'under_review' && user.role === 'admin') {
+    if (courseData.status === 'under_review' && document.body.dataset.pageRole === 'admin') {
         controls.push(
-            `<button class="${style}" onclick="changeCourseStatus('publish')">Publish course</button>`,
-            `<button class="${style}" onclick="changeCourseStatus('reject')">Return to draft</button>`
+            `<button class="${style}" data-click="changeCourseStatus" data-value-one="publish">Publish course</button>`,
+            `<button class="${style}" data-click="changeCourseStatus" data-value-one="reject">Return to draft</button>`
         );
     }
     if (courseData.status === 'published') {
         controls.push(
-            `<button class="${style}" onclick="changeCourseStatus('new-version')">Open draft revision</button>`,
-            `<button class="${style}" onclick="changeCourseStatus('archive')">Archive course</button>`
+            `<button class="${style}" data-click="changeCourseStatus" data-value-one="new-version">Open draft revision</button>`,
+            `<button class="${style}" data-click="changeCourseStatus" data-value-one="archive">Archive course</button>`
         );
     }
     return controls.join('');
@@ -239,17 +238,17 @@ async function changeCourseStatus(action) {
             if (!reason?.trim()) return;
             response = await apiRequest(`/courses/${id}/reject/`, {method: 'POST', body: JSON.stringify({reason})});
         } else if (action === 'archive') {
-            if (!confirm('Remove this course from the catalog? Enrolled students can still access it.')) return;
+            if (!await showConfirm('Remove this course from the catalog? Enrolled students can still access it.')) return;
             response = await apiRequest(`/courses/${id}/archive/`, {method: 'POST'});
         } else if (action === 'new-version') {
             const draft = await apiRequest(`/courses/${id}/new-version/`, {method: 'POST'});
             window.location.href = `/instructor/courses/${encodeURIComponent(draft.slug)}/content/`;
             return;
         }
-        showToast(response.message, 'success');
+        showAlert(response.message, 'success');
         await loadCourseContent();
     } catch (error) {
-        showToast(error.message || 'Could not update the course.', 'error');
+        showAlert(error.message || 'Could not update the course.', 'error');
     } finally {
         courseActionPending = false;
     }
@@ -268,10 +267,10 @@ function renderSection(section, index) {
                     </div>
                     <div class="flex items-center space-x-2">
                         <span class="text-sm text-gray-400">${escapeHtml(lessons.length)} lessons</span>
-                        ${canEditCourseContent() ? `<button onclick="openAddLesson(${escapeHtml(section.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
+                        ${canEditCourseContent() ? `<button data-click="openAddLesson" data-value-one="${escapeHtml(section.id)}" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             + Add Lesson
                         </button>
-                        <button onclick="deleteSection(${escapeHtml(section.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                        <button data-click="deleteSection" data-value-one="${escapeHtml(section.id)}" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
@@ -321,7 +320,7 @@ function renderLesson(lesson, index) {
                 <a href="/instructor/lessons/${escapeHtml(lesson.id)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                     Edit Content
                 </a>
-                <button onclick="deleteLesson(${escapeHtml(lesson.id)})" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
+                <button data-click="deleteLesson" data-value-one="${escapeHtml(lesson.id)}" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors">
                     Delete
                 </button>
             </div>` : ''}
@@ -404,7 +403,7 @@ async function handleAddLesson(e) {
 }
 
 async function deleteSection(sectionId) {
-    if (!confirm('Are you sure you want to delete this section and all its lessons?')) return;
+    if (!await showConfirm('Are you sure you want to delete this section and all its lessons?')) return;
     
     try {
         await apiRequest(`/courses/sections/${sectionId}/`, { method: 'DELETE' });
@@ -417,7 +416,7 @@ async function deleteSection(sectionId) {
 }
 
 async function deleteLesson(lessonId) {
-    if (!confirm('Are you sure you want to delete this lesson?')) return;
+    if (!await showConfirm('Are you sure you want to delete this lesson?')) return;
     
     try {
         await apiRequest(`/courses/lessons/${lessonId}/`, { method: 'DELETE' });
@@ -428,5 +427,16 @@ async function deleteLesson(lessonId) {
         showAlert(error.message || 'Failed to delete lesson', 'error');
     }
 }
+
+bindActions({
+    click: {
+        closeModal: (event, control) => closeModal(control.dataset.valueOne),
+        openModal: (event, control) => openModal(control.dataset.valueOne),
+        changeCourseStatus: (event, control) => changeCourseStatus(control.dataset.valueOne),
+        openAddLesson: (event, control) => openAddLesson(Number(control.dataset.valueOne)),
+        deleteSection: (event, control) => deleteSection(Number(control.dataset.valueOne)),
+        deleteLesson: (event, control) => deleteLesson(Number(control.dataset.valueOne)),
+    },
+});
 </script>
 {% endblock %}

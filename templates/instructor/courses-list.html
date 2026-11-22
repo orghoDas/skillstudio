@@ -115,17 +115,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication and role
-    const accessToken = localStorage.getItem('user');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    
-    if (!accessToken || user.role !== 'instructor') {
-        window.location.href = '/auth/login/';
-        return;
-    }
-
     loadStats();
     loadCourses();
 

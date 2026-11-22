@@ -23,7 +23,7 @@
                 </svg>
                 Create Exam
             </a>
-            <select id="filter-status" onchange="loadExams()" 
+            <select id="filter-status" data-change="loadExams"
                 class="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                 <option value="all">All Exams</option>
                 <option value="upcoming">Upcoming</option>
@@ -56,7 +56,10 @@
     </div>
 </div>
 
-<script>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
 let currentFilter = 'all';
 let isInstructor = false;
 
@@ -76,8 +79,6 @@ async function loadExams() {
         
         const data = await apiRequest('/exams/');
         const exams = data.results;
-        
-        console.log('Loaded exams:', exams);
         
         loadingState.classList.add('hidden');
         
@@ -121,7 +122,7 @@ async function loadExams() {
                 </svg>
                 <p class="text-red-400 text-lg mb-2">Failed to load exams</p>
                 <p class="text-gray-400 text-sm mb-4">${escapeHtml(error.message || 'Please try again later')}</p>
-                <button onclick="loadExams()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <button data-click="loadExams" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     Retry
                 </button>
             </div>
@@ -197,12 +198,12 @@ function createExamCard(exam) {
             </div>
             <div class="flex space-x-2">
                 ${hasAttempts ? `
-                    <button onclick="viewResults(${escapeHtml(exam.id)})" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
+                    <button data-click="viewResults" data-value-one="${escapeHtml(exam.id)}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                         View Results
                     </button>
                 ` : ''}
                 ${isActive && canRetake ? `
-                    <button onclick="startExam(${escapeHtml(exam.id)})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                    <button data-click="startExam" data-value-one="${escapeHtml(exam.id)}" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                         ${escapeHtml(hasAttempts ? 'Retake Exam' : 'Start Exam')}
                     </button>
                 ` : ''}
@@ -214,7 +215,7 @@ function createExamCard(exam) {
 }
 
 async function startExam(examId) {
-    if (!confirm('Are you sure you want to start this exam? The timer will begin immediately.')) {
+    if (!await showConfirm('Are you sure you want to start this exam? The timer will begin immediately.')) {
         return;
     }
     
@@ -226,7 +227,7 @@ async function startExam(examId) {
         }
         window.location.href = `/exams/take/${examId}/?attempt=${attempt.id}`;
     } catch (error) {
-        alert(error.message || 'Failed to start exam');
+        showAlert(error.message || 'Failed to start exam', 'error');
     }
 }
 
@@ -258,6 +259,17 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     })
     .catch(error => console.error('Error checking user role:', error));
+});
+
+bindActions({
+    change: {
+        loadExams: () => loadExams(),
+    },
+    click: {
+        loadExams: () => loadExams(),
+        viewResults: (event, control) => viewResults(Number(control.dataset.valueOne)),
+        startExam: (event, control) => startExam(Number(control.dataset.valueOne)),
+    },
 });
 </script>
 {% endblock %}

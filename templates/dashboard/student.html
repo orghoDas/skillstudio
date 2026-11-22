@@ -9,22 +9,10 @@
 {% block main_classes %}lg:ml-64 p-6 lg:p-8{% endblock %}
 
 {% block content %}
-<script>
-// Check user role and redirect if not a student
-document.addEventListener('DOMContentLoaded', function() {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.role === 'instructor') {
-        window.location.href = '/instructor/dashboard/';
-    } else if (user.role === 'admin') {
-        window.location.href = '/dashboard/';
-    }
-});
-</script>
-
 <div class="space-y-6">
     <!-- Welcome Section -->
     <div>
-        <h1 class="text-3xl font-bold mb-2">Welcome back, <span id="user-name">Student</span>!</h1>
+        <h1 class="text-3xl font-bold mb-2">Welcome back, <span id="user-name">{{ page_username|default:"Student" }}</span>!</h1>
         <p class="text-gray-400">Continue your learning journey</p>
     </div>
 
@@ -105,13 +93,8 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', async function() {
-    // Check authentication
-
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    document.getElementById('user-name').textContent = user.email?.split('@')[0] || 'Student';
-
     async function loadDashboard() {
         try {
             const timezone = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');

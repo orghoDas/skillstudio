@@ -120,25 +120,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let isEditing = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // Check authentication
-    const accessToken = localStorage.getItem('user');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    
-    if (!accessToken) {
-        window.location.href = '/auth/login/?next=/profile/';
-        return;
-    }
-
-    // Verify user is instructor
-    if (user.role !== 'instructor' && user.role !== 'admin') {
-        window.location.href = '/profile/';
-        return;
-    }
-
     await loadProfile();
     
     // Edit toggle

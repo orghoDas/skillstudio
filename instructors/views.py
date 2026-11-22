@@ -35,24 +35,19 @@ class InstructorDashboardView(APIView):
     def get(self, request):
         instructor = request.user
 
-        courses = get_course_overview(instructor)
+        courses = list(get_course_overview(instructor))
         students = get_student_engagement(instructor)
         earnings, payouts = get_revenue_summary(instructor)
 
-        # Get total counts for stats
-        total_courses = Course.objects.filter(instructor=instructor).count()
-        total_students = Enrollment.objects.filter(course__instructor=instructor).values('user').distinct().count()
-        active_enrollments = Enrollment.objects.filter(course__instructor=instructor, status='active').count()
-        
-        # Safely get total revenue
-        total_earned = earnings.get("total_earned") or 0
-        total_revenue = float(total_earned) if total_earned else 0.0
+        enrollment_counts = Enrollment.objects.filter(course__instructor=instructor).aggregate(
+            total_students=Count('user', distinct=True),
+            active_enrollments=Count('pk', filter=Q(status='active')),
+        )
 
         return Response({
-            "total_courses": total_courses,
-            "total_students": total_students,
-            "active_enrollments": active_enrollments,
-            "total_revenue": total_revenue,
+            "total_courses": len(courses),
+            **enrollment_counts,
+            "total_revenue": float(earnings["total_earned"]),
             "courses": [
                 {
                     "id": c.id,
@@ -71,13 +66,7 @@ class InstructorDashboardView(APIView):
                 }
                 for e in students
             ],
-            "revenue": {
-                "total_earned": earnings.get("total_earned") or 0,
-                "platform_fee": earnings.get("platform_fee") or 0,
-                "available": earnings.get("available") or 0,
-                "pending_payouts": earnings.get("pending_payouts") or 0,
-                "paid_out": earnings.get("paid_out") or 0,
-            },
+            "revenue": earnings,
             "payouts": [
                 {
                     "id": p.id,

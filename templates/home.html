@@ -80,23 +80,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-    // Check if user is logged in and redirect to dashboard
-    document.addEventListener('DOMContentLoaded', function() {
-        const accessToken = localStorage.getItem('user');
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        
-        if (accessToken && user.role) {
-            // Redirect logged-in users to their respective dashboards
-            if (user.role === 'student') {
-                window.location.href = '/dashboard/';
-            } else if (user.role === 'instructor') {
-                window.location.href = '/instructor/dashboard/';
-            } else if (user.role === 'admin') {
-                window.location.href = '/dashboard/';
-            }
-        }
-    });
+<script nonce="{{ csp_nonce }}">
+    const role = document.body.dataset.pageRole;
+    if (role) window.location.replace(role === 'instructor' ? '/instructor/dashboard/' : '/dashboard/');
 
     // Load popular courses
     async function loadPopularCourses() {

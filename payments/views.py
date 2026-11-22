@@ -109,6 +109,7 @@ class PaymentDetailView(APIView):
 
 class PaymentCancelView(APIView):
     """Cancel one of the user's own pending payments (e.g. an abandoned top-up)."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
@@ -167,6 +168,7 @@ class RefundListView(ListAPIView):
 
 class RefundRequestView(APIView):
     """Request a refund of one of your course purchases (amount defaults to all refundable)."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -192,6 +194,7 @@ class RefundApproveView(APIView):
     Body: {"notes": str, "absorb_shortfall": bool} — absorb_shortfall lets the
     platform cover what the instructor's wallet can't.
     """
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request, refund_id):
@@ -207,6 +210,7 @@ class RefundApproveView(APIView):
 
 class RefundRejectView(APIView):
     """Reject a refund (admin only)"""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request, refund_id):
@@ -241,6 +245,7 @@ class PayoutListView(ListAPIView):
 
 class PayoutRequestView(APIView):
     """Request a payout from your wallet balance (amount defaults to all of it)."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsInstructor]
 
     def post(self, request):
@@ -272,6 +277,7 @@ class PayoutBalanceView(APIView):
 
 class PayoutCancelView(APIView):
     """Instructor cancels their own pending payout; the amount returns to the wallet."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsInstructor]
 
     def post(self, request, payout_id):
@@ -284,6 +290,7 @@ class PayoutCancelView(APIView):
 
 class PayoutApproveView(APIView):
     """Approve a payout (admin only): pending -> processing."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request, payout_id):
@@ -296,6 +303,7 @@ class PayoutApproveView(APIView):
 
 class PayoutCompleteView(APIView):
     """Mark a payout as sent (admin only): processing -> paid. Body: {"transaction_id"}."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request, payout_id):
@@ -310,6 +318,7 @@ class PayoutCompleteView(APIView):
 
 class PayoutRejectView(APIView):
     """Reject a payout (admin only); the reserved amount returns to the wallet."""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request, payout_id):
@@ -343,6 +352,7 @@ class CouponListView(ListAPIView):
 
 class CouponCreateView(APIView):
     """Create a coupon (admin only)"""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
     
     @transaction.atomic
@@ -378,6 +388,7 @@ class CouponValidateView(APIView):
     The price is always the server-side course price; the response is a
     quote only — the real charge happens in POST /api/enrollments/enroll/.
     """
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -412,6 +423,7 @@ class CouponValidateView(APIView):
 
 class CouponDeactivateView(APIView):
     """Deactivate a coupon (admin only)"""
+    throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsAdmin]
     
     @transaction.atomic

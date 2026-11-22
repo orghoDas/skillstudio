@@ -44,22 +44,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentFilter = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication
-
-    // Redirect instructors and admins to their dashboards
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.role === 'instructor') {
-        window.location.href = '/instructor/dashboard/';
-        return;
-    } else if (user.role === 'admin') {
-        window.location.href = '/dashboard/';
-        return;
-    }
-
     // Tab switching
     document.querySelectorAll('.enrollment-tab').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -128,7 +116,7 @@ async function loadEnrollments() {
         container.innerHTML = `
             <div class="text-center py-16 bg-dark-surface border border-dark-border rounded-lg">
                 <p class="text-red-400 text-lg mb-4">Failed to load enrollments</p>
-                <button onclick="loadEnrollments()" class="text-blue-400 hover:text-blue-300">
+                <button data-click="loadEnrollments" class="text-blue-400 hover:text-blue-300">
                     Try Again
                 </button>
             </div>
@@ -196,5 +184,11 @@ function renderEnrollmentCard(enrollment) {
         </div>
     `;
 }
+
+bindActions({
+    click: {
+        loadEnrollments: () => loadEnrollments(),
+    },
+});
 </script>
 {% endblock %}

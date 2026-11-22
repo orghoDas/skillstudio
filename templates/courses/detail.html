@@ -127,7 +127,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let courseData = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -193,8 +193,7 @@ function renderCurriculum(modules) {
 }
 
 async function checkEnrollmentStatus() {
-    const accessToken = localStorage.getItem('user');
-    if (!accessToken) {
+    if (!document.body.dataset.pageRole) {
         document.getElementById('enroll-btn').textContent = 'Login to Enroll';
         document.getElementById('enroll-btn').onclick = () => window.location.href = '/auth/login/?next=' + window.location.pathname;
         return;
@@ -284,12 +283,12 @@ function showInsufficientFundsModal(message) {
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6 max-w-lg w-full mx-4">
             <div class="flex justify-between items-start mb-4">
                 <h3 class="text-xl font-bold">Insufficient Balance</h3>
-                <button onclick="document.getElementById('insufficient-modal')?.remove()" class="text-gray-400 hover:text-white">✕</button>
+                <button data-click="closeInsufficientModal" class="text-gray-400 hover:text-white">✕</button>
             </div>
             <p class="text-sm text-gray-300 mb-4">${escapeHtml(message || 'You do not have enough balance to enroll in this course.')}</p>
             <div class="flex space-x-3">
-                <button onclick="document.getElementById('insufficient-modal')?.remove()" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Cancel</button>
-                <button onclick="window.location.href='/wallet/'" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Go to Wallet</button>
+                <button data-click="closeInsufficientModal" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Cancel</button>
+                <button data-click="goToWallet" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Go to Wallet</button>
             </div>
         </div>
     `;
@@ -304,5 +303,12 @@ function escapeHtml(unsafe) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+bindActions({
+    click: {
+        closeInsufficientModal: () => document.getElementById('insufficient-modal')?.remove(),
+        goToWallet: () => { window.location.href = '/wallet/'; },
+    },
+});
 </script>
 {% endblock %}

@@ -3,8 +3,8 @@ Browser smoke tests (TEST-02): drive the real pages in headless Chromium and
 fail on JavaScript errors, failing API calls, or broken core flows — the class
 of bugs (FE-01, LRN-01, API-01, API-03) that server-side tests can't see.
 
-Offline and hermetic: every request to another host (Tailwind CDN, Google
-Fonts, YouTube/Vimeo player scripts) is answered with a local stub.
+Offline and hermetic: every request to another host (Google Fonts and
+YouTube/Vimeo player scripts) is answered with a local stub.
 
 Skipped automatically unless Playwright and Chromium are installed
 (`pip install -r requirements-dev.txt && python -m playwright install chromium`).
@@ -27,7 +27,7 @@ from django.test.testcases import LiveServerThread, QuietWSGIRequestHandler
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 except ImportError:  # pragma: no cover - dev dependency not installed
     sync_playwright = None
 
@@ -54,12 +54,6 @@ class SerialLiveServerThread(LiveServerThread):
 
     def _create_server(self, connections_override=None):
         return WSGIServer((self.host, self.port), QuietWSGIRequestHandler, allow_reuse_address=False)
-
-
-# Answers for requests to other hosts (keeps the tests offline).
-EXTERNAL_STUBS = {
-    "cdn.tailwindcss.com": ("application/javascript", "window.tailwind = window.tailwind || {};"),
-}
 
 
 @tag("browser")
@@ -122,12 +116,8 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
             parsed = urlparse(route_obj.request.url)
             if parsed.netloc == live_host:
                 return route_obj.continue_()
-            content_type, body = EXTERNAL_STUBS.get(
-                parsed.hostname,
-                ("text/css", "") if parsed.path.endswith(".css") or "fonts" in (parsed.hostname or "")
-                else ("application/javascript", ""),
-            )
-            return route_obj.fulfill(status=200, content_type=content_type, body=body)
+            content_type = "text/css" if "fonts" in (parsed.hostname or "") else "application/javascript"
+            return route_obj.fulfill(status=200, content_type=content_type, body="")
 
         page.route("**/*", route)
         page.on("pageerror", lambda exc: page.errors.append(f"JS exception: {exc}"))
@@ -153,6 +143,8 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
 
     def login(self, page, user, *, next_path=None):
         path = f"/auth/login/?next={next_path}" if next_path else "/auth/login/"
+        if next_path:
+            page.allowed_api_errors = getattr(page, "allowed_api_errors", set()) | {("/api/accounts/token/refresh/", 401)}
         self.visit(page, path)
         page.fill("#email", user.email)
         page.fill("#password", self.password)
@@ -179,6 +171,30 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 page.errors.clear()
                 self.visit(page, path)
                 self.assert_no_errors(page, path)
+
+    def test_role_navigation_recovers_after_access_expiry_and_logout(self):
+        from django.conf import settings
+
+        page = self.new_page()
+        self.login(page, self.student)
+        page.evaluate("localStorage.clear()")
+        response = page.goto(self.live_server_url + '/instructor/courses/')
+        self.assertEqual(response.status, 403)
+
+        page.context.clear_cookies(name=settings.JWT_AUTH_COOKIE)
+        cookies = {cookie['name']: cookie for cookie in page.context.cookies()}
+        self.assertEqual(cookies[settings.JWT_AUTH_REFRESH_COOKIE]['path'], '/api/accounts/')
+        with page.expect_response('**/api/accounts/token/refresh/') as refreshed:
+            page.goto(self.live_server_url + '/my-courses/')
+        self.assertEqual(refreshed.value.status, 200)
+        page.wait_for_url('**/my-courses/')
+        page.locator('#user-menu-btn').click()
+        page.get_by_role('link', name='My Learning').wait_for()
+        page.get_by_role('button', name='Sign Out').click()
+        page.wait_for_url('**/auth/login/')
+        self.assertFalse({settings.JWT_AUTH_COOKIE, settings.JWT_AUTH_REFRESH_COOKIE}
+                         & {cookie['name'] for cookie in page.context.cookies()})
+        self.assert_no_errors(page, 'student session recovery and logout')
 
     def test_catalog_preview_limits_and_course_creation_use_real_data(self):
         from courses.models import Course
@@ -344,11 +360,7 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page = self.new_page()
         edit_path = f"/instructor/courses/{self.draft.slug}/edit/"
         self.login(page, moderator, next_path=edit_path)
-        page.wait_for_function(
-            "category => document.querySelector('#category')?.value === category",
-            arg=str(self.draft.category_id),
-            timeout=5000,
-        )
+        expect(page.locator('#category')).to_have_value(str(self.draft.category_id))
         page.fill("#title", "Moderated draft title")
         with page.expect_response(f"**/api/courses/{self.draft.pk}/update/") as edited:
             page.get_by_role("button", name="Save changes").click()
@@ -395,18 +407,18 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.login(author_page, self.instructor)
         self.visit(author_page, f"/instructor/courses/{self.course.slug}/content/")
         author_page.get_by_role("button", name="Open draft revision").click()
-        author_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'draft'")
+        expect(author_page.locator('#course-content-status')).to_have_text('draft')
         revision = Course.objects.get(revision_of=self.course)
         self.assertEqual(Course.objects.get(pk=self.course.pk).status, "published")
         author_page.get_by_role("button", name="Submit for review").click()
-        author_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'under review'")
+        expect(author_page.locator('#course-content-status')).to_have_text('under review')
         self.assert_no_errors(author_page, "revision submission")
 
         reviewer_page = self.new_page()
         revision_path = f"/instructor/courses/{revision.slug}/content/"
         self.login(reviewer_page, moderator, next_path=revision_path)
         reviewer_page.get_by_role("button", name="Publish course").click()
-        reviewer_page.wait_for_function("document.querySelector('#course-content-status')?.textContent === 'published'")
+        expect(reviewer_page.locator('#course-content-status')).to_have_text('published')
         self.assertEqual(Course.objects.get(pk=self.course.pk).status, "archived")
         self.assert_no_errors(reviewer_page, "revision approval")
 
@@ -463,7 +475,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
             options=[{"text": "Dog", "is_correct": True}, {"text": "Cat", "is_correct": False}],
         )
         instructor_page = self.new_page()
-        instructor_page.on("dialog", lambda dialog: dialog.accept())
         self.login(instructor_page, self.instructor)
         self.visit(instructor_page, "/exams/create/")
         instructor_page.select_option("#course-select", str(self.course.pk))
@@ -485,10 +496,10 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assert_no_errors(instructor_page, "exam publication")
 
         page = self.new_page()
-        page.on("dialog", lambda dialog: dialog.accept())
         self.login(page, self.student)
         self.visit(page, "/exams/")
         page.get_by_role("button", name="Start Exam").click()
+        page.get_by_role("button", name="Confirm", exact=True).click()
         page.wait_for_url(f"**/exams/take/{exam.pk}/?attempt=*")
         with page.expect_response(f"**/api/exams/{exam.pk}/save-answers/") as saved:
             page.get_by_role("radio", name="First").check()
@@ -505,8 +516,9 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assertNotEqual(page.locator("#timer").inner_text(), "02:00")
         page.get_by_role("radio", name="Dog").check()
         page.get_by_role("button", name="Submit Exam").first.click()
+        page.get_by_role("button", name="Confirm", exact=True).click()
         page.wait_for_url(f"**/exams/results/{exam.pk}/?attempt=*")
-        page.wait_for_function("document.querySelector('#score-display')?.textContent === '4/4'")
+        expect(page.locator('#score-display')).to_have_text('4/4')
         page.get_by_text("Correct answer: Dog").wait_for()
         self.assertEqual(page.locator("#correct-answers").inner_text(), "2")
         attempt.refresh_from_db()
@@ -519,9 +531,9 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         page = self.new_page()
         self.login(page, self.instructor)
         self.visit(page, f"/instructor/courses/{self.draft.slug}/content/")
-        page.on("dialog", lambda dialog: dialog.accept())
-        delete_button = f"button[onclick='deleteLesson({self.draft_lesson.id})']"
+        delete_button = f"button[data-click='deleteLesson'][data-value-one='{self.draft_lesson.id}']"
         page.click(delete_button)
+        page.get_by_role("button", name="Confirm", exact=True).click()
         page.wait_for_selector(delete_button, state="detached", timeout=10000)  # list re-rendered
         page.wait_for_load_state("networkidle")
         self.assertFalse(Lesson.objects.filter(pk=self.draft_lesson.pk).exists(),

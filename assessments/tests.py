@@ -570,6 +570,39 @@ class ManageQuizAPITest(APITestCase):
         )
         self.url = f'/api/assessments/quiz/lesson/{self.lesson.id}/manage/'
 
+    def test_published_course_blocks_quiz_creation_and_editing_for_managers(self):
+        admin = User.objects.create_user(email='quiz-admin@test.com', role='admin')
+        self.course.status = 'published'
+        self.course.save(update_fields=['status'])
+
+        for manager in (self.instructor, admin):
+            with self.subTest(manager=manager.email):
+                self.client.force_authenticate(manager)
+                response = self.client.post(self.url, {'passing_percentage': 90}, format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('draft revision', response.data['detail'])
+        self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
+
+        quiz = Quiz.objects.create(lesson=self.lesson, title='Existing quiz', passing_percentage=60)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.client.post(self.url, {'passing_percentage': 90}, format='json').status_code, 400)
+        quiz.refresh_from_db()
+        self.assertEqual(quiz.passing_percentage, 60)
+
+    def test_admin_edit_returns_course_to_draft_only_on_success(self):
+        admin = User.objects.create_user(email='quiz-reviewer@test.com', role='admin')
+        self.client.force_authenticate(admin)
+        self.course.status = 'under_review'
+        self.course.save(update_fields=['status'])
+
+        self.assertEqual(self.client.post(self.url, {'passing_percentage': 101}, format='json').status_code, 400)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, 'under_review')
+
+        self.assertEqual(self.client.post(self.url, {'passing_percentage': 90}, format='json').status_code, 200)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, 'draft')
+
     def test_manage_quiz_get_does_not_create_missing_quiz(self):
         self.client.force_authenticate(user=self.instructor)
 

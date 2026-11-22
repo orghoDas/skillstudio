@@ -87,7 +87,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('login-form');
     const loginBtn = document.getElementById('login-btn');
@@ -177,22 +177,26 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Already logged in? The cached `user` in localStorage is display-only and
-    // can outlive the auth cookies, so confirm the session with the server
-    // first. Trusting it blindly caused a redirect loop (server gate sends the
-    // user here, this page sends them straight back) once the cookies expired.
-    if (localStorage.getItem('user')) {
-        fetch('/api/accounts/me/', { credentials: 'same-origin' })
-            .then(async (res) => {
-                if (!res.ok) {
-                    localStorage.removeItem('user');
+    // Protected page requests arrive here when the access cookie has expired.
+    // The browser only sends the refresh cookie to the accounts API.
+    const role = document.body.dataset.pageRole;
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (role) {
+        window.location.replace(postLoginDestination(role));
+    } else if (safeNextPath(next) || localStorage.getItem('user')) {
+        refreshAccess()
+            .then(async response => {
+                if (!response.ok) {
+                    if (response.status === 401) localStorage.removeItem('user');
                     return;
                 }
-                const user = await res.json();
-                localStorage.setItem('user', JSON.stringify(user));
-                window.location.href = postLoginDestination(user.role);
+                const user = await apiRequest('/accounts/me/');
+                if (user) {
+                    localStorage.setItem('user', JSON.stringify(user));
+                    window.location.replace(postLoginDestination(user.role));
+                }
             })
-            .catch(() => { /* stay on the login page */ });
+            .catch(() => { /* Stay on the login page if the network is unavailable. */ });
     }
 });
 

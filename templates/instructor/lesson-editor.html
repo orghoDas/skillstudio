@@ -70,17 +70,17 @@
     <div class="mb-8">
         <div class="flex items-center justify-between mb-4">
             <div>
-                <a href="#" onclick="history.back()" class="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
+                <a href="#" data-click="goBack" class="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
                     ← Back to Course Content
                 </a>
                 <h1 class="text-3xl font-bold" id="lesson-title-display">Edit Lesson</h1>
                 <p class="text-gray-400 mt-2" id="lesson-meta">Loading...</p>
             </div>
             <div class="flex items-center space-x-3">
-                <button onclick="saveDraft()" class="px-6 py-3 bg-dark-surface border border-dark-border hover:bg-dark-hover text-white rounded-lg font-semibold transition-colors">
+                <button data-click="saveDraft" class="px-6 py-3 bg-dark-surface border border-dark-border hover:bg-dark-hover text-white rounded-lg font-semibold transition-colors">
                     Save Draft
                 </button>
-                <button onclick="saveContent()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <button data-click="saveContent" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     Save & Publish
                 </button>
             </div>
@@ -97,7 +97,7 @@
             </div>
             <div>
                 <label for="lesson-type" class="block text-sm font-medium mb-2">Content Type</label>
-                <select id="lesson-type" onchange="switchContentType()" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                <select id="lesson-type" data-change="switchContentType" class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
                     <option value="video">Video</option>
                     <option value="text">Article</option>
                     <option value="quiz">Quiz</option>
@@ -122,7 +122,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let lessonId;
 let lessonData = {};
 
@@ -193,7 +193,8 @@ function renderVideoEditor() {
             <div id="video-preview" class="hidden mb-6">
                 <label class="block text-sm font-medium mb-2">Preview</label>
                 <div class="aspect-video bg-dark-bg border border-dark-border rounded-lg overflow-hidden">
-                    <iframe id="video-iframe" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
+                    <iframe id="video-iframe" title="Video preview" class="w-full h-full" allowfullscreen></iframe>
+                    <video id="video-file" class="hidden w-full h-full" controls preload="metadata"></video>
                 </div>
             </div>
             
@@ -212,19 +213,19 @@ function renderTextEditor() {
             <h2 class="text-xl font-semibold mb-4">Article Content</h2>
             
             <div class="editor-toolbar">
-                <button onclick="formatText('bold')" title="Bold"><b>B</b></button>
-                <button onclick="formatText('italic')" title="Italic"><i>I</i></button>
-                <button onclick="formatText('underline')" title="Underline"><u>U</u></button>
+                <button data-click="formatText" data-value-one="bold" data-value-two="" title="Bold"><b>B</b></button>
+                <button data-click="formatText" data-value-one="italic" data-value-two="" title="Italic"><i>I</i></button>
+                <button data-click="formatText" data-value-one="underline" data-value-two="" title="Underline"><u>U</u></button>
                 <span class="border-l border-dark-border mx-1"></span>
-                <button onclick="formatText('formatBlock', 'h2')" title="Heading 1">H1</button>
-                <button onclick="formatText('formatBlock', 'h3')" title="Heading 2">H2</button>
-                <button onclick="formatText('formatBlock', 'p')" title="Paragraph">P</button>
+                <button data-click="formatText" data-value-one="formatBlock" data-value-two="h2" title="Heading 1">H1</button>
+                <button data-click="formatText" data-value-one="formatBlock" data-value-two="h3" title="Heading 2">H2</button>
+                <button data-click="formatText" data-value-one="formatBlock" data-value-two="p" title="Paragraph">P</button>
                 <span class="border-l border-dark-border mx-1"></span>
-                <button onclick="formatText('insertUnorderedList')" title="Bullet List">• List</button>
-                <button onclick="formatText('insertOrderedList')" title="Numbered List">1. List</button>
+                <button data-click="formatText" data-value-one="insertUnorderedList" data-value-two="" title="Bullet List">• List</button>
+                <button data-click="formatText" data-value-one="insertOrderedList" data-value-two="" title="Numbered List">1. List</button>
                 <span class="border-l border-dark-border mx-1"></span>
-                <button onclick="insertLink()" title="Insert Link">🔗 Link</button>
-                <button onclick="insertImage()" title="Insert Image">🖼 Image</button>
+                <button data-click="insertLink" title="Insert Link">🔗 Link</button>
+                <button data-click="insertImage" title="Insert Image">🖼 Image</button>
             </div>
             <div id="text-editor" contenteditable="true" class="editor-content"></div>
         </div>
@@ -236,7 +237,7 @@ function renderQuizEditor() {
         <div class="bg-dark-surface border border-dark-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-6">
                 <h2 class="text-xl font-semibold">Quiz Questions</h2>
-                <button onclick="addQuestion()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <button data-click="addQuestion" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     + Add Question
                 </button>
             </div>
@@ -296,45 +297,79 @@ function updateVideoPreview() {
     const url = document.getElementById('video-url').value;
     const preview = document.getElementById('video-preview');
     const iframe = document.getElementById('video-iframe');
-    
-    if (!url) {
-        preview.classList.add('hidden');
-        return;
-    }
-    
-    let embedUrl = '';
-    
-    // YouTube
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
-        if (videoId) {
-            embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    const file = document.getElementById('video-file');
+    let embedUrl;
+    let fileUrl;
+    try {
+        const parsed = new URL(url);
+        if (['http:', 'https:'].includes(parsed.protocol)) {
+            const host = parsed.hostname.replace(/^(www|m)\./, '');
+            const parts = parsed.pathname.split('/');
+            if (host === 'youtu.be' || ['youtube.com', 'youtube-nocookie.com', 'music.youtube.com'].includes(host)) {
+                const videoId = host === 'youtu.be' ? parts[1] : parsed.searchParams.get('v') || parts[2];
+                if (/^[A-Za-z0-9_-]{6,20}$/.test(videoId || '')) embedUrl = `https://www.youtube.com/embed/${videoId}`;
+            } else if (['vimeo.com', 'player.vimeo.com'].includes(host)) {
+                const videoId = parts.find(part => /^\d+$/.test(part));
+                if (videoId) embedUrl = `https://player.vimeo.com/video/${videoId}`;
+            } else if (/\.(mp4|webm|ogg|ogv|m4v|mov)$/i.test(parsed.pathname)) {
+                fileUrl = parsed.href;
+            }
         }
+    } catch (error) {
+        // Wait for a complete URL.
     }
-    // Vimeo
-    else if (url.includes('vimeo.com')) {
-        const videoId = url.match(/vimeo\.com\/(\d+)/)?.[1];
-        if (videoId) {
-            embedUrl = `https://player.vimeo.com/video/${videoId}`;
-        }
+
+    iframe.classList.toggle('hidden', !embedUrl);
+    if (embedUrl) iframe.src = embedUrl;
+    else iframe.removeAttribute('src');
+
+    file.classList.toggle('hidden', !fileUrl);
+    if (fileUrl) file.src = fileUrl;
+    else if (file.hasAttribute('src')) {
+        file.removeAttribute('src');
+        file.load();
     }
-    // Direct video URL
-    else if (url.match(/\.(mp4|webm|ogg)$/)) {
-        embedUrl = url;
-    }
-    
-    if (embedUrl) {
-        iframe.src = embedUrl;
-        preview.classList.remove('hidden');
-    } else {
-        preview.classList.add('hidden');
-    }
+    preview.classList.toggle('hidden', !embedUrl && !fileUrl);
 }
 
 function loadTextContent() {
-    if (lessonData.content_text) {
-        document.getElementById('text-editor').innerHTML = lessonData.content_text;
+    if (!lessonData.content_text) return;
+    const editor = document.getElementById('text-editor');
+    const template = document.createElement('template');
+    template.innerHTML = lessonData.content_text;
+
+    const formatting = new Set(['a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3',
+        'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul']);
+    const ignored = new Set(['script', 'style', 'iframe', 'object', 'template']);
+
+    function appendFormatted(target, node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            target.append(node.textContent);
+            return;
+        }
+        const tag = node.localName;
+        if (node.nodeType !== Node.ELEMENT_NODE || ignored.has(tag)) return;
+        let output = target;
+        if (formatting.has(tag)) {
+            output = document.createElement(tag);
+            const urlAttr = tag === 'a' ? 'href' : tag === 'img' ? 'src' : null;
+            if (urlAttr && node.hasAttribute(urlAttr)) {
+                try {
+                    const url = new URL(node.getAttribute(urlAttr), window.location.origin);
+                    if (['http:', 'https:'].includes(url.protocol)) output.setAttribute(urlAttr, url.href);
+                } catch (error) {
+                    // Keep the formatted content if the URL is invalid.
+                }
+            }
+            if (tag === 'img') output.alt = node.getAttribute('alt') || '';
+            target.append(output);
+        }
+        for (const child of node.childNodes) appendFormatted(output, child);
     }
+
+    const fragment = document.createDocumentFragment();
+    for (const child of template.content.childNodes) appendFormatted(fragment, child);
+    editor.replaceChildren(fragment);
 }
 
 async function loadQuizContent() {
@@ -409,7 +444,7 @@ function addQuestion(questionData = null) {
         <div class="quiz-question" data-question-id="${escapeHtml(questionId)}">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold">Question ${escapeHtml(questionCount)}</h3>
-                <button onclick="removeQuestion('${escapeHtml(questionId)}')" class="text-red-400 hover:text-red-300">
+                <button data-click="removeQuestion" data-value-one="${escapeHtml(questionId)}" class="text-red-400 hover:text-red-300">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -427,7 +462,7 @@ function addQuestion(questionData = null) {
                 <div class="space-y-2 question-options">
                     ${renderQuestionOptions(questionData?.options || []) /* escapes its own data */}
                 </div>
-                <button onclick="addOption('${escapeHtml(questionId)}')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
+                <button data-click="addOption" data-value-one="${escapeHtml(questionId)}" class="mt-2 text-sm text-blue-400 hover:text-blue-300">
                     + Add Option
                 </button>
             </div>
@@ -455,10 +490,10 @@ function renderQuestionOptions(options) {
     return options.map((opt, index) => `
         <div class="quiz-option ${escapeHtml(opt.is_correct ? 'correct' : '')}" data-option-index="${escapeHtml(index)}">
             <input type="radio" name="correct-${escapeHtml(Date.now())}" ${escapeHtml(opt.is_correct ? 'checked' : '')} 
-                onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
+                data-change="markCorrect" class="w-4 h-4 text-green-600">
             <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
                 value="${escapeHtml(opt.text || '')}" placeholder="Option ${escapeHtml(String.fromCharCode(65 + index))}">
-            <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
+            <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -475,10 +510,10 @@ function addOption(questionId) {
     
     const optionHtml = `
         <div class="quiz-option" data-option-index="${escapeHtml(optionCount)}">
-            <input type="radio" name="${escapeHtml(radioName)}" onchange="markCorrect(this)" class="w-4 h-4 text-green-600">
+            <input type="radio" name="${escapeHtml(radioName)}" data-change="markCorrect" class="w-4 h-4 text-green-600">
             <input type="text" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none" 
                 placeholder="Option ${escapeHtml(String.fromCharCode(65 + optionCount))}">
-            <button onclick="removeOption(this)" class="text-red-400 hover:text-red-300">
+            <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -500,9 +535,9 @@ function markCorrect(radio) {
     radio.closest('.quiz-option').classList.add('correct');
 }
 
-function removeQuestion(questionId) {
+async function removeQuestion(questionId) {
     const question = document.querySelector(`[data-question-id="${questionId}"]`);
-    if (confirm('Remove this question?')) {
+    if (await showConfirm('Remove this question?')) {
         question.remove();
     }
 }
@@ -605,5 +640,24 @@ function collectQuizData() {
     };
 }
 
+
+bindActions({
+    click: {
+        goBack: (event) => { event.preventDefault(); history.back(); },
+        saveDraft: () => saveDraft(),
+        saveContent: () => saveContent(),
+        formatText: (event, control) => formatText(control.dataset.valueOne, control.dataset.valueTwo || undefined),
+        insertLink: () => insertLink(),
+        insertImage: () => insertImage(),
+        addQuestion: () => addQuestion(),
+        removeQuestion: (event, control) => removeQuestion(control.dataset.valueOne),
+        addOption: (event, control) => addOption(control.dataset.valueOne),
+        removeOption: (event, control) => removeOption(control),
+    },
+    change: {
+        switchContentType: () => switchContentType(),
+        markCorrect: (event, control) => markCorrect(control),
+    },
+});
 </script>
 {% endblock %}

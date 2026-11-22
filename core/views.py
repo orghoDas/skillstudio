@@ -1,6 +1,9 @@
-from django.shortcuts import render
+from django.conf import settings
+from django.shortcuts import redirect, render
+from django.views.decorators.csp import csp_override
 
-from .auth import cookie_login_required
+from .auth import cookie_login_required, page_user
+from accounts.utils import is_platform_admin
 
 # ---------------------------------------------------------------------------
 # Public pages (no auth required)
@@ -41,9 +44,11 @@ def browse_courses(request):
 @cookie_login_required
 def student_dashboard(request):
     """Student dashboard"""
+    if page_user(request).role == 'instructor':
+        return redirect('instructor_dashboard')
     return render(request, 'dashboard/student.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_dashboard(request):
     """Instructor dashboard"""
     return render(request, 'dashboard/instructor.html')
@@ -51,9 +56,12 @@ def instructor_dashboard(request):
 @cookie_login_required
 def profile_page(request):
     """Student profile page"""
+    user = page_user(request)
+    if user.role == 'instructor' or is_platform_admin(user):
+        return redirect('instructor_profile_page')
     return render(request, 'profile/student-profile.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_profile_page(request):
     """Instructor profile page"""
     return render(request, 'profile/instructor-profile.html')
@@ -63,37 +71,37 @@ def settings_page(request):
     """Settings page"""
     return render(request, 'profile/settings.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_courses_list(request):
     """Instructor courses list page"""
     return render(request, 'instructor/courses-list.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_course_create(request):
     """Instructor course creation page"""
     return render(request, 'instructor/course-create.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_course_content(request, slug):
     """Instructor course content management page"""
     return render(request, 'instructor/course-content.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_course_edit(request, slug):
     """Instructor course edit page"""
     return render(request, 'instructor/course-edit.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_lesson_edit(request, id):
     """Instructor lesson content editor page"""
     return render(request, 'instructor/lesson-editor.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_course_preview(request, slug):
     """Instructor course preview page"""
     return render(request, 'instructor/course-preview.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def instructor_students(request):
     """Instructor students list page"""
     return render(request, 'instructor/students-list.html')
@@ -106,9 +114,23 @@ def my_courses(request):
 @cookie_login_required
 def enrollments_list(request):
     """Student's enrollments page"""
+    user = page_user(request)
+    if user.role == 'instructor':
+        return redirect('instructor_dashboard')
+    if is_platform_admin(user):
+        return redirect('student_dashboard')
     return render(request, 'student/enrollments.html')
 
 @cookie_login_required
+@csp_override({
+    **settings.SECURE_CSP,
+    'script-src': [
+        *settings.SECURE_CSP['script-src'],
+        'https://www.youtube.com/iframe_api',
+        'https://www.youtube.com/s/player/',
+        'https://player.vimeo.com/api/player.js',
+    ],
+})
 def learn_course(request, slug):
     """Student course learning interface"""
     return render(request, 'students/learn.html')
@@ -143,7 +165,7 @@ def exam_results(request, exam_id):
     """Exam results page"""
     return render(request, 'exams/results.html')
 
-@cookie_login_required
+@cookie_login_required(role='instructor')
 def exam_create(request):
     """Exam creation page"""
     return render(request, 'exams/create.html')

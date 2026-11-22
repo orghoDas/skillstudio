@@ -49,3 +49,6 @@ output/pdf/
 scripts/render_backend_review_pdf.py
 scripts/render_backend_review_typst_pdf.py
 test-db.sqlite3
+
+# Frontend build dependencies
+node_modules/

@@ -94,15 +94,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication and role
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (!['instructor', 'admin'].includes(user.role)) {
-        window.location.href = '/';
-        return;
-    }
-
     // Handle free course toggle
     document.getElementById('is_free').addEventListener('change', updatePriceInput);
     updatePriceInput();
@@ -130,7 +123,7 @@ async function loadCategories() {
             page += 1;
         } while (hasNext);
     } catch (error) {
-        showToast(error.message || 'Could not load course categories.', 'error');
+        showAlert(error.message || 'Could not load course categories.', 'error');
     }
 }
 
@@ -174,14 +167,14 @@ async function createCourse() {
         
         const courseIdentifier = courseData_response.slug || courseData_response.id;
         
-        showToast('Draft course created.', 'success');
+        showAlert('Draft course created.', 'success');
         setTimeout(() => {
             window.location.href = `/instructor/courses/${courseIdentifier}/content/`;
         }, 1500);
     } catch (error) {
         console.error('Error creating course:', error);
         console.error('Error details:', error.message);
-        showToast(error.body?.fields?.price?.[0] || error.message || 'Failed to create course', 'error');
+        showAlert(error.body?.fields?.price?.[0] || error.message || 'Failed to create course', 'error');
     }
 }
 
