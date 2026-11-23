@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Administration | SkillStudio{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-4xl px-6 py-12">
+    <h1 class="mb-6 text-3xl font-bold">Administration</h1>
+    <div class="flex flex-wrap gap-4">
+        <a class="rounded-lg bg-blue-600 px-4 py-2 text-white" href="{% url 'admin:index' %}">Open admin console</a>
+        <a class="rounded-lg border border-dark-border px-4 py-2" href="{% url 'courses_list' %}">Browse courses</a>
+    </div>
+</section>
+{% endblock %}

@@ -10,6 +10,7 @@
   prior `collectstatic` just to render a page that uses {% static %}.
 """
 
+import logging
 import os
 import shutil
 import tempfile
@@ -37,6 +38,9 @@ class SkillStudioTestRunner(DiscoverRunner):
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
+        request_logger = logging.getLogger('django.request')
+        self._request_log_level = request_logger.level
+        request_logger.setLevel(logging.ERROR)
         self._media_root = tempfile.mkdtemp(prefix="skillstudio-test-media-")
         self._isolation = override_settings(
             MEDIA_ROOT=self._media_root,
@@ -49,5 +53,6 @@ class SkillStudioTestRunner(DiscoverRunner):
 
     def teardown_test_environment(self, **kwargs):
         self._isolation.disable()
+        logging.getLogger('django.request').setLevel(self._request_log_level)
         shutil.rmtree(self._media_root, ignore_errors=True)
         super().teardown_test_environment(**kwargs)

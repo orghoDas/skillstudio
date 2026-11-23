@@ -33,5 +33,4 @@ urlpatterns = [
     path("api-keys/<int:key_id>/toggle/", views.APIKeyRevokeView.as_view(), name="api_key_toggle"),
     
     # Test endpoints
-    path("instructor-only/", views.InstructorOnlyView.as_view(), name="instructor_only"),
 ]

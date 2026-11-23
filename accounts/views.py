@@ -24,7 +24,7 @@ from .serializers import (
 from .models import Profile, User, APIKey
 from .authentication import enforce_cookie_csrf
 from .cookies import clear_jwt_cookies, get_refresh_cookie
-from .permissions import IsInstructor, IsAdmin
+from .permissions import IsAdmin
 
 
 def _blacklist_user_refresh_tokens(user):
@@ -168,7 +168,7 @@ class UserListView(generics.ListAPIView):
     """List all users (admin only)"""
     serializer_class = UserSerializer
     permission_classes = [IsAdmin]
-    queryset = User.objects.all().select_related('profile')
+    queryset = User.objects.select_related('profile').order_by('pk')
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -182,7 +182,7 @@ class UserDetailView(generics.RetrieveAPIView):
     """Get user details (admin only)"""
     serializer_class = UserSerializer
     permission_classes = [IsAdmin]
-    queryset = User.objects.all().select_related('profile')
+    queryset = User.objects.select_related('profile').order_by('pk')
     lookup_field = 'id'
 
 
@@ -313,15 +313,4 @@ class APIKeyRevokeView(APIView):
         return Response({
             "message": "API key revoked.",
             "api_key": APIKeySerializer(api_key).data,
-        })
-
-
-class InstructorOnlyView(APIView):
-    """Test endpoint for instructor-only access"""
-    permission_classes = [IsInstructor]
-
-    def get(self, request):
-        return Response({
-            "message": "Hello, Instructor!",
-            'user': request.user.email
         })

@@ -11,7 +11,8 @@ Known issues and the fix plan are tracked in [AUDIT_REPORT.md](AUDIT_REPORT.md).
 **Students**
 - Browse and search the catalogue, with filters for category, level, price, duration and instructor.
 - Enroll in free courses, or buy paid ones from their wallet. The course page checks coupon codes, and the payment history links to receipts and wallet refund requests.
-- Learn in order: each lesson unlocks after the previous one is completed. Video lessons support YouTube and Vimeo URLs.
+- Learn in order: each lesson unlocks after the previous one is completed. Video lessons support YouTube, Vimeo and direct video-file URLs.
+- Course managers who open a learning link go to the instructor preview. Learners with access use the course learning page.
 - Take lesson quizzes. A quiz has an optional time limit (enforced by the server) and a limited number of retakes.
 - Take course exams. An exam has a time window, and its questions stay hidden until an attempt starts.
 - Download a PDF certificate with a QR verification link once a course is complete.
@@ -155,4 +156,3 @@ Login allows five requests per minute per client IP. Registration and token refr
 
 The open items in [AUDIT_REPORT.md](AUDIT_REPORT.md) are the roadmap. The main ones:
 - Stripe test-mode wallet top-up (SEC-01, PAY-04, PAY-05).
-- An OpenAPI schema (API-04).

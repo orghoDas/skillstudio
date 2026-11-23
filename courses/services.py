@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from enrollments.constants import ACCESS_STATUSES
-from enrollments.models import Enrollment, LessonProgress
+from enrollments.models import Enrollment
 from accounts.utils import is_platform_admin
 from .models import Course, Module, Lesson
 from .policies import can_manage_course
@@ -147,24 +147,3 @@ def start_new_version(course, actor):
         source.current_version = record_published_version(source, data)
         source.save(update_fields=['current_version'])
     return copy_course_draft(source, data), True
-
-
-def is_course_completed(enrollment):
-    """
-    Server-side source of truth for course completion.
-    """
-
-    lessons = Lesson.objects.filter(
-        module__course=enrollment.course,
-        is_free=False
-    )
-
-    total_required = lessons.count()
-
-    completed = LessonProgress.objects.filter(
-        enrollment=enrollment,
-        lesson__in=lessons,
-        is_completed=True
-    ).count()
-
-    return total_required > 0 and completed == total_required

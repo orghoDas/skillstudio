@@ -1,4 +1,3 @@
-from .models import QuizAttempt
 from .services import submit_quiz_attempt
 
 

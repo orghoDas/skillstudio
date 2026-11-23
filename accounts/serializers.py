@@ -90,14 +90,6 @@ class ProfileSerializer(AccountProfileSerializer):
         read_only_fields = ("role", "email", "created_at", "updated_at")
 
 
-class UserBasicSerializer(serializers.ModelSerializer):
-    """Basic user serializer with minimal fields for nested serialization."""
-    class Meta:
-        model = User
-        fields = ("id", "email", "username", "role")
-        read_only_fields = ("id", "email", "username", "role")
-
-
 class UserSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
 

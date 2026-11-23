@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.shortcuts import redirect, render
+from courses.models import Course
+from courses.policies import can_manage_course
 from django.views.decorators.csp import csp_override
 
 from .auth import cookie_login_required, page_user
@@ -44,7 +46,10 @@ def browse_courses(request):
 @cookie_login_required
 def student_dashboard(request):
     """Student dashboard"""
-    if page_user(request).role == 'instructor':
+    user = page_user(request)
+    if is_platform_admin(user):
+        return render(request, 'dashboard/admin.html')
+    if user.role == 'instructor':
         return redirect('instructor_dashboard')
     return render(request, 'dashboard/student.html')
 
@@ -132,7 +137,10 @@ def enrollments_list(request):
     ],
 })
 def learn_course(request, slug):
-    """Student course learning interface"""
+    """Student learning interface, with course managers routed to preview."""
+    course = Course.objects.filter(slug=slug).first()
+    if course and can_manage_course(page_user(request), course):
+        return redirect('instructor_course_preview', slug=slug)
     return render(request, 'students/learn.html')
 
 @cookie_login_required

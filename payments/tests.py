@@ -279,6 +279,24 @@ class EnrollAPITests(PaymentsFixtureMixin, APITestCase):
         self.assertFalse(second.data["was_reactivated"])
         self.assertEqual(self.balance(self.student), Decimal("50.00"))
 
+    def test_enrollment_confirms_the_charge_and_removes_the_wishlist_item(self):
+        from enrollments.models import Wishlist
+
+        self.client.force_authenticate(self.student)
+        saved = Wishlist.objects.create(user=self.student, course=self.course)
+        stale = self.client.post(self.url, {"course_id": self.course.pk, "max_charge": "99.00"})
+        self.assertEqual((stale.status_code, stale.data["code"]), (400, "price_changed"))
+        self.assertFalse(Payment.objects.filter(user=self.student).exists())
+        self.assertTrue(Wishlist.objects.filter(pk=saved.pk).exists())
+        result = self.client.post(self.url, {"course_id": self.course.pk, "max_charge": "100.00"})
+        self.assertEqual(result.status_code, 201, result.data)
+        self.assertFalse(Wishlist.objects.filter(pk=saved.pk).exists())
+
+    def test_unavailable_course_returns_the_documented_code(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.post(self.url, {"course_id": self.draft_course.pk})
+        self.assertEqual((response.status_code, response.data["code"]), (400, "course_unavailable"))
+
     def test_client_cannot_set_the_price(self):
         self.client.force_authenticate(self.student)
         response = self.client.post(self.url, {"course_id": self.course.id, "amount": "0.01", "price": "0.01"}, format="json")
@@ -550,7 +568,7 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
         payout = services.create_payout(self.instructor, amount=Decimal("50.00"))
         services.approve_payout(payout.id, self.admin)
         rejected = services.reject_payout(payout.id, self.admin, "Bank details invalid")
-        self.assertEqual((rejected.status, rejected.wallet_debited), ("cancelled", False))
+        self.assertEqual((rejected.status, rejected.wallet_debited), ("rejected", False))
         self.assertEqual(self.balance(self.instructor), Decimal("90.00"))
         with self.assertRaises(services.PayoutError):
             services.reject_payout(payout.id, self.admin)  # can't release twice
@@ -581,12 +599,18 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
             services.approve_payout(too_big.id, self.admin)
         self.assertEqual(ctx.exception.code, "insufficient_balance")
 
+    @override_settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode())
     def test_payout_api_permissions_and_errors(self):
         self.client.force_authenticate(self.instructor)
-        created = self.client.post("/api/payments/payouts/request/", {"amount": "50.00"}, format="json")
+        request = {"account_details": {"iban": "TEST-DESTINATION", "account_holder": "Instructor"}}
+        missing_destination = self.client.post("/api/payments/payouts/request/", {"amount": "50.00"}, format="json")
+        self.assertEqual(missing_destination.status_code, 400)
+        self.assertIn("account_details", missing_destination.data["fields"])
+        self.assertEqual(self.balance(self.instructor), Decimal("90.00"))
+        created = self.client.post("/api/payments/payouts/request/", {**request, "amount": "50.00"}, format="json")
         self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
         payout_id = created.data["id"]
-        too_much = self.client.post("/api/payments/payouts/request/", {"amount": "500.00"}, format="json")
+        too_much = self.client.post("/api/payments/payouts/request/", {**request, "amount": "500.00"}, format="json")
         self.assertEqual(too_much.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(too_much.data["code"], "insufficient_balance")
         listing = self.client.get("/api/payments/payouts/")
@@ -655,7 +679,7 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
         self.client.force_authenticate(self.instructor)
         response = self.client.post(
             "/api/payments/payouts/request/",
-            {"amount": "10.00", "account_details": {"iban": "TEST-DESTINATION-1234"}},
+            {"amount": "10.00", "account_details": {"iban": "TEST-DESTINATION-1234", "account_holder": "Private Name"}},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)

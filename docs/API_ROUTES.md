@@ -30,7 +30,6 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/accounts/api-keys/<int:id>/` | GET DELETE | IsAuthenticated | `accounts.views.APIKeyDetailView` |
 | `/api/accounts/api-keys/<int:key_id>/revoke/` | PATCH | IsAuthenticated | `accounts.views.APIKeyRevokeView` |
 | `/api/accounts/api-keys/<int:key_id>/toggle/` | PATCH | IsAuthenticated | `accounts.views.APIKeyRevokeView` |
-| `/api/accounts/instructor-only/` | GET | IsInstructor | `accounts.views.InstructorOnlyView` |
 
 ## `/api/assessments/`
 
@@ -42,7 +41,6 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/assessments/quiz/lesson/<int:lesson_id>/manage/` | GET POST | IsAuthenticated | `assessments.views_quiz_management.ManageQuizView` |
 | `/api/assessments/analytics/course/<int:course_id>/overview/` | GET | IsAuthenticated | `assessments.view_analytics.InstructorAssessmentOverviewView` |
 | `/api/assessments/analytics/quiz/<int:quiz_id>/questions/` | GET | IsAuthenticated | `assessments.view_analytics.QuizQuestionAnalyticsView` |
-| `/api/assessments/quiz/<int:quiz_id>/attempt/start/` | POST | IsAuthenticated | `assessments.views_attempt.StartQuizAttemptView` |
 | `/api/assessments/quiz/attempt/<int:attempt_id>/answer/submit/` | POST | IsAuthenticated | `assessments.views_attempt.SubmitQuizAnswerView` |
 
 ## `/api/certificates/`
@@ -63,7 +61,7 @@ other clients send `Authorization: Bearer <access token>`.
 |---|---|---|---|
 | `/api/courses/categories/` | GET | AllowAny | `courses.views.CategoryListView` |
 | `/api/courses/categories/create/` | POST | IsAdmin | `courses.views.CategoryCreateView` |
-| `/api/courses/tags/` | GET POST | IsAuthenticated | `courses.views.TagListCreateView` |
+| `/api/courses/tags/` | GET POST | GET: AllowAny / POST: IsAdmin | `courses.views.TagListCreateView` |
 | `/api/courses/` | GET | AllowAny | `courses.views.CourseListView` |
 | `/api/courses/create/` | POST | IsAuthenticated, IsInstructor | `courses.views.CourseCreateView` |
 | `/api/courses/instructor/courses/` | GET | IsAuthenticated, IsInstructor | `courses.views.InstructorCoursesView` |
@@ -78,20 +76,20 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/courses/<int:course_id>/new-version/` | POST | IsAuthenticated | `courses.views.NewCourseVersionView` |
 | `/api/courses/<int:course_id>/curriculum/` | GET | AllowAny | `courses.views.CourseCurriculumView` |
 | `/api/courses/<int:course_id>/resume/` | GET | IsAuthenticated | `courses.views.ResumeLearningView` |
-| `/api/courses/<int:course_id>/modules/` | GET POST | AllowAny | `courses.views.ModuleListView` |
-| `/api/courses/<int:course_id>/sections/` | GET POST | AllowAny | `courses.views.ModuleListView` |
+| `/api/courses/<int:course_id>/modules/` | GET POST | GET: AllowAny / POST: IsAuthenticated | `courses.views.ModuleListView` |
+| `/api/courses/<int:course_id>/sections/` | GET POST | GET: AllowAny / POST: IsAuthenticated | `courses.views.ModuleListView` |
 | `/api/courses/modules/create/` | POST | IsAuthenticated | `courses.views.ModuleCreateView` |
 | `/api/courses/modules/<int:id>/update/` | GET PUT PATCH DELETE | IsAuthenticated | `courses.views.ModuleUpdateView` |
 | `/api/courses/modules/<int:id>/delete/` | DELETE | IsAuthenticated | `courses.views.ModuleDeleteView` |
-| `/api/courses/modules/<int:module_id>/lessons/` | GET POST | AllowAny | `courses.views.LessonListView` |
+| `/api/courses/modules/<int:module_id>/lessons/` | GET POST | GET: AllowAny / POST: IsAuthenticated | `courses.views.LessonListView` |
 | `/api/courses/sections/<int:id>/` | GET PUT PATCH DELETE | IsAuthenticated | `courses.views.ModuleUpdateView` |
-| `/api/courses/sections/<int:id>/lessons/` | GET POST | AllowAny | `courses.views.LessonListView` |
+| `/api/courses/sections/<int:id>/lessons/` | GET POST | GET: AllowAny / POST: IsAuthenticated | `courses.views.LessonListView` |
 | `/api/courses/lessons/create/` | POST | IsAuthenticated | `courses.views.LessonCreateView` |
 | `/api/courses/lessons/<int:id>/` | GET PUT PATCH DELETE | IsAuthenticated | `courses.views.LessonRetrieveUpdateView` |
 | `/api/courses/lessons/<int:id>/update/` | PUT PATCH | IsAuthenticated | `courses.views.LessonUpdateView` |
 | `/api/courses/lessons/<int:id>/delete/` | DELETE | IsAuthenticated | `courses.views.LessonDeleteView` |
 | `/api/courses/lessons/<int:lesson_id>/content/` | GET | AllowAny | `courses.views.LessonDetailView` |
-| `/api/courses/<slug:slug>/sections/` | GET POST | AllowAny | `courses.views.ModuleListView` |
+| `/api/courses/<slug:slug>/sections/` | GET POST | GET: AllowAny / POST: IsAuthenticated | `courses.views.ModuleListView` |
 | `/api/courses/<slug:slug>/` | GET | AllowAny | `courses.views.CourseDetailView` |
 
 ## `/api/enrollments/`

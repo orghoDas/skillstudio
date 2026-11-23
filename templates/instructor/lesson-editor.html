@@ -339,6 +339,10 @@ async function loadQuizContent() {
         // Try to fetch quiz from the API
         const response = await apiRequest(`/assessments/quiz/lesson/${lessonId}/manage/`);
         
+        if (!response) {
+            addQuestion();
+            return;
+        }
         if (response.title) {
             document.getElementById('quiz-title').value = response.title;
         }
@@ -381,18 +385,29 @@ function formatText(command, value = null) {
     document.getElementById('text-editor').focus();
 }
 
-function insertLink() {
-    const url = prompt('Enter URL:');
-    if (url) {
-        formatText('createLink', url);
+async function insertEditorUrl(command, title) {
+    const editor = document.getElementById('text-editor');
+    const selection = window.getSelection();
+    const range = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    const url = await showTextPrompt(title, { type: 'url' });
+    if (!url || !/^https?:\/\//i.test(url)) {
+        if (url) showAlert('Enter an HTTP or HTTPS URL.', 'error');
+        return;
     }
+    editor.focus();
+    if (range && editor.contains(range.commonAncestorContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+    formatText(command, url);
+}
+
+function insertLink() {
+    return insertEditorUrl('createLink', 'Link URL');
 }
 
 function insertImage() {
-    const url = prompt('Enter image URL:');
-    if (url) {
-        formatText('insertImage', url);
-    }
+    return insertEditorUrl('insertImage', 'Image URL');
 }
 
 // Quiz functions

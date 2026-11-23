@@ -558,20 +558,20 @@ class PermissionsTest(APITestCase):
         )
 
     def test_instructor_only_access(self):
-        """Test instructor-only endpoint access"""
+        """Verify role restrictions on the actual instructor dashboard."""
         # Student should be denied
         self.client.force_authenticate(user=self.student)
-        response = self.client.get('/api/accounts/instructor-only/')
+        response = self.client.get('/api/instructors/dashboard/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         # Instructor should have access
         self.client.force_authenticate(user=self.instructor)
-        response = self.client.get('/api/accounts/instructor-only/')
+        response = self.client.get('/api/instructors/dashboard/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Admin should have access
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get('/api/accounts/instructor-only/')
+        response = self.client.get('/api/instructors/dashboard/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_admin_only_user_list(self):

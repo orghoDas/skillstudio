@@ -39,6 +39,8 @@ jobs:
           node-version: "24"
           cache: npm
       - run: python -m pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+      - run: python -m pip install ruff==0.15.0
+      - run: ruff check --select F accounts assessments certificates core courses enrollments exams instructors payments skillstudio students --exclude migrations
       - run: python -m playwright install --with-deps chromium
       - name: Verify the checked-in Tailwind CSS
         run: |

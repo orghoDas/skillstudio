@@ -78,21 +78,3 @@ class InstructorRosterEntrySerializer(serializers.Serializer):
     progress = serializers.FloatField()
     status = serializers.CharField()
     last_accessed = serializers.DateTimeField()
-
-
-class CourseOverviewSerializer(serializers.Serializer):
-    """Serializer for course overview in dashboard."""
-    
-    id = serializers.IntegerField()
-    title = serializers.CharField()
-    enrollments = serializers.IntegerField()
-
-
-class StudentEngagementSerializer(serializers.Serializer):
-    """Serializer for student engagement data."""
-    
-    student_id = serializers.IntegerField()
-    student_email = serializers.EmailField()
-    course = serializers.CharField()
-    completed_lessons = serializers.IntegerField()
-    last_activity = serializers.DateTimeField(allow_null=True)

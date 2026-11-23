@@ -122,6 +122,7 @@ class Payment(models.Model):
     
     # Billing info
     billing_email = models.EmailField(blank=True)
+    # Retained for historical payment records.
     billing_address = models.JSONField(default=dict, blank=True)
     
     # Metadata
@@ -168,6 +169,7 @@ class Payout(models.Model):
         ("paid", "Paid"),
         ("failed", "Failed"),
         ("cancelled", "Cancelled"),
+        ("rejected", "Rejected"),
     ]
     
     METHOD_CHOICES = [
@@ -208,7 +210,7 @@ class Payout(models.Model):
     payout_method = models.CharField(
         max_length=50,
         choices=METHOD_CHOICES,
-        default="stripe_connect"
+        default="bank_transfer"
     )
     
     account_details_encrypted = models.TextField(default='', blank=True, editable=False)
@@ -241,9 +243,6 @@ class Payout(models.Model):
 
 
     
-    @property
-    def payment_count(self):
-        return self.payments.count()
 
 
 class Refund(models.Model):
@@ -309,6 +308,7 @@ class Refund(models.Model):
     platform_absorbed = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     # Provider tracking
+    # Historical provider reference from before wallet refunds.
     provider_refund_id = models.CharField(max_length=255, blank=True)
 
     # Timestamps

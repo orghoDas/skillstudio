@@ -5,7 +5,6 @@ from django.db import IntegrityError, models, router, transaction
 from django.utils import timezone
 from django.conf import settings
 from django.utils.text import slugify
-from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 
 User = settings.AUTH_USER_MODEL

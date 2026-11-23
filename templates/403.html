@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Access restricted | SkillStudio{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-xl px-6 py-12">
+    <h1 class="mb-4 text-2xl font-semibold">Access restricted</h1>
+    <p class="mb-6 text-gray-300">Your account does not have access to this page.</p>
+    {% if page_role == "instructor" %}
+        <a class="text-blue-400" href="{% url 'instructor_dashboard' %}">Back to your dashboard</a>
+    {% elif page_role %}
+        <a class="text-blue-400" href="{% url 'student_dashboard' %}">Back to your dashboard</a>
+    {% else %}
+        <a class="text-blue-400" href="{% url 'home' %}">Back to SkillStudio</a>
+    {% endif %}
+</section>
+{% endblock %}

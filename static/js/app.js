@@ -134,6 +134,10 @@ async function logout() {
     window.location.href = '/auth/login/';
 }
 
+function hasRefreshSession() {
+    return getCookie('skillstudio_session') === '1';
+}
+
 let refreshRequest;
 function refreshAccess() {
     if (!refreshRequest) {
@@ -159,7 +163,7 @@ function bindActions(actions) {
 }
 
 // Restore the server-rendered navbar when a returning user's access has expired.
-if (!document.body.dataset.pageRole && localStorage.getItem('user') &&
+if (!document.body.dataset.pageRole && hasRefreshSession() &&
     !window.location.pathname.startsWith('/auth/')) {
     refreshAccess().then(response => {
         if (response.ok) window.location.reload();

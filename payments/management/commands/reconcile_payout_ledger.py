@@ -15,7 +15,6 @@ payout is reported and skipped; resolve those manually.
 """
 
 from collections import defaultdict
-from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 from django.db import transaction

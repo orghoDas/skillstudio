@@ -70,11 +70,17 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 36 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01) |
 | P3 | 13 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03) |
 | **Total** | **88** | **21** |
-| *Resolved so far* | *78 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04, ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1 and P2 findings are resolved. The re-audit still has six P3 findings open.* |
+| *Resolved so far* | *84 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04, ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01, REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 findings are resolved.* |
 
 ### Follow-up after the 2026-11-22 re-audit
 
 The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
+
+### P3 remediation 2026-11-23
+
+All six P3 findings from the re-audit are resolved in code and the local virtual environment is synced. Certificate codes are retained when superseded from this release onward. Existing payout rows retain their recorded status and reason.
+
+Verification passed with 497 SQLite tests and three PostgreSQL-only skips, 500 PostgreSQL tests, and 28 Chromium tests. Ruff, Django checks, the OpenAPI and route snapshots, and the Tailwind build passed.
 
 ### P2 remediation 2026-11-23
 
@@ -117,7 +123,7 @@ The pass found **21 new issues** that the green suite doesn't cover:
   - [ACC-02](#acc-02): password change and API-key revoke semantics.
   - [ACC-03](#acc-03): `S1@x.com` and `s1@x.com` become two accounts.
   - [RPT-01](#rpt-01): learner and revenue counts disagree.
-- **P3:**
+- **P3 findings (resolved 2026-11-23):**
   - [REPO-04](#repo-04): dead code and about 45 unused imports.
   - [DOC-03](#doc-03): docs drift.
   - [FE-05](#fe-05): dead UI controls.
@@ -300,12 +306,12 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [DOC-02](#doc-02) | P3 | ~~App READMEs document a different API~~ ✅ resolved 2026-11-21 (generated route reference) |
 | [DEP-01](#dep-01) | P3 | ~~Dependencies installed but unused; no lock file~~ ✅ resolved 2026-11-21 (hash-locked) |
 | [ASM-04](#asm-04) | P3 | ~~Assessment model and analytics gaps~~ ✅ resolved 2026-11-21 |
-| [REPO-04](#repo-04) | P3 | Dead code and leftovers after the fix rounds — 🔴 open (re-audit 2026-11-22) |
-| [DOC-03](#doc-03) | P3 | Docs and this report have drifted from the code — 🔴 open (re-audit 2026-11-22) |
-| [FE-05](#fe-05) | P3 | Dead, misleading or inconsistent UI controls — 🔴 open (re-audit 2026-11-22) |
-| [FE-06](#fe-06) | P3 | Routing and status-display inconsistencies — 🔴 open (re-audit 2026-11-22) |
-| [API-05](#api-05) | P3 | API contract gaps found by the scenario suites — 🔴 open (re-audit 2026-11-22) |
-| [TEST-03](#test-03) | P3 | Gaps the green suite doesn't catch; noisy output; local env drift — 🔴 open (re-audit 2026-11-22) |
+| [REPO-04](#repo-04) | P3 | Dead code and leftovers after the fix rounds — ✅ resolved 2026-11-23 |
+| [DOC-03](#doc-03) | P3 | Docs and this report have drifted from the code — ✅ resolved 2026-11-23 |
+| [FE-05](#fe-05) | P3 | Dead, misleading or inconsistent UI controls — ✅ resolved 2026-11-23 |
+| [FE-06](#fe-06) | P3 | Routing and status-display inconsistencies — ✅ resolved 2026-11-23 |
+| [API-05](#api-05) | P3 | API contract gaps found by the scenario suites — ✅ resolved 2026-11-23 |
+| [TEST-03](#test-03) | P3 | Gaps the green suite doesn't catch; noisy output; local env drift — ✅ resolved 2026-11-23 |
 
 ---
 
@@ -2032,13 +2038,15 @@ Move aspirational features to a "Roadmap" section.
 > - `QuizQuestion.difficulty` uses `TextChoices` (`easy`/`medium`/`hard`). The migration maps existing free-text values onto them, with unknown values becoming `medium`.
 > - `Quiz.is_published` now defaults to `False`. Existing quizzes keep their value.
 >   - `ManageQuizView` accepts `is_published`, and a new quiz is a draft unless it's set.
->   - The lesson editor has a **Published to students** checkbox. It also sends `max_attempts` now; that field was in the form but never saved.
+>   - The lesson editor uses **Save Draft** and **Save & Publish**. It also sends `max_attempts` now; that field was in the form but never saved.
 > - `total_marks` is kept equal to the sum of the questions' marks by `post_save`/`post_delete` signals on `QuizQuestion` (`assessments/signals.py`), so admin and shell edits stay in sync too. The migration recomputes it for existing quizzes.
 > - Both analytics functions count finished attempts only. Both analytics views and `ManageQuizView` use `can_manage_course`, so admins have access.
 > - Tests: `assessments/test_quiz_model.py`.
 
 <a id="repo-04"></a>
-### REPO-04: Dead code and leftovers after the fix rounds — 🔴 OPEN (re-audit 2026-11-22)
+### REPO-04: Dead code and leftovers after the fix rounds — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Removed unused code, the quiz scoring test shim, the instructor-only test endpoint, unused imports and the obsolete ASGI setting. Ruff checks for undefined names and unused code in CI. Historical financial columns and payout relationships remain stored outside the current API response. Provider helpers retained for PAY-04 are marked. Local obsolete scripts, report outputs and the Windows virtual environment were archived under the ignored `output/pdf/.p3-archive/`. Certificate media stays in its storage location.
 
 **Evidence (pyflakes, vulture and a repo-wide reference search over tracked files):**
 - **Unreferenced functions and classes** (no caller in code, templates or tests):
@@ -2070,7 +2078,9 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Delete the unreferenced code and imports in one PR. Remove the test endpoint and regenerate `docs/API_ROUTES.md` and `docs/openapi.yaml`. Add `ruff check --select F` (pyflakes) to CI so unused imports can't build up again.
 
 <a id="doc-03"></a>
-### DOC-03: Docs and this report have drifted from the code — 🔴 OPEN (re-audit 2026-11-22)
+### DOC-03: Docs and this report have drifted from the code — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The READMEs now describe direct video files, the instructor preview route and the existing OpenAPI contract. The audit index, resolutions and implementation plan agree with the feature states.
 
 **Evidence:**
 - [README.md](README.md) **Roadmap** still lists "An OpenAPI schema (API-04)" as open, while the same README documents `docs/openapi.yaml` and API-04 is resolved.
@@ -2085,7 +2095,9 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Fix the two READMEs. Keep this report's headings, index and plan in sync in the same commit as each fix.
 
 <a id="fe-05"></a>
-### FE-05: Dead, misleading or inconsistent UI controls — 🔴 OPEN (re-audit 2026-11-22)
+### FE-05: Dead, misleading or inconsistent UI controls — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Removed the inert login and section fields and the wallet action from the insufficient-funds dialog. Paid checkout confirms the quoted price and the server rejects a higher charge. Review feedback and editor URL prompts use app dialogs. Purchase clears the wishlist entry. An empty quiz editor receives 204 without creating a quiz.
 
 **Evidence (✔ each one seen while driving the UI):**
 - **Remember me** on the login page has no code reading it. **Delete Account** in Settings has no handler (see [ACC-02](#acc-02)).
@@ -2099,7 +2111,9 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Remove or wire each control. Add a `description` field to `Module`, or drop the textarea. Hide the Add-funds action until top-ups exist. Confirm paid purchases with the price.
 
 <a id="fe-06"></a>
-### FE-06: Routing and status-display inconsistencies — 🔴 OPEN (re-audit 2026-11-22)
+### FE-06: Routing and status-display inconsistencies — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Wrong-role pages have a 403 with navigation. Website admins land on an administration page, and course managers opening a learning link go to preview. A session hint cookie prevents anonymous login refresh probes. New payout rejections have a distinct status. Learners can cancel enrollment with a certificate and refund warning.
 
 **Evidence (✔ from the route matrix and workflow run):**
 - **Role mismatch behaves two ways.** `/dashboard/` and `/enrollments/` *redirect* an instructor to their dashboard. A student on any `/instructor/...`, `/exams/create/` or `/payments/payouts/` page, and an instructor on `/library/`, instead get Django's bare **"403 Forbidden"** page. There is no `403.html`, so the page has no navigation back.
@@ -2112,7 +2126,9 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Add a `403.html` that links back to the role's home, or redirect consistently. Give admins a small website landing page or send them to the console. Skip the refresh probe when no refresh cookie is likely, for example from a non-httpOnly hint cookie. Add a `rejected` payout status. Either expose enrollment cancel with a warning or remove the endpoint.
 
 <a id="api-05"></a>
-### API-05: API contract gaps found by the scenario suites — 🔴 OPEN (re-audit 2026-11-22)
+### API-05: API contract gaps found by the scenario suites — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Section and lesson creation responses include IDs. Enrollment returns the documented unavailable-course code. User and tag lists have stable ordering, route docs show per-method permissions, and quiz starts use one route. Superseded certificate links return 410 with a reason. Bank payout requests require a destination before funds are reserved.
 
 **Evidence (✔ each one observed):**
 - **Created objects have no id in the response.** `POST /api/courses/<id>/modules/`, `/sections/<id>/lessons/` and `/lessons/create/` answer 201 with a body that has no `id`, because the serializers list only writable fields. A client can't address what it just created. The course content page reloads the whole list to cope.
@@ -2126,7 +2142,9 @@ Move aspirational features to a "Roadmap" section.
 **Fix approach:** Return the read serializer, including `id`, from every create endpoint. Use explicit codes, or update the docstring. Add `ordering` to both querysets. Delete the duplicate route. Keep revoked or superseded codes resolvable with `valid: false` and a reason. Validate payout destinations server-side.
 
 <a id="test-03"></a>
-### TEST-03: Gaps the green suite doesn't catch; noisy output; local env drift — 🔴 OPEN (re-audit 2026-11-22)
+### TEST-03: Gaps the green suite doesn't catch; noisy output; local env drift — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Added regression checks and a browser journey that registers the learner and instructor, authors and reviews a new course, buys it with a coupon, completes the course, verifies the certificate, cancels enrollment, requests a refund and records a manual payout. The journey seeds a reviewer, coupon and test wallet balance. Expected Django request warnings are quiet, and the local virtual environment matches both lockfiles.
 
 **Evidence:**
 - The suite passes on both databases: SQLite **498 tests OK, 3 skipped** (Postgres-only lock tests) and local Postgres 16 **498 OK, 0 skipped**. `check`, `makemigrations --check`, `check --deploy`, `spectacular --validate --fail-on-warn` and the `docs/API_ROUTES.md` / `docs/openapi.yaml` snapshots are all clean. Even so, none of [LRN-04](#lrn-04), [SEC-10](#sec-10), [FE-03](#fe-03), [EXM-04](#exm-04), [ERR-02](#err-02), [PAY-10](#pay-10) or [ADM-02](#adm-02) is caught. The browser smoke tests seed data straight into the database, and none of them tries a failure path in the UI.
@@ -2161,7 +2179,7 @@ Move aspirational features to a "Roadmap" section.
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ~~ENR-01~~ ✅, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
-| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. ~~ERR-02~~ ✅, ~~STU-03~~ ✅, ~~CRS-08~~ ✅, ~~CRS-09~~ ✅, ~~PAY-10~~ ✅, ~~ADM-02~~ ✅, ~~FE-04~~ ✅, ~~ACC-02~~ ✅, ~~ACC-03~~ ✅, ~~LRN-05~~ ✅, ~~RPT-01~~ ✅. Next REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
+| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. ~~ERR-02~~ ✅, ~~STU-03~~ ✅, ~~CRS-08~~ ✅, ~~CRS-09~~ ✅, ~~PAY-10~~ ✅, ~~ADM-02~~ ✅, ~~FE-04~~ ✅, ~~ACC-02~~ ✅, ~~ACC-03~~ ✅, ~~LRN-05~~ ✅, ~~RPT-01~~ ✅. ~~REPO-04~~ ✅, ~~DOC-03~~ ✅, ~~FE-05~~ ✅, ~~FE-06~~ ✅, ~~API-05~~ ✅, ~~TEST-03~~ ✅ | Complete |
 
 ### Definition of done for release
 

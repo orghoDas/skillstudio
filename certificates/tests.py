@@ -3,7 +3,6 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from decimal import Decimal
-from datetime import timedelta
 from unittest.mock import patch, MagicMock
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status

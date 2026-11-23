@@ -5,23 +5,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import extend_schema
-from django.db.models import Max
-from decimal import Decimal
 
 from accounts.permissions import IsStudent
-from enrollments.models import Enrollment, LessonProgress
-from courses.models import Lesson
 from certificates.models import Certificate
-from enrollments.services import get_resume_lesson
 from .activity import learning_timezone
-from .models import StudentProfile, StudentNote, Wallet, WalletTransaction
+from .models import StudentNote, Wallet, WalletTransaction
 from .serializers import (
     StudentProfileSerializer,
     StudentNoteSerializer,
     StudentNoteUpdateSerializer,
     StudentNoteListSerializer,
     StudentBookmarkSerializer,
-    StudentDashboardSerializer,
     StudentActivityFeedSerializer,
     WalletSerializer,
     WalletTransactionSerializer,

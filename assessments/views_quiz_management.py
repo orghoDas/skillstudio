@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -192,6 +193,7 @@ class ManageQuizView(APIView):
     """Read or edit a lesson quiz as a course manager."""
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: ManageQuizDetailSerializer, 204: None})
     def get(self, request, lesson_id):
         """Get quiz for a lesson"""
         lesson = get_object_or_404(Lesson.objects.select_related('module__course'), id=lesson_id)
@@ -199,10 +201,7 @@ class ManageQuizView(APIView):
         
         quiz = Quiz.objects.filter(lesson=lesson).first()
         if not quiz:
-            return Response(
-                {'error': 'Quiz not found for this lesson.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
         
         return Response(ManageQuizDetailSerializer(quiz).data)
 

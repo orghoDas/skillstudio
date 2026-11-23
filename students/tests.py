@@ -224,7 +224,7 @@ class StudentProfileServiceTests(TestCase):
     
     def test_update_profile(self):
         """Test updating profile."""
-        profile = get_or_create_student_profile(self.user)
+        get_or_create_student_profile(self.user)
         
         updated = update_student_profile(
             self.user,
@@ -347,8 +347,8 @@ class StudentNoteServiceTests(TestCase):
     
     def test_get_notes_filtered(self):
         """Test getting notes with filters."""
-        note1 = create_student_note(self.user, self.lesson.id, 'Note 1')
-        note2 = create_student_note(self.user, self.lesson.id, 'Note 2')
+        create_student_note(self.user, self.lesson.id, 'Note 1')
+        create_student_note(self.user, self.lesson.id, 'Note 2')
         
         notes = get_student_notes(self.user, lesson_id=self.lesson.id)
         
@@ -441,8 +441,8 @@ class StudentBookmarkServiceTests(TestCase):
     
     def test_get_bookmarks(self):
         """Test getting bookmarks."""
-        bookmark1 = create_bookmark(self.user, course_id=self.course.id)
-        bookmark2 = create_bookmark(self.user, lesson_id=self.lesson.id)
+        create_bookmark(self.user, course_id=self.course.id)
+        create_bookmark(self.user, lesson_id=self.lesson.id)
         
         bookmarks = get_student_bookmarks(self.user)
         

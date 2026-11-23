@@ -11,7 +11,6 @@ from courses.models import Course, Module, Lesson, Category
 from enrollments.models import Enrollment
 from .models import Quiz, QuizQuestion, QuestionOption, QuizAttempt
 from .services import start_quiz_attempt, submit_quiz_attempt
-from .services_scoring import calculate_quiz_score
 
 User = get_user_model()
 
@@ -192,7 +191,7 @@ class QuizServicesTest(TestCase):
         }
         attempt.save()
         
-        score = calculate_quiz_score(attempt)
+        score = submit_quiz_attempt(attempt).score
         self.assertEqual(score, Decimal('10'))  # Uses configured question marks
         attempt.refresh_from_db()
         self.assertTrue(attempt.passed)
@@ -206,7 +205,7 @@ class QuizServicesTest(TestCase):
         }
         attempt.save()
         
-        score = calculate_quiz_score(attempt)
+        score = submit_quiz_attempt(attempt).score
         self.assertEqual(score, Decimal('5'))  # Uses configured question marks
         attempt.refresh_from_db()
         self.assertTrue(attempt.passed)
@@ -222,7 +221,7 @@ class QuizServicesTest(TestCase):
         submit_quiz_attempt(service_attempt, answers)
         legacy_attempt.answers = answers
         legacy_attempt.save(update_fields=['answers'])
-        legacy_score = calculate_quiz_score(legacy_attempt)
+        legacy_score = submit_quiz_attempt(legacy_attempt).score
 
         service_attempt.refresh_from_db()
         legacy_attempt.refresh_from_db()
@@ -272,36 +271,36 @@ class QuizAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['title'], 'Test Quiz')
 
-    def test_alternate_quiz_start_requires_active_enrollment(self):
+    def test_quiz_start_requires_active_enrollment(self):
         unenrolled_student = User.objects.create_user(
             email='unenrolled@test.com',
             password='testpass123'
         )
         self.client.force_authenticate(user=unenrolled_student)
 
-        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(
             QuizAttempt.objects.filter(quiz=self.quiz, user=unenrolled_student).exists()
         )
 
-    def test_alternate_quiz_start_rejects_unpublished_quiz(self):
+    def test_quiz_start_rejects_unpublished_quiz(self):
         self.quiz.is_published = False
         self.quiz.save(update_fields=['is_published'])
 
-        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(
             QuizAttempt.objects.filter(quiz=self.quiz, user=self.student).exists()
         )
 
-    def test_alternate_quiz_start_allows_enrolled_student(self):
-        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+    def test_quiz_start_allows_enrolled_student(self):
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('attempt_id', response.data)
+        self.assertIn('id', response.data)
         self.assertTrue(
             QuizAttempt.objects.filter(
                 quiz=self.quiz,
@@ -311,10 +310,10 @@ class QuizAPITest(APITestCase):
         )
 
     def test_quiz_start_snapshots_question_evidence(self):
-        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+        response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        attempt = QuizAttempt.objects.get(id=response.data['attempt_id'])
+        attempt = QuizAttempt.objects.get(id=response.data['id'])
         self.assertEqual(attempt.total_marks_snapshot, 5)
         self.assertEqual(len(attempt.question_snapshot), 1)
         self.assertEqual(
@@ -459,31 +458,29 @@ class QuizAPITest(APITestCase):
         self.assertIsNone(attempt.completed_at)
         self.assertEqual(attempt.answers, {})
 
-    def test_quiz_start_routes_reuse_single_active_attempt(self):
+    def test_quiz_start_reuses_single_active_attempt(self):
         canonical_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
-        alternate_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
+        retry_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
 
         self.assertEqual(canonical_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(alternate_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(retry_response.status_code, status.HTTP_200_OK)
         self.assertEqual(
             canonical_response.data['id'],
-            alternate_response.data['attempt_id']
+            retry_response.data['id']
         )
         self.assertEqual(
             QuizAttempt.objects.filter(quiz=self.quiz, user=self.student).count(),
             1
         )
 
-    def test_quiz_start_routes_refuse_after_passing(self):
+    def test_quiz_start_refuses_after_passing(self):
         attempt = QuizAttempt.objects.create(
             quiz=self.quiz, user=self.student, completed_at=timezone.now(), passed=True
         )
 
         canonical_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/start/')
-        alternate_response = self.client.post(f'/api/assessments/quiz/{self.quiz.id}/attempt/start/')
 
         self.assertEqual(canonical_response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(alternate_response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(canonical_response.data['detail'], 'You have already passed this quiz.')
         self.assertEqual(
             list(QuizAttempt.objects.filter(quiz=self.quiz, user=self.student)),
@@ -608,8 +605,8 @@ class ManageQuizAPITest(APITestCase):
 
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data['detail'], 'Quiz not found for this lesson.')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(response.content)
         self.assertFalse(Quiz.objects.filter(lesson=self.lesson).exists())
 
     def test_manage_quiz_get_returns_existing_quiz(self):

@@ -17,6 +17,8 @@
                 {% endif %}
                 <div><dt class="text-gray-400">Certificate ID</dt><dd class="break-all">{{ certificate.id }}</dd></div>
             </dl>
+        {% elif certificate.reason == "superseded" %}
+            <p class="text-red-400 font-semibold">This certificate was superseded by a newer copy.</p>
         {% elif certificate.revoked %}
             <p class="text-red-400 font-semibold">This certificate was revoked.</p>
             {% if certificate.revoked_at %}<p class="text-gray-400 mt-2">Revoked {{ certificate.revoked_at|date:"j F Y" }}</p>{% endif %}

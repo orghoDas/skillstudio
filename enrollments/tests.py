@@ -453,7 +453,7 @@ class EnrollmentAPITest(APITestCase):
     
     def test_paid_enroll_debits_canonical_wallet_and_credits_instructor(self):
         """Paid enrollment moves money through the canonical wallet ledger only."""
-        from students.models import Wallet, WalletTransaction
+        from students.models import Wallet
 
         paid_course = Course.objects.create(
             title='Paid Course', instructor=self.instructor, category=self.category,

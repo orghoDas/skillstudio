@@ -6,29 +6,9 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from enrollments.services import require_active_enrollment, require_unlocked_lesson
 
-from .models import Quiz, QuizAttempt
-from .services import QUIZ_SUBMIT_GRACE_SECONDS, save_quiz_answer, start_quiz_attempt
+from .models import QuizAttempt
+from .services import QUIZ_SUBMIT_GRACE_SECONDS, save_quiz_answer
 from .services_timer import auto_submit_attempt
-
-
-class StartQuizAttemptView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, quiz_id):
-        quiz = get_object_or_404(Quiz, id=quiz_id)
-        enrollment = require_active_enrollment(request.user, quiz.lesson.module.course)
-        require_unlocked_lesson(enrollment, quiz.lesson)
-
-        try:
-            attempt = start_quiz_attempt(request.user, quiz)
-        except ValidationError as exc:
-            return Response({"error": exc.messages[0]}, status=status.HTTP_409_CONFLICT)
-
-        return Response({
-            "attempt_id": attempt.id,
-            "started_at": attempt.started_at,
-            "time_remaining_seconds": attempt.time_remaining_seconds()
-        })
 
 
 class SubmitQuizAnswerView(APIView):

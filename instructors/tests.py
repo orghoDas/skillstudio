@@ -1,7 +1,5 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError, PermissionDenied
-from django.utils import timezone
 from decimal import Decimal
 from unittest.mock import patch
 from rest_framework.test import APIClient
@@ -128,7 +126,7 @@ class InstructorProfileServiceTests(TestCase):
     
     def test_update_profile(self):
         """Test updating profile."""
-        profile = get_or_create_instructor_profile(self.user)
+        get_or_create_instructor_profile(self.user)
         
         updated = update_instructor_profile(
             self.user,

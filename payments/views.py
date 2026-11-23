@@ -8,6 +8,7 @@ purchase_course), and money enters the wallet only through the Stripe
 test-mode top-up flow (AUDIT_REPORT.md Decision D-01).
 """
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
@@ -16,7 +17,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from decimal import Decimal
 from django.utils import timezone
 
 from payments.models import Payment, Payout, Refund, Coupon
@@ -248,6 +248,7 @@ class PayoutRequestView(APIView):
     throttle_scope = "payments"
     permission_classes = [IsAuthenticated, IsInstructor]
 
+    @extend_schema(request=PayoutRequestSerializer, responses={201: PayoutSerializer})
     def post(self, request):
         serializer = PayoutRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -257,7 +258,7 @@ class PayoutRequestView(APIView):
             payout = services.create_payout(
                 instructor=request.user,
                 amount=data.get('amount'),
-                payout_method=data.get('payout_method', 'stripe_connect'),
+                payout_method=data['payout_method'],
                 account_details=data.get('account_details'),
             )
         except services.PaymentsError as exc:

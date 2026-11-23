@@ -60,7 +60,7 @@ class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
         fields = [
-            'id', 'module', 'title', 'content_type', 'content_text',
+            'id', 'id', 'module', 'title', 'content_type', 'content_text',
             'video_url', 'duration_seconds', 'metadata', 'position',
             'is_free', 'view_count', 'created_at', 'resources'
         ]
@@ -79,7 +79,7 @@ class LessonCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
         fields = [
-            'module', 'title', 'content_type', 'content_text',
+            'id', 'module', 'title', 'content_type', 'content_text',
             'video_url', 'duration_seconds', 'metadata', 'position', 'is_free'
         ]
         # The destination module can come from the URL. Check positions when
@@ -151,18 +151,6 @@ class LessonDataSerializer(serializers.ModelSerializer):
         return parse_video_url(obj.video_url)
 
 
-class LessonListSerializer(serializers.ModelSerializer):
-    is_completed = serializers.BooleanField(read_only=True)
-    is_locked = serializers.BooleanField(read_only=True)
-
-    class Meta:
-        model = Lesson
-        fields = [
-            'id', 'title', 'position', 'is_free', 'content_type',
-            'duration_seconds', 'is_completed', 'is_locked'
-        ]
-
-
 class CurriculumLessonSerializer(serializers.ModelSerializer):
     is_completed = serializers.SerializerMethodField()
     is_locked = serializers.SerializerMethodField()
@@ -208,7 +196,7 @@ class ModuleCreateUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Module
-        fields = ['course', 'title', 'position']
+        fields = ['id', 'course', 'title', 'position']
 
     def validate_course(self, value):
         if self.instance is not None and value is not None and value.pk != self.instance.course_id:

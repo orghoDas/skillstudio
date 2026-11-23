@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import F, Q, Count, OuterRef, Prefetch, Sum
+from django.db.models import F, Q, Count, Sum
 from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -14,20 +14,18 @@ from accounts.permissions import IsAdmin, IsInstructor
 from core.query_params import optional_id
 from courses.policies import can_access_course_content, can_manage_course, can_view_course_catalog
 from courses.services import course_learner_count, lock_course_for_edit, lock_draft_for_deletion, start_new_version, transition
-from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import (
     get_access_enrollment, get_resume_lesson, lesson_lock_state, ordered_course_lessons, require_active_enrollment,
 )
 
-from .models import Course, Lesson, Module, Category, Tag, LessonResource
+from .models import Course, Lesson, Module, Category, Tag
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
     ModuleSerializer, ModuleCreateUpdateSerializer, LessonSerializer,
     LessonCreateUpdateSerializer, CategorySerializer, TagSerializer,
     CourseCurriculumSerializer, CatalogModuleSerializer, CatalogLessonSummarySerializer,
-    LessonDataSerializer, LessonResourceSerializer
+    LessonDataSerializer
 )
-from enrollments.models import Enrollment, LessonProgress
 
 
 # ===== CATEGORY & TAG VIEWS =====
@@ -50,7 +48,7 @@ class CategoryCreateView(generics.CreateAPIView):
 
 class TagListCreateView(generics.ListCreateAPIView):
     """List and create tags"""
-    queryset = Tag.objects.all()
+    queryset = Tag.objects.order_by('name', 'pk')
     serializer_class = TagSerializer
 
     def get_permissions(self):

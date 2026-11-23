@@ -124,3 +124,25 @@ function showConfirm(message) {
         dialog.showModal();
     });
 }
+
+function showTextPrompt(label, { multiline = false, type = 'text', maxLength = 2048 } = {}) {
+    const dialog = document.getElementById('text-prompt');
+    if (dialog.open) return Promise.resolve(null);
+
+    const input = document.createElement(multiline ? 'textarea' : 'input');
+    if (!multiline) input.type = type;
+    input.id = 'text-prompt-value';
+    input.className = 'w-full rounded-lg border border-dark-border bg-dark-bg p-2';
+    input.required = true;
+    input.maxLength = maxLength;
+    dialog.querySelector('#text-prompt-label').textContent = label;
+    dialog.querySelector('#text-prompt-input').replaceChildren(input);
+    dialog.returnValue = 'cancel';
+    return new Promise(resolve => {
+        dialog.addEventListener('close', () => {
+            resolve(dialog.returnValue === 'confirm' ? input.value.trim() : null);
+        }, { once: true });
+        dialog.showModal();
+        input.focus();
+    });
+}

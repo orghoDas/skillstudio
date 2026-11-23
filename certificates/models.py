@@ -136,3 +136,10 @@ class Certificate(models.Model):
             last_downloaded_at=timezone.now(),
         )
         self.refresh_from_db(fields=['download_count', 'last_downloaded_at'])
+
+
+class SupersededCertificateCode(models.Model):
+    """Remember retired QR codes without exposing certificate details."""
+
+    code = models.CharField(max_length=100, primary_key=True)
+    revoked_at = models.DateTimeField()

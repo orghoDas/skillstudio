@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.db.models import Count, Max, Sum, Q
-from django.core.exceptions import ValidationError
 
 from courses.models import Course
 from courses.services import course_learner_count

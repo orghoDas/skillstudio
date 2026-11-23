@@ -4,8 +4,7 @@ from functools import wraps
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 
 from accounts.authentication import CookieJWTAuthentication
@@ -44,7 +43,7 @@ def cookie_login_required(view_func=None, *, role=None):
                 query = urlencode({'next': request.get_full_path()})
                 return redirect(f'/auth/login/?{query}')
             if role and user.role != role and not is_platform_admin(user):
-                raise PermissionDenied
+                return render(request, '403.html', status=403)
             return view(request, *args, **kwargs)
         return wrapper
 

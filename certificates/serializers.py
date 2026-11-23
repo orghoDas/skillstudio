@@ -87,4 +87,7 @@ class CertificateVerificationSerializer(serializers.Serializer):
     grade = serializers.DecimalField(max_digits=5, decimal_places=2, required=False)
     id = serializers.UUIDField(required=False)
     revoked = serializers.BooleanField(required=False)
+    reason = serializers.CharField(required=False)
+    detail = serializers.CharField(required=False)
+    code = serializers.CharField(required=False)
     revoked_at = serializers.DateTimeField(required=False, allow_null=True)

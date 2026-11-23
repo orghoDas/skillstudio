@@ -1,8 +1,7 @@
-from itertools import chain
 from collections import defaultdict
 from datetime import timedelta
 from django.db import transaction
-from django.db.models import Value, CharField, Count, Exists, Max, OuterRef, Q, Sum
+from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.utils import timezone
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.contrib.auth import get_user_model
@@ -15,7 +14,7 @@ from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import (
     get_resume_lesson, lesson_progress_percentage, required_lessons_for_courses, with_enrollment_progress,
 )
-from .models import LearningActivity, StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
+from .models import LearningActivity, StudentProfile, StudentNote, StudentBookmark, Wallet
 from .constants import (
     ACHIEVEMENTS,
     LESSON_STARTED,

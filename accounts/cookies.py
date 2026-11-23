@@ -4,6 +4,7 @@ from django.conf import settings
 
 
 LEGACY_REFRESH_COOKIE = "refresh_token"
+REFRESH_HINT_COOKIE = "skillstudio_session"
 
 
 def get_refresh_cookie(request):
@@ -32,6 +33,11 @@ def set_jwt_cookies(response, access=None, refresh=None):
         )
     if refresh is not None:
         response.set_cookie(
+            REFRESH_HINT_COOKIE, "1",
+            max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+            secure=kwargs["secure"], samesite=kwargs["samesite"], path="/",
+        )
+        response.set_cookie(
             settings.JWT_AUTH_REFRESH_COOKIE,
             refresh,
             max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
@@ -50,4 +56,5 @@ def clear_jwt_cookies(response):
     response.delete_cookie(settings.JWT_AUTH_COOKIE, path="/", samesite=samesite)
     response.delete_cookie(settings.JWT_AUTH_REFRESH_COOKIE, path=settings.JWT_AUTH_REFRESH_COOKIE_PATH, samesite=samesite)
     clear_legacy_refresh_cookie(response)
+    response.delete_cookie(REFRESH_HINT_COOKIE, path="/", samesite=samesite)
     return response

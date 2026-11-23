@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from accounts.models import Profile
 from courses.models import Course, Category
-from .models import QuestionBank, Exam, ExamAttempt, ExamResult
+from .models import QuestionBank, Exam, ExamAttempt
 from .services import start_exam_attempt, submit_exam_attempt
 # get_exam_analytics kept local to exams app
 

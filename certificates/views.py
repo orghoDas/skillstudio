@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin
 from accounts.utils import public_learner_name
-from .models import Certificate
+from .models import Certificate, SupersededCertificateCode
 from .serializers import CertificateListSerializer, CertificateSerializer, CertificateVerificationSerializer
 from .services import ensure_certificate_pdf, regenerate_certificate_pdf, verify_certificate
 
@@ -48,6 +48,13 @@ def verification_details(code):
     try:
         certificate = verify_certificate(code)
     except ValidationError:
+        superseded = SupersededCertificateCode.objects.filter(pk=code).first()
+        if superseded:
+            return {
+                'valid': False, 'revoked': True, 'revoked_at': superseded.revoked_at,
+                'reason': 'superseded', 'code': 'superseded',
+                'detail': 'This certificate was superseded by a newer copy.',
+            }, status.HTTP_410_GONE
         return {'valid': False}, status.HTTP_404_NOT_FOUND
     if certificate.is_revoked:
         return {'valid': False, 'revoked': True, 'revoked_at': certificate.revoked_at}, status.HTTP_410_GONE

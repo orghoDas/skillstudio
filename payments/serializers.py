@@ -26,8 +26,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             'platform_fee', 'instructor_earnings',
             'payment_method', 'provider', 'provider_id',
             'coupon', 'status', 'failure_reason',
-            'billing_email', 'billing_address',
-            'metadata', 'ip_address',
+            'billing_email',
+            'metadata',
             'created_at', 'updated_at', 'completed_at',
             'is_successful', 'can_be_refunded'
         ]
@@ -43,14 +43,13 @@ class PayoutSerializer(serializers.ModelSerializer):
     
     instructor_email = serializers.EmailField(source='instructor.email', read_only=True)
     instructor_name = serializers.SerializerMethodField()
-    payment_count = serializers.IntegerField(read_only=True)
     account_details = serializers.SerializerMethodField()
     
     class Meta:
         model = Payout
         fields = [
             'id', 'instructor', 'instructor_email', 'instructor_name',
-            'amount', 'currency', 'payment_count',
+            'amount', 'currency',
             'status', 'wallet_debited', 'payout_method', 'account_details',
             'transaction_id', 'provider_details',
             'failure_reason', 'admin_notes',
@@ -58,7 +57,7 @@ class PayoutSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'transaction_id', 'provider_details', 'wallet_debited',
-            'processed_at', 'created_at', 'updated_at', 'payment_count'
+            'processed_at', 'created_at', 'updated_at'
         ]
     
     def get_instructor_name(self, obj) -> str:
@@ -78,10 +77,23 @@ class PayoutRequestSerializer(serializers.Serializer):
         required=False
     )
     payout_method = serializers.ChoiceField(
-        choices=Payout.METHOD_CHOICES,
-        default='stripe_connect'
+        choices=['bank_transfer'],
+        default='bank_transfer',
     )
-    account_details = serializers.JSONField(required=False)
+    account_details = serializers.DictField(
+        child=serializers.CharField(max_length=80),
+        help_text="Provide the account holder and either an IBAN or a bank name and account number.",
+    )
+
+    def validate_account_details(self, value):
+        fields = (
+            ('account_holder', 'iban') if value.get('iban')
+            else ('account_holder', 'bank_name', 'account_number')
+        )
+        missing = [field for field in fields if not value.get(field)]
+        if missing:
+            raise serializers.ValidationError({field: 'This field is required.' for field in missing})
+        return {field: value[field] for field in fields}
 
 
 class RefundSerializer(serializers.ModelSerializer):
@@ -106,13 +118,12 @@ class RefundSerializer(serializers.ModelSerializer):
             'amount', 'refund_type', 'reason', 'status',
             'instructor_debit', 'platform_absorbed',
             'admin_notes', 'rejection_reason',
-            'provider_refund_id',
             'requested_at', 'processed_at', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'processed_by', 'status', 'admin_notes', 'rejection_reason',
             'instructor_debit', 'platform_absorbed', 'refund_type',
-            'provider_refund_id', 'requested_at', 'processed_at',
+            'requested_at', 'processed_at',
             'created_at', 'updated_at'
         ]
 

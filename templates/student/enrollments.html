@@ -175,6 +175,7 @@ function renderEnrollmentCard(enrollment) {
                 <a href="/${status === 'canceled' ? 'courses' : 'learn'}/${encodeURIComponent(course.slug)}/" class="block text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                     ${status === 'canceled' ? 'View Course' : status === 'completed' ? 'Review Course' : progress > 0 ? 'Continue Learning' : 'Start Learning'}
                 </a>
+                ${status !== 'canceled' ? `<button type="button" data-click="cancelEnrollment" data-id="${escapeHtml(enrollment.id)}" class="mt-3 text-sm text-red-400">Cancel enrollment</button>` : ''}
             </div>
         </div>
     `;
@@ -183,6 +184,17 @@ function renderEnrollmentCard(enrollment) {
 bindActions({
     click: {
         loadEnrollments: () => loadEnrollments(),
+        cancelEnrollment: async (_event, button) => {
+            if (!await showConfirm('Cancel access to this course? Any certificate will be revoked. This does not issue a refund.')) return;
+            button.disabled = true;
+            try {
+                await apiRequest(`/enrollments/enrollments/${Number(button.dataset.id)}/cancel/`, {method: 'PATCH'});
+                await loadEnrollments();
+            } catch (error) {
+                showAlert(error.message, 'error');
+                button.disabled = false;
+            }
+        },
     },
 });
 </script>

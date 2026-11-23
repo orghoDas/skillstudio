@@ -253,31 +253,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /api/accounts/instructor-only/:
-    get:
-      operationId: accounts_instructor_only_get
-      description: Test endpoint for instructor-only access
-      tags:
-      - accounts
-      security:
-      - bearerAuth: []
-      - cookieAuth: []
-      - apiKeyHeader: []
-      - apiKeyAuthorization: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        default:
-          description: API error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
   /api/accounts/logout/:
     post:
       operationId: accounts_logout_post
@@ -871,50 +846,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /api/assessments/quiz/{quiz_id}/attempt/start/:
-    post:
-      operationId: assessments_quiz_quiz_id_attempt_start_post
-      parameters:
-      - in: path
-        name: quiz_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - assessments
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              additionalProperties: {}
-          multipart/form-data:
-            schema:
-              type: object
-              additionalProperties: {}
-      security:
-      - bearerAuth: []
-      - cookieAuth: []
-      - apiKeyHeader: []
-      - apiKeyAuthorization: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        default:
-          description: API error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
   /api/assessments/quiz/{quiz_id}/start/:
     post:
       operationId: assessments_quiz_quiz_id_start_post
@@ -1099,9 +1030,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: {}
+                $ref: '#/components/schemas/ManageQuizDetail'
           description: ''
+        '204':
+          description: No response body
         default:
           description: API error
           content:
@@ -5310,28 +5242,25 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: {}
+              $ref: '#/components/schemas/PayoutRequestRequest'
           application/x-www-form-urlencoded:
             schema:
-              type: object
-              additionalProperties: {}
+              $ref: '#/components/schemas/PayoutRequestRequest'
           multipart/form-data:
             schema:
-              type: object
-              additionalProperties: {}
+              $ref: '#/components/schemas/PayoutRequestRequest'
+        required: true
       security:
       - bearerAuth: []
       - cookieAuth: []
       - apiKeyHeader: []
       - apiKeyAuthorization: []
       responses:
-        '200':
+        '201':
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: {}
+                $ref: '#/components/schemas/Payout'
           description: ''
         default:
           description: API error
@@ -6500,6 +6429,12 @@ components:
           format: uuid
         revoked:
           type: boolean
+        reason:
+          type: string
+        detail:
+          type: string
+        code:
+          type: string
         revoked_at:
           type: string
           format: date-time
@@ -7044,13 +6979,21 @@ components:
 
         The purchase itself — pricing, wallet debit, instructor credit, Payment
         record, coupon redemption and the enrollment — happens atomically in
-        ``payments.services.purchase_course``. Clients never send a price.
+        ``payments.services.purchase_course``. A client may cap what it authorizes;
+        the service still determines the price.
       properties:
         course_id:
           type: integer
+          maximum: 9223372036854775807
+          minimum: 1
+          format: int64
         coupon_code:
           type: string
           maxLength: 64
+        max_charge:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
       required:
       - course_id
     EnrollmentCreateRequest:
@@ -7060,13 +7003,21 @@ components:
 
         The purchase itself — pricing, wallet debit, instructor credit, Payment
         record, coupon redemption and the enrollment — happens atomically in
-        ``payments.services.purchase_course``. Clients never send a price.
+        ``payments.services.purchase_course``. A client may cap what it authorizes;
+        the service still determines the price.
       properties:
         course_id:
           type: integer
+          maximum: 9223372036854775807
+          minimum: 1
+          format: int64
         coupon_code:
           type: string
           maxLength: 64
+        max_charge:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
       required:
       - course_id
     EnrollmentDetail:
@@ -7948,6 +7899,9 @@ components:
     LessonCreateUpdate:
       type: object
       properties:
+        id:
+          type: integer
+          readOnly: true
         module:
           type: integer
         title:
@@ -7979,6 +7933,7 @@ components:
           type: boolean
           default: false
       required:
+      - id
       - title
     LessonCreateUpdateRequest:
       type: object
@@ -8104,6 +8059,80 @@ components:
         * `beginner` - Beginner
         * `intermediate` - Intermediate
         * `advanced` - Advanced
+    ManageQuestionOption:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        option_text:
+          type: string
+          maxLength: 255
+        is_correct:
+          type: boolean
+      required:
+      - id
+      - option_text
+    ManageQuizDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        time_limit_minutes:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        passing_percentage:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        max_attempts:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        is_published:
+          type: boolean
+        total_marks:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManageQuizQuestion'
+      required:
+      - id
+      - questions
+    ManageQuizQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        question_text:
+          type: string
+        difficulty:
+          $ref: '#/components/schemas/DifficultyEnum'
+        marks:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        explanation:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManageQuestionOption'
+      required:
+      - id
+      - options
+      - question_text
     Me:
       type: object
       properties:
@@ -8162,6 +8191,9 @@ components:
         the module's *current* course, so allowing a new course would let an
         instructor inject their module into someone else's course.
       properties:
+        id:
+          type: integer
+          readOnly: true
         course:
           type: integer
         title:
@@ -8172,6 +8204,7 @@ components:
           maximum: 2147483647
           minimum: 0
       required:
+      - id
       - title
     ModuleCreateUpdateRequest:
       type: object
@@ -9205,11 +9238,7 @@ components:
             maxLength: 254
           - type: string
             maxLength: 0
-        billing_address: {}
         metadata: {}
-        ip_address:
-          type: string
-          nullable: true
         created_at:
           type: string
           format: date-time
@@ -9304,16 +9333,13 @@ components:
         currency:
           type: string
           maxLength: 10
-        payment_count:
-          type: integer
-          readOnly: true
         status:
           $ref: '#/components/schemas/PayoutStatusEnum'
         wallet_debited:
           type: boolean
           readOnly: true
         payout_method:
-          $ref: '#/components/schemas/PayoutMethodEnum'
+          $ref: '#/components/schemas/PayoutPayoutMethodEnum'
         account_details:
           type: object
           additionalProperties: {}
@@ -9348,13 +9374,12 @@ components:
       - instructor
       - instructor_email
       - instructor_name
-      - payment_count
       - processed_at
       - provider_details
       - transaction_id
       - updated_at
       - wallet_debited
-    PayoutMethodEnum:
+    PayoutPayoutMethodEnum:
       enum:
       - stripe_connect
       - paypal
@@ -9366,6 +9391,33 @@ components:
         * `paypal` - PayPal
         * `bank_transfer` - Bank Transfer
         * `wire_transfer` - Wire Transfer
+    PayoutRequestPayoutMethodEnum:
+      enum:
+      - bank_transfer
+      type: string
+      description: '* `bank_transfer` - bank_transfer'
+    PayoutRequestRequest:
+      type: object
+      description: Serializer for requesting payouts
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        payout_method:
+          allOf:
+          - $ref: '#/components/schemas/PayoutRequestPayoutMethodEnum'
+          default: bank_transfer
+        account_details:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 80
+          description: Provide the account holder and either an IBAN or a bank name
+            and account number.
+      required:
+      - account_details
     PayoutStatusEnum:
       enum:
       - pending
@@ -9373,6 +9425,7 @@ components:
       - paid
       - failed
       - cancelled
+      - rejected
       type: string
       description: |-
         * `pending` - Pending
@@ -9380,6 +9433,7 @@ components:
         * `paid` - Paid
         * `failed` - Failed
         * `cancelled` - Cancelled
+        * `rejected` - Rejected
     PreferredLearningStyleEnum:
       enum:
       - visual
@@ -9707,9 +9761,6 @@ components:
         rejection_reason:
           type: string
           readOnly: true
-        provider_refund_id:
-          type: string
-          readOnly: true
         requested_at:
           type: string
           format: date-time
@@ -9740,7 +9791,6 @@ components:
       - processed_at
       - processed_by
       - processed_by_email
-      - provider_refund_id
       - reason
       - refund_type
       - rejection_reason

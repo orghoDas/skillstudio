@@ -57,7 +57,8 @@ class SerialLiveServerThread(LiveServerThread):
 
 
 @tag("browser")
-class BrowserSmokeTests(StaticLiveServerTestCase):
+class BrowserTestCase(StaticLiveServerTestCase):
+    password = "Sm0ke-test-pass!"
     host = "localhost"
     server_thread_class = SerialLiveServerThread
 
@@ -74,34 +75,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         if cls.browser is not None:
             cls.browser.close()
             cls._playwright.stop()
-
-    # ------------------------------------------------------------------ data
-
-    def setUp(self):
-        from accounts.models import Profile, User
-        from courses.models import Category, Course, Lesson, Module
-
-        self.password = "Sm0ke-test-pass!"
-        self.student = User.objects.create_user(email="sam@student.com", password=self.password)
-        self.instructor = User.objects.create_user(email="ivy@instructor.com", password=self.password,
-                                                   role="instructor")
-        Profile.objects.filter(user=self.instructor).update(full_name="Ivy Instructor")
-        category = Category.objects.create(name="Programming", slug="programming")
-        self.course = Course.objects.create(
-            title="Smoke Free Course", instructor=self.instructor, category=category,
-            status="published", is_free=True, price=Decimal("0"),
-            description="A free course for browser smoke tests.",
-        )
-        module = Module.objects.create(course=self.course, title="Basics", position=1)
-        self.lesson1 = Lesson.objects.create(module=module, title="Read me first", position=1,
-                                             content_type="text", content_text="Body one of the course.")
-        self.lesson2 = Lesson.objects.create(module=module, title="Second lesson", position=2,
-                                             content_type="text", content_text="Body two.")
-        self.draft = Course.objects.create(title="Smoke Draft", instructor=self.instructor, category=category,
-                                           status="draft", price=Decimal("15.00"))
-        draft_module = Module.objects.create(course=self.draft, title="Draft module", position=1)
-        self.draft_lesson = Lesson.objects.create(module=draft_module, title="Delete me", position=1,
-                                                  content_type="text", content_text="x")
 
     # --------------------------------------------------------------- helpers
 
@@ -143,8 +116,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
 
     def login(self, page, user, *, next_path=None):
         path = f"/auth/login/?next={next_path}" if next_path else "/auth/login/"
-        if next_path:
-            page.allowed_api_errors = getattr(page, "allowed_api_errors", set()) | {("/api/accounts/token/refresh/", 401)}
         self.visit(page, path)
         page.fill("#email", user.email)
         page.fill("#password", self.password)
@@ -167,7 +138,49 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         leaked = [m for m in self.VISIBLE_MARKUP if m in text]
         self.assertEqual(leaked, [], f"Raw markup visible as text on {where}")
 
+
+
+class BrowserSmokeTests(BrowserTestCase):
+    # ------------------------------------------------------------------ data
+
+    def setUp(self):
+        from accounts.models import Profile, User
+        from courses.models import Category, Course, Lesson, Module
+
+        self.student = User.objects.create_user(email="sam@student.com", password=self.password)
+        self.instructor = User.objects.create_user(email="ivy@instructor.com", password=self.password,
+                                                   role="instructor")
+        Profile.objects.filter(user=self.instructor).update(full_name="Ivy Instructor")
+        category = Category.objects.create(name="Programming", slug="programming")
+        self.course = Course.objects.create(
+            title="Smoke Free Course", instructor=self.instructor, category=category,
+            status="published", is_free=True, price=Decimal("0"),
+            description="A free course for browser smoke tests.",
+        )
+        module = Module.objects.create(course=self.course, title="Basics", position=1)
+        self.lesson1 = Lesson.objects.create(module=module, title="Read me first", position=1,
+                                             content_type="text", content_text="Body one of the course.")
+        self.lesson2 = Lesson.objects.create(module=module, title="Second lesson", position=2,
+                                             content_type="text", content_text="Body two.")
+        self.draft = Course.objects.create(title="Smoke Draft", instructor=self.instructor, category=category,
+                                           status="draft", price=Decimal("15.00"))
+        draft_module = Module.objects.create(course=self.draft, title="Draft module", position=1)
+        self.draft_lesson = Lesson.objects.create(module=draft_module, title="Delete me", position=1,
+                                                  content_type="text", content_text="x")
+
     # ----------------------------------------------------------------- tests
+
+    def test_anonymous_login_skips_refresh_and_role_mismatch_has_navigation(self):
+        page = self.new_page()
+        requests = []
+        page.on("request", lambda request: requests.append(urlparse(request.url).path))
+        self.visit(page, "/instructor/courses/")
+        self.assertNotIn("/api/accounts/token/refresh/", requests)
+        self.login(page, self.student)
+        response = page.goto(self.live_server_url + "/instructor/courses/")
+        self.assertEqual(response.status, 403)
+        expect(page.get_by_role("heading", name="Access restricted")).to_be_visible()
+        expect(page.get_by_role("link", name="Back to your dashboard")).to_have_attribute("href", "/dashboard/")
 
     def test_staff_console_can_read_dashboard_and_publish_from_review_queue(self):
         from django.contrib.auth.models import Permission
@@ -627,7 +640,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.login(page, self.instructor)
         self.visit(page, f"/instructor/lessons/{self.draft_lesson.id}/edit/")
         manage = f"**/api/assessments/quiz/lesson/{self.draft_lesson.id}/manage/"
-        page.allowed_api_errors = {(f"/api/assessments/quiz/lesson/{self.draft_lesson.id}/manage/", 404)}
         page.select_option("#lesson-type", "quiz")
         page.fill(".question-text", "How much is two plus two?")
         page.locator(".option-text").nth(0).fill("Four")
@@ -708,71 +720,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         expect(page.get_by_role("heading", name="Wallet purchase receipt")).to_be_visible()
         expect(page.get_by_text("9.00 USD", exact=True)).to_be_visible()
         self.assert_no_errors(page, "receipt")
-
-    def test_coupon_refund_and_manual_payout_in_the_browser(self):
-        from cryptography.fernet import Fernet
-
-        from accounts.models import User
-        from payments.models import Coupon, Payment, Payout
-        from students.models import Wallet
-
-        moderator = User.objects.create_user(
-            email="wallet-operator@admin.com", password=self.password, role="admin"
-        )
-        self.course.is_free = False
-        self.course.price = Decimal("20.00")
-        self.course.save()
-        Coupon.objects.create(code="SAVE5", discount_type=Coupon.FIXED, discount_value=5, created_by=moderator)
-        wallet, _ = Wallet.objects.get_or_create(user=self.student)
-        wallet.add_money(Decimal("40.00"), description="Synthetic checkout funds")
-
-        buyer = self.new_page()
-        self.login(buyer, self.student)
-        self.visit(buyer, f"/courses/{self.course.slug}/")
-        buyer.get_by_label("Coupon code").fill("SAVE5")
-        buyer.get_by_role("button", name="Check coupon").click()
-        expect(buyer.locator("#coupon-quote")).to_have_text("Price with coupon: $15.00")
-        buyer.locator("#enroll-btn").click()
-        buyer.wait_for_url("**/dashboard/")
-        self.assertEqual(Payment.objects.get(user=self.student).amount, Decimal("15.00"))
-        self.visit(buyer, "/payments/history/")
-        buyer.get_by_role("link", name="Request refund", exact=True).click()
-        buyer.get_by_label("Amount in USD", exact=False).fill("3.00")
-        buyer.get_by_label("Reason", exact=True).fill("Synthetic partial refund")
-        buyer.get_by_role("button", name="Request wallet refund").click()
-        buyer.get_by_text("Refund request submitted.", exact=True).wait_for()
-
-        operator = self.new_page()
-        self.login(operator, moderator)
-        self.visit(operator, "/payments/refunds/")
-        operator.get_by_role("button", name="Approve", exact=True).click()
-        operator.get_by_role("button", name="Confirm", exact=True).click()
-        expect(operator.get_by_text("processed", exact=False)).to_be_visible()
-        self.assertEqual(Wallet.objects.get(user=self.student).balance, Decimal("28.00"))
-
-        with self.settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode()):
-            instructor = self.new_page()
-            self.login(instructor, self.instructor)
-            self.visit(instructor, "/payments/payouts/")
-            instructor.get_by_label("Amount in USD", exact=False).fill("10.00")
-            instructor.get_by_label("Account holder").fill("Synthetic Payee")
-            instructor.get_by_label("Bank name").fill("Test Bank")
-            instructor.get_by_label("Bank account number or IBAN").fill("test-account-only")
-            instructor.get_by_role("button", name="Request payout").click()
-            instructor.get_by_role("button", name="Confirm", exact=True).click()
-            instructor.get_by_text("Payout requested.", exact=True).wait_for()
-
-            self.visit(operator, "/payments/payouts/")
-            operator.get_by_role("button", name="Approve", exact=True).click()
-            operator.get_by_role("button", name="Confirm", exact=True).click()
-            operator.get_by_label("Bank transfer reference").fill("test-transfer-receipt")
-            operator.get_by_role("button", name="Mark as sent").click()
-            operator.get_by_role("button", name="Confirm", exact=True).click()
-            operator.get_by_text("Transfer reference: test-transfer-receipt").wait_for()
-            self.assertEqual(Payout.objects.get(instructor=self.instructor).status, "paid")
-            self.assert_no_errors(instructor, "manual payout request")
-        self.assert_no_errors(buyer, "coupon checkout and refund")
-        self.assert_no_errors(operator, "refund and payout decisions")
 
     def test_navbar_search_reaches_the_second_page(self):
         from courses.models import Course
@@ -900,3 +847,128 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assertFalse(Lesson.objects.filter(pk=self.draft_lesson.pk).exists(),
                          "Deleting a lesson from the content page didn't delete it")
         self.assert_no_errors(page, "course content page")
+
+
+class BrowserJourneyTests(BrowserTestCase):
+    def register_user(self, page, address):
+        from accounts.models import User
+
+        self.visit(page, "/auth/register/")
+        page.fill("#email", address)
+        page.fill("#password", self.password)
+        page.fill("#password2", self.password)
+        page.check("#terms")
+        page.click("#register-btn")
+        page.wait_for_url("**/auth/login/")
+        return User.objects.get(email=address)
+
+    def test_authoring_purchase_certificate_refund_and_manual_payout(self):
+        from cryptography.fernet import Fernet
+
+        from accounts.models import User
+        from certificates.models import Certificate
+        from courses.models import Course
+        from payments.models import Coupon, Payment, Payout
+        from students.models import Wallet
+
+        moderator = User.objects.create_user(
+            email="wallet-operator@admin.com", password=self.password, role="admin"
+        )
+        instructor = self.new_page()
+        instructor_user = self.register_user(instructor, "journey@instructor.com")
+        self.login(instructor, instructor_user)
+        self.visit(instructor, "/instructor/courses/create/")
+        instructor.fill("#title", "Browser Journey")
+        instructor.fill("#description", "A complete course authored and purchased through the browser.")
+        instructor.select_option("#level", "beginner")
+        instructor.fill("#price", "20.00")
+        instructor.get_by_role("button", name="Create draft").click()
+        instructor.wait_for_url("**/instructor/courses/*/content/")
+        instructor.get_by_role("button", name="Add Section", exact=True).click()
+        instructor.fill("#section-title", "First section")
+        instructor.locator("#section-form").get_by_role("button", name="Add Section").click()
+        instructor.get_by_role("button", name="+ Add Lesson", exact=True).click()
+        instructor.fill("#lesson-title", "Read this lesson")
+        instructor.select_option("#lesson-type", "text")
+        instructor.fill("#lesson-content", "Browser journey lesson body.")
+        instructor.locator("#lesson-form").get_by_role("button", name="Add Lesson", exact=True).click()
+        expect(instructor.get_by_text("Read this lesson", exact=True)).to_be_visible()
+        instructor.get_by_role("button", name="Submit for review").click()
+        expect(instructor.locator("#course-content-status")).to_have_text("under review")
+
+        course = Course.objects.get(title="Browser Journey")
+        operator = self.new_page()
+        self.login(operator, moderator)
+        expect(operator.get_by_role("heading", name="Administration")).to_be_visible()
+        self.visit(operator, f"/instructor/courses/{course.slug}/content/")
+        operator.get_by_role("button", name="Publish course").click()
+        expect(operator.locator("#course-content-status")).to_have_text("published")
+        self.assert_no_errors(instructor, "course authoring and submission")
+
+        buyer = self.new_page()
+        student = self.register_user(buyer, "journey@student.com")
+        Coupon.objects.create(code="SAVE5", discount_type=Coupon.FIXED, discount_value=5, created_by=moderator)
+        wallet, _ = Wallet.objects.get_or_create(user=student)
+        wallet.add_money(Decimal("40.00"), description="Synthetic checkout funds")
+
+        self.login(buyer, student)
+        self.visit(buyer, f"/courses/{course.slug}/")
+        buyer.get_by_label("Coupon code").fill("SAVE5")
+        buyer.get_by_role("button", name="Check coupon").click()
+        expect(buyer.locator("#coupon-quote")).to_have_text("Price with coupon: $15.00")
+        buyer.locator("#enroll-btn").click()
+        expect(buyer.locator('#confirm-message')).to_contain_text('$15.00')
+        buyer.get_by_role('button', name='Confirm', exact=True).click()
+        buyer.wait_for_url("**/dashboard/")
+        self.assertEqual(Payment.objects.get(user=student).amount, Decimal("15.00"))
+        self.visit(buyer, f"/learn/{course.slug}/")
+        expect(buyer.get_by_text("Browser journey lesson body.", exact=True)).to_be_visible()
+        buyer.click("#mark-complete")
+        expect(buyer.locator("#mark-complete")).to_have_text("✓ Completed")
+        certificate = Certificate.objects.get(user=student, course=course)
+        self.visit(buyer, f"/certificates/verify/{certificate.verification_code}/")
+        expect(buyer.get_by_text("Verified certificate", exact=True)).to_be_visible()
+
+        self.visit(buyer, "/enrollments/")
+        buyer.get_by_role("button", name="Cancel enrollment").click()
+        expect(buyer.locator("#confirm-message")).to_contain_text("certificate will be revoked")
+        buyer.get_by_role("button", name="Confirm", exact=True).click()
+        expect(buyer.get_by_role("button", name="Cancel enrollment")).to_have_count(0)
+        certificate.refresh_from_db()
+        self.assertTrue(certificate.is_revoked)
+        self.visit(buyer, "/payments/history/")
+        buyer.get_by_role("link", name="Request refund", exact=True).click()
+        buyer.get_by_label("Amount in USD", exact=False).fill("3.00")
+        buyer.get_by_label("Reason", exact=True).fill("Synthetic partial refund")
+        buyer.get_by_role("button", name="Request wallet refund").click()
+        buyer.get_by_text("Refund request submitted.", exact=True).wait_for()
+
+        self.visit(operator, "/payments/refunds/")
+        operator.get_by_role("button", name="Approve", exact=True).click()
+        operator.get_by_role("button", name="Confirm", exact=True).click()
+        expect(operator.get_by_text("processed", exact=False)).to_be_visible()
+        self.assertEqual(Wallet.objects.get(user=student).balance, Decimal("28.00"))
+
+        with self.settings(PAYOUT_DETAILS_ENCRYPTION_KEY=Fernet.generate_key().decode()):
+            instructor = self.new_page()
+            self.login(instructor, instructor_user)
+            self.visit(instructor, "/payments/payouts/")
+            instructor.get_by_label("Amount in USD", exact=False).fill("10.00")
+            instructor.get_by_label("Account holder").fill("Synthetic Payee")
+            instructor.get_by_label("Bank name").fill("Test Bank")
+            instructor.get_by_label("Bank account number or IBAN").fill("test-account-only")
+            instructor.get_by_role("button", name="Request payout").click()
+            instructor.get_by_role("button", name="Confirm", exact=True).click()
+            instructor.get_by_text("Payout requested.", exact=True).wait_for()
+
+            self.visit(operator, "/payments/payouts/")
+            operator.get_by_role("button", name="Approve", exact=True).click()
+            operator.get_by_role("button", name="Confirm", exact=True).click()
+            operator.get_by_label("Bank transfer reference").fill("test-transfer-receipt")
+            operator.get_by_role("button", name="Mark as sent").click()
+            operator.get_by_role("button", name="Confirm", exact=True).click()
+            operator.get_by_text("Transfer reference: test-transfer-receipt").wait_for()
+            self.assertEqual(Payout.objects.get(instructor=instructor_user).status, "paid")
+            self.assert_no_errors(instructor, "manual payout request")
+        self.assert_no_errors(buyer, "coupon checkout and refund")
+        self.assert_no_errors(operator, "refund and payout decisions")

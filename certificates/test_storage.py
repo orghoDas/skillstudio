@@ -127,7 +127,10 @@ class CertificateDownloadTests(APITestCase):
         self.assertEqual(reissued.pk, self.certificate.pk)
         self.assertNotEqual(reissued.verification_code, code)
         self.assertIsNone(reissued.revoked_at)
-        self.assertEqual(public.get(public_api).status_code, 404)
+        old = public.get(public_api)
+        self.assertEqual(old.status_code, 410)
+        self.assertEqual(old.json()['code'], 'superseded')
+        self.assertContains(public.get(public_page), 'superseded', status_code=410)
 
     def test_download_count_uses_current_database_value(self):
         stale = Certificate.objects.get(pk=self.certificate.pk)

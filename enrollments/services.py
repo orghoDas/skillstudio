@@ -244,24 +244,6 @@ def update_lesson_watch_progress(enrollment, lesson, watch_time_delta, *, local_
     return progress, credited_seconds
 
 
-def get_previous_lesson(lesson):
-    pre_lesson = Lesson.objects.filter(
-        module=lesson.module,
-        position__lt=lesson.position
-    ).order_by('-position').first()
-
-    if pre_lesson:
-        return pre_lesson
-    
-    pre_module = lesson.module.course.modules.filter(
-        position__lt=lesson.module.position
-    ).order_by('-position').first()
-
-    if not pre_module:
-        return None
-    
-    return pre_module.lessons.order_by('-position').first()
-
 def get_resume_lesson(enrollment, *, lessons=None, completed_ids=None):
     """Find the first unlocked, incomplete required lesson in study order."""
     if lessons is None:

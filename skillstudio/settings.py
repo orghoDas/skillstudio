@@ -155,7 +155,6 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 
-ASGI_APPLICATION = "skillstudio.asgi.application"
 
 MIDDLEWARE = [
     "core.api_exceptions.APIErrorEnvelopeMiddleware",

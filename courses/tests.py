@@ -4,7 +4,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 from django.contrib.auth import get_user_model
 from decimal import Decimal
-from datetime import timedelta
 from django.utils import timezone
 from .models import Course, Module, Lesson, Category, Tag, LessonResource, CourseVersion
 from enrollments.models import Enrollment, LessonProgress

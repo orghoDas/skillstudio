@@ -1,8 +1,9 @@
+from decimal import Decimal
 from accounts.utils import public_instructor_name
 from rest_framework import serializers
-from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
+from django.db.models import Sum
 from .models import Enrollment, LessonProgress, Wishlist
-from courses.models import Course, Module, Lesson
+from courses.models import Course, Lesson
 from courses.policies import can_view_course_catalog
 from .constants import ACCESS_STATUSES
 from .services import get_lesson_completion_stats, get_resume_lesson, lesson_progress_percentage
@@ -178,15 +179,14 @@ class EnrollmentCreateSerializer(serializers.Serializer):
 
     The purchase itself — pricing, wallet debit, instructor credit, Payment
     record, coupon redemption and the enrollment — happens atomically in
-    ``payments.services.purchase_course``. Clients never send a price.
+    ``payments.services.purchase_course``. A client may cap what it authorizes;
+    the service still determines the price.
     """
-    course_id = serializers.IntegerField()
+    course_id = serializers.IntegerField(min_value=1, max_value=2**63 - 1)
     coupon_code = serializers.CharField(max_length=64, required=False, allow_blank=True)
-
-    def validate_course_id(self, value):
-        if not Course.objects.filter(id=value, status='published').exists():
-            raise serializers.ValidationError("Course not found or not published.")
-        return value
+    max_charge = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False,
+    )
 
     def create(self, validated_data):
         """Kept for callers that use ``serializer.save()``; returns the enrollment."""
@@ -197,6 +197,7 @@ class EnrollmentCreateSerializer(serializers.Serializer):
                 self.context['request'].user,
                 validated_data['course_id'],
                 coupon_code=validated_data.get('coupon_code') or None,
+                max_charge=validated_data.get('max_charge'),
             )
         except PurchaseError as exc:
             raise serializers.ValidationError({"detail": exc.message, "code": exc.code})

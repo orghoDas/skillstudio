@@ -8,6 +8,7 @@ committed file is stale; regenerate with:
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.urls import URLPattern, URLResolver, get_resolver
@@ -50,8 +51,18 @@ def _describe(callback):
     else:
         allowed = getattr(view_class, "http_method_names", HTTP_METHODS)
         methods = [m.upper() for m in HTTP_METHODS if m in allowed and hasattr(view_class, m)]
-    permissions = initkwargs.get("permission_classes", getattr(view_class, "permission_classes", ()))
-    auth = ", ".join(p.__name__ for p in permissions) or "AllowAny"
+    permissions_by_method = {}
+    for method in methods:
+        view = view_class(**initkwargs)
+        view.request = SimpleNamespace(method=method)
+        if actions:
+            view.action = actions[method.lower()]
+        permissions = ", ".join(type(permission).__name__ for permission in view.get_permissions()) or "AllowAny"
+        permissions_by_method.setdefault(permissions, []).append(method)
+    auth = " / ".join(
+        f'{" ".join(group)}: {permission}' if len(permissions_by_method) > 1 else permission
+        for permission, group in permissions_by_method.items()
+    )
     name = f"{view_class.__module__}.{view_class.__name__}"
     if name.endswith(".WrappedAPIView"):  # @api_view function
         name = f"{callback.__module__}.{callback.__name__}"

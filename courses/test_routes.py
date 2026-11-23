@@ -22,6 +22,14 @@ class RouteShadowingTests(APITestCase):
         return Course.objects.create(title=title, instructor=self.instructor, category=self.category,
                                      status="published")
 
+    def test_generated_route_reference_uses_method_permissions(self):
+        from core.routes import render_routes
+
+        self.assertIn(
+            "| `/api/courses/tags/` | GET POST | GET: AllowAny / POST: IsAdmin |",
+            render_routes(),
+        )
+
     def test_tags_endpoint_is_reachable(self):
         Tag.objects.create(name="python")
         self.assertEqual(resolve("/api/courses/tags/").func.view_class.__name__, "TagListCreateView")
@@ -78,6 +86,30 @@ class SectionAndLessonDeleteTests(APITestCase):
         self.module = Module.objects.create(course=self.course, title="M", position=1)
         self.lesson = Lesson.objects.create(module=self.module, title="L", position=1)
         self.client.force_authenticate(self.owner)
+
+    def test_created_sections_and_lessons_return_their_ids(self):
+        sections = (
+            (f"/api/courses/{self.course.pk}/modules/", {}),
+            (f"/api/courses/{self.course.slug}/sections/", {}),
+            ("/api/courses/modules/create/", {"course": self.course.pk}),
+        )
+        for index, (url, fields) in enumerate(sections, start=2):
+            with self.subTest(url=url):
+                response = self.client.post(url, {**fields, "title": f"Section {index}", "position": index})
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertTrue(Module.objects.filter(pk=response.data["id"], course=self.course).exists())
+
+        lessons = (
+            (f"/api/courses/sections/{self.module.pk}/lessons/", {}),
+            ("/api/courses/lessons/create/", {"module": self.module.pk}),
+        )
+        for index, (url, fields) in enumerate(lessons, start=2):
+            with self.subTest(url=url):
+                response = self.client.post(url, {
+                    **fields, "title": f"Lesson {index}", "content_type": "text", "position": index,
+                })
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertTrue(Lesson.objects.filter(pk=response.data["id"], module=self.module).exists())
 
     def test_owner_deletes_lesson_and_section_in_draft(self):
         response = self.client.delete(f"/api/courses/lessons/{self.lesson.id}/")

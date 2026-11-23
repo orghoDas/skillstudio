@@ -8,3 +8,13 @@
         </div>
     </form>
 </dialog>
+<dialog id="text-prompt" aria-labelledby="text-prompt-label" class="w-full max-w-sm rounded-lg border border-dark-border bg-dark-surface p-6 text-gray-100 backdrop:bg-black/60">
+    <form method="dialog">
+        <label id="text-prompt-label" for="text-prompt-value" class="mb-3 block"></label>
+        <div id="text-prompt-input"></div>
+        <div class="mt-5 flex justify-end gap-3">
+            <button value="cancel" formnovalidate class="rounded-lg border border-dark-border px-4 py-2">Cancel</button>
+            <button value="confirm" class="rounded-lg bg-blue-600 px-4 py-2 text-white">Confirm</button>
+        </div>
+    </form>
+</dialog>

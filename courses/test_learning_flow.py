@@ -105,7 +105,6 @@ class LessonLockRuleTests(LearningFlowFixture, APITestCase):
             (self.client.post, f'{lesson_url}complete/', {}),
             (self.client.patch, f'{lesson_url}watch-time/', {'watch_time_delta': 10}),
             (self.client.post, f'{quiz_url}{quiz.pk}/start/', {}),
-            (self.client.post, f'{quiz_url}{quiz.pk}/attempt/start/', {}),
             (self.client.post, f'{quiz_url}attempt/{attempt.pk}/submit/', {'answers': {}}),
             (self.client.post, f'{quiz_url}attempt/{attempt.pk}/answer/submit/', {}),
         ):

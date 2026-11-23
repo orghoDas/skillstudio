@@ -9,7 +9,7 @@ Catalogue and course content: categories, tags, courses, modules, lessons and le
   - A free course has a zero price. A paid course has a positive price. The API validates both fields together and the database enforces the pair.
 - **`Module`** and **`Lesson`** are ordered by `position`.
   - A lesson's `content_type` is `video`, `text` or `quiz`.
-  - Video URLs are parsed by `video.parse_video_url` and must be YouTube or Vimeo.
+  - Video URLs are parsed by `video.parse_video_url` and support YouTube, Vimeo and direct video files such as MP4 and WebM.
   - `is_free` lessons can be previewed without buying the course.
 - **`CourseVersion`** records the published course details and curriculum. `Course.current_version` points to the snapshot for that catalog entry. A revision is a separate course linked by `revision_of`.
 

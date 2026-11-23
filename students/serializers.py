@@ -2,7 +2,7 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from .models import StudentProfile, StudentNote, StudentBookmark, Wallet, WalletTransaction
-from courses.models import Lesson, Course
+from courses.models import Lesson
 from courses.policies import visible_catalog_courses
 
 User = get_user_model()

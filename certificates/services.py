@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @transaction.atomic
 def issue_certificate(user, course):
     """Issue a certificate for a completed enrollment. Render its PDF on demand."""
-    from .models import Certificate
+    from .models import Certificate, SupersededCertificateCode
     from enrollments.models import Enrollment
 
     try:
@@ -41,6 +41,9 @@ def issue_certificate(user, course):
     if certificate is None:
         return Certificate.objects.create(user=user, course=course, **fields)
 
+    SupersededCertificateCode.objects.create(
+        code=certificate.verification_code, revoked_at=certificate.revoked_at or timezone.now(),
+    )
     previous_name = certificate.pdf.name
     storage = certificate.pdf.storage
     fields.update(
@@ -219,7 +222,7 @@ def verify_certificate(verification_code):
             'user__profile', 'course', 'enrollment'
         ).get(verification_code=verification_code)
     except Certificate.DoesNotExist:
-        raise ValidationError(f"Invalid or non-existent verification code")
+        raise ValidationError("Invalid or non-existent verification code")
 
 
 def regenerate_certificate_pdf(certificate_id, user):

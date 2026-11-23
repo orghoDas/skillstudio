@@ -6,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.utils import timezone
 from django.db.models import Count, F, FloatField, Max, Q, Sum
 from django.db.models.functions import Cast, Coalesce, NullIf
 from django.http import HttpResponse
@@ -23,7 +22,6 @@ from .serializers import (
     EnrollmentListSerializer,
     EnrollmentDetailSerializer,
     EnrollmentCreateSerializer,
-    LessonProgressSerializer,
     LessonProgressDetailSerializer,
     WishlistSerializer,
     WishlistCreateSerializer,
@@ -130,6 +128,7 @@ class EnrollCourseView(generics.CreateAPIView):
                 request.user,
                 serializer.validated_data['course_id'],
                 coupon_code=serializer.validated_data.get('coupon_code') or None,
+                max_charge=serializer.validated_data.get('max_charge'),
             )
         except PurchaseError as exc:
             return Response(

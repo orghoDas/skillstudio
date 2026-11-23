@@ -29,7 +29,6 @@ from payments.models import (
     Payment, Payout, Refund, Coupon, CouponRedemption,
     PaymentWebhookLog, PaymentDispute
 )
-from accounts.models import User
 from payments.payout_details import encrypt_payout_details
 
 logger = logging.getLogger(__name__)
@@ -171,7 +170,7 @@ def _lock_wallets(*users):
 
 
 @transaction.atomic
-def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
+def purchase_course(user, course_id, coupon_code=None, *, max_charge=None) -> PurchaseResult:
     """Enroll ``user`` in a course, charging their wallet if the course is paid.
 
     Idempotent per (user, course): if the user already owns the course
@@ -181,7 +180,7 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     """
     from courses.models import Course
     from enrollments.constants import ACCESS_STATUSES
-    from enrollments.models import Enrollment
+    from enrollments.models import Enrollment, Wishlist
 
     try:
         course = Course.objects.select_for_update(of=("self",)).select_related("instructor").get(
@@ -197,6 +196,7 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
 
     enrollment = Enrollment.objects.select_for_update().filter(user=user, course=course).first()
     if enrollment and enrollment.status in ACCESS_STATUSES:
+        Wishlist.objects.filter(user=user, course=course).delete()
         return PurchaseResult(enrollment, OUTCOME_ALREADY_ENROLLED, None, Decimal("0.00"))
 
     # A full refund ends the paid entitlement. A zero-cost coupon redemption
@@ -217,6 +217,8 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     payment = None
     charged = Decimal("0.00")
     if quote.final_amount > 0 and not previously_owned:
+        if max_charge is not None and quote.final_amount > max_charge:
+            raise PurchaseError("The price has changed. Reload the course before buying.", "price_changed")
         if buyer_wallet.balance < quote.final_amount:
             raise PurchaseError("Insufficient balance", "insufficient_balance")
 
@@ -262,6 +264,7 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
             enrollment.refresh_from_db()
         outcome = OUTCOME_REACTIVATED
 
+    Wishlist.objects.filter(user=user, course=course).delete()
     logger.info(
         "Course purchase: user=%s course=%s outcome=%s charged=%s payment=%s",
         user.pk, course.pk, outcome, charged, getattr(payment, "pk", None),
@@ -269,6 +272,7 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     return PurchaseResult(enrollment, outcome, payment, charged)
 
 
+# Retained for the verified payment-provider integration (PAY-04).
 def get_payment_by_provider_id(provider, provider_id):
     """Get payment by provider ID"""
     try:
@@ -519,7 +523,7 @@ def _locked_payout(payout_id):
 
 @sensitive_variables('account_details')
 @transaction.atomic
-def create_payout(instructor, amount=None, payout_method="stripe_connect", account_details=None):
+def create_payout(instructor, amount=None, payout_method="bank_transfer", account_details=None):
     """Instructor requests a payout; the amount is reserved from their wallet now."""
     (wallet,) = _lock_wallets(instructor)
     amount = wallet.balance if amount is None else to_money(amount)
@@ -544,9 +548,6 @@ def create_payout(instructor, amount=None, payout_method="stripe_connect", accou
     payout.save(update_fields=["wallet_debited", "updated_at"])
     logger.info("Payout requested: payout=%s instructor=%s amount=%s", payout.pk, instructor.pk, amount)
     return payout
-
-
-request_payout = create_payout  # clearer name for new callers
 
 
 @transaction.atomic
@@ -602,13 +603,7 @@ def _close_payout(payout_id, new_status, reason, allowed_from):
 @transaction.atomic
 def reject_payout(payout_id, admin_user=None, reason=""):
     """Admin rejects a payout; the reserved amount returns to the wallet."""
-    return _close_payout(payout_id, "cancelled", reason or "Rejected by admin", OPEN_PAYOUT_STATUSES)
-
-
-@transaction.atomic
-def fail_payout(payout_id, reason):
-    """The transfer failed; the reserved amount returns to the wallet."""
-    return _close_payout(payout_id, "failed", reason, OPEN_PAYOUT_STATUSES)
+    return _close_payout(payout_id, "rejected", reason or "Rejected by admin", OPEN_PAYOUT_STATUSES)
 
 
 @transaction.atomic
@@ -618,13 +613,6 @@ def cancel_payout(payout_id, instructor):
     if payout.instructor_id != instructor.pk:
         raise PayoutError("Payout not found.", "not_found")
     return _close_payout(payout_id, "cancelled", "Cancelled by instructor", ("pending",))
-
-
-def get_pending_payouts():
-    """Get all pending payouts"""
-    return Payout.objects.filter(status='pending').select_related(
-        'instructor'
-    ).order_by('-created_at')
 
 
 # ==========================================
@@ -805,6 +793,7 @@ def get_instructor_earnings(instructor, start_date=None, end_date=None):
 # WEBHOOK PROCESSING
 # ==========================================
 
+# Retained for the verified payment-provider integration (PAY-04).
 @transaction.atomic
 def log_webhook_event(gateway, event_type, event_id, payload, payment=None):
     """Log webhook event"""
@@ -838,6 +827,7 @@ def mark_webhook_processed(webhook_log, error=None):
 # DISPUTE MANAGEMENT
 # ==========================================
 
+# Retained for the verified payment-provider integration (PAY-04).
 @transaction.atomic
 def create_dispute(payment, dispute_id, amount, reason):
     """Create a payment dispute"""

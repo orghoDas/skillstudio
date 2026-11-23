@@ -1,5 +1,5 @@
 from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Avg, Count, FloatField, Q
@@ -7,13 +7,10 @@ from django.db.models.functions import Cast, Coalesce, NullIf
 
 from accounts.permissions import IsInstructor
 from accounts.utils import public_instructor_name
-from courses.models import Course
 from core.pagination import SummaryPageNumberPagination
 from enrollments.models import Enrollment
 from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import lesson_progress_percentage, with_enrollment_progress
-from django.shortcuts import get_object_or_404
-from .models import InstructorProfile
 from .serializers import (
     FeaturedInstructorSerializer,
     InstructorProfileSerializer,

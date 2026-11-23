@@ -12,10 +12,7 @@ from .view_analytics import (
     QuizQuestionAnalyticsView
 )
 
-from .views_attempt import (
-    StartQuizAttemptView,
-    SubmitQuizAnswerView
-)
+from .views_attempt import SubmitQuizAnswerView
 
 
 urlpatterns = [
@@ -32,6 +29,5 @@ urlpatterns = [
     path("analytics/quiz/<int:quiz_id>/questions/", QuizQuestionAnalyticsView.as_view()),
 
     # Quiz Attempts
-    path("quiz/<int:quiz_id>/attempt/start/", StartQuizAttemptView.as_view()),
     path("quiz/attempt/<int:attempt_id>/answer/submit/", SubmitQuizAnswerView.as_view()),
 ]

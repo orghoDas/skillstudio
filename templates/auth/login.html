@@ -43,14 +43,6 @@
                     <p class="text-red-400 text-sm mt-1 hidden" id="password-error"></p>
                 </div>
 
-                <!-- Remember Me -->
-                <div class="flex items-center">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="remember-me" class="w-4 h-4 bg-dark-bg border-dark-border rounded text-blue-600 focus:ring-2 focus:ring-blue-500">
-                        <span class="ml-2 text-sm text-gray-400">Remember me</span>
-                    </label>
-                </div>
-
                 <!-- Submit Button -->
                 <button type="submit" id="login-btn"
                     class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center">
@@ -183,10 +175,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Protected page requests arrive here when the access cookie has expired.
     // The browser only sends the refresh cookie to the accounts API.
     const role = document.body.dataset.pageRole;
-    const next = new URLSearchParams(window.location.search).get('next');
     if (role) {
         window.location.replace(postLoginDestination(role));
-    } else if (safeNextPath(next) || localStorage.getItem('user')) {
+    } else if (hasRefreshSession()) {
         refreshAccess()
             .then(async response => {
                 if (!response.ok) {

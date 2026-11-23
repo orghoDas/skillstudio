@@ -33,11 +33,6 @@
                 <input type="text" id="section-title" required
                     class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
             </div>
-            <div>
-                <label for="section-description" class="block text-sm font-medium mb-2">Description (Optional)</label>
-                <textarea id="section-description" rows="3"
-                    class="w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
-            </div>
             <div class="flex space-x-3">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">
                     Add Section
@@ -243,7 +238,7 @@ async function changeCourseStatus(action) {
         } else if (action === 'publish') {
             response = await apiRequest(`/courses/${id}/publish/`, {method: 'POST'});
         } else if (action === 'reject') {
-            const reason = prompt('Reason for returning this course to draft');
+            const reason = await showTextPrompt('Reason for returning this course to draft', { multiline: true, maxLength: 1000 });
             if (!reason?.trim()) return;
             response = await apiRequest(`/courses/${id}/reject/`, {method: 'POST', body: JSON.stringify({reason})});
         } else if (action === 'archive') {
@@ -272,7 +267,6 @@ function renderSection(section, index) {
                 <div class="flex items-center justify-between">
                     <div class="flex-1">
                         <h3 class="text-xl font-semibold mb-1">Section ${escapeHtml(index + 1)}: ${escapeHtml(section.title)}</h3>
-                        ${section.description ? `<p class="text-sm text-gray-400">${escapeHtml(section.description)}</p>` : ''}
                     </div>
                     <div class="flex items-center space-x-2">
                         <span class="text-sm text-gray-400">${escapeHtml(lessons.length)} lessons</span>
@@ -364,7 +358,6 @@ async function handleAddSection(e) {
     
     const data = {
         title: document.getElementById('section-title').value,
-        description: document.getElementById('section-description').value,
         position: sections.length + 1
     };
 

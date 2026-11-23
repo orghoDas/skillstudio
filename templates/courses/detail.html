@@ -162,7 +162,7 @@ async function loadCourse(slug) {
             document.getElementById('course-price').textContent = 'FREE';
             document.getElementById('course-price').classList.add('text-green-400');
         } else {
-            document.getElementById('course-price').textContent = `$${price}`;
+            document.getElementById('course-price').textContent = `$${price.toFixed(2)}`;
         }
         
         await checkEnrollmentStatus();
@@ -244,9 +244,7 @@ async function checkCoupon(event) {
         return;
     }
     try {
-        const result = await apiRequest('/payments/coupons/validate/', {
-            method: 'POST', body: JSON.stringify({course_id: courseData.id, code}),
-        });
+        const result = await quoteCoupon(code);
         if (result && document.getElementById('coupon-code').value.trim() === code) {
             quote.textContent = `Price with coupon: $${Number(result.final_amount).toFixed(2)}`;
         }
@@ -280,21 +278,38 @@ async function loadWishlist() {
     };
 }
 
+function quoteCoupon(code) {
+    return apiRequest('/payments/coupons/validate/', {
+        method: 'POST', body: JSON.stringify({course_id: courseData.id, code}),
+    });
+}
+
 async function handleEnrollment() {
     
     const btn = document.getElementById('enroll-btn');
     const action = btn.textContent;
     const coupon = document.getElementById('coupon-code')?.value.trim();
     btn.disabled = true;
-    btn.textContent = 'Enrolling...';
-    
+    let submitted = false;
     try {
+        let maxCharge = "0.00";
+        if (!courseData.is_free) {
+            const quote = coupon ? await quoteCoupon(coupon) : null;
+            if (coupon && !quote) return;
+            maxCharge = Number(quote?.final_amount ?? courseData.price).toFixed(2);
+            const message = btn.textContent.trim() === 'Enroll Again'
+                ? `Re-enroll? We will charge up to $${maxCharge} if a new purchase is needed.`
+                : `Enroll for $${maxCharge} using your wallet?`;
+            if (!await showConfirm(message)) return;
+        }
+        btn.textContent = 'Enrolling...';
         const response = await apiRequest('/enrollments/enroll/', {
             method: 'POST',
-            body: JSON.stringify({course_id: courseData.id, ...(coupon && {coupon_code: coupon})})
+            body: JSON.stringify({course_id: courseData.id, max_charge: maxCharge, ...(coupon && {coupon_code: coupon})})
         });
         
         if (response) {
+            submitted = true;
             // The API is idempotent: an already-owned course is never charged again.
             const message = response.outcome === 'already_enrolled'
                 ? "You're already enrolled in this course."
@@ -307,8 +322,6 @@ async function handleEnrollment() {
             }, 1500);
         }
     } catch (error) {
-        console.error('Enrollment error:', error);
-        // If error indicates insufficient balance, show friendly modal with Add Funds action
         const body = error && error.body;
         const detail = body && body.detail || error.message;
         if ((body && body.code === 'insufficient_balance') ||
@@ -317,13 +330,15 @@ async function handleEnrollment() {
         } else {
             showAlert(detail || 'Failed to enroll. Please try again.', 'error');
         }
-        btn.disabled = false;
-        btn.textContent = action;
+    } finally {
+        if (!submitted) {
+            btn.disabled = false;
+            btn.textContent = action;
+        }
     }
 }
 
 function showInsufficientFundsModal(message) {
-    // Simple modal offering to add funds
     const existing = document.getElementById('insufficient-modal');
     if (existing) existing.remove();
 
@@ -338,8 +353,7 @@ function showInsufficientFundsModal(message) {
             </div>
             <p class="text-sm text-gray-300 mb-4">${escapeHtml(message || 'You do not have enough balance to enroll in this course.')}</p>
             <div class="flex space-x-3">
-                <button data-click="closeInsufficientModal" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Cancel</button>
-                <button data-click="goToWallet" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Go to Wallet</button>
+                <button data-click="closeInsufficientModal" class="flex-1 px-4 py-2 border border-dark-border rounded-lg">Close</button>
             </div>
         </div>
     `;
@@ -349,7 +363,6 @@ function showInsufficientFundsModal(message) {
 bindActions({
     click: {
         closeInsufficientModal: () => document.getElementById('insufficient-modal')?.remove(),
-        goToWallet: () => { window.location.href = '/wallet/'; },
     },
 });
 </script>
