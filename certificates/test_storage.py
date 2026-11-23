@@ -80,6 +80,19 @@ class CertificateDownloadTests(APITestCase):
         self.certificate.refresh_from_db()
         self.assertTrue(certificate_has_pdf(self.certificate))
 
+    def test_pdf_is_regenerated_when_the_public_learner_name_changes(self):
+        from accounts.models import Profile
+
+        render_certificate_pdf(self.certificate.pk)
+        self.certificate.refresh_from_db()
+        self.assertEqual(self.certificate.pdf_learner_name, 'SkillStudio learner')
+        Profile.objects.update_or_create(user=self.student, defaults={'full_name': 'Updated Learner'})
+        self.assertEqual(self.download().status_code, 200)
+        self.certificate.refresh_from_db()
+        self.assertEqual(self.certificate.pdf_learner_name, 'Updated Learner')
+        response = self.client.get(f'/api/certificates/verify/{self.certificate.verification_code}/')
+        self.assertEqual(response.data['user_name'], 'Updated Learner')
+
     def test_other_users_cannot_download(self):
         self.client.force_authenticate(User.objects.create_user(email="o@student.com", password="pw"))
         self.assertEqual(self.download().status_code, status.HTTP_404_NOT_FOUND)

@@ -34,6 +34,27 @@ class APIErrorContractTests(APITestCase):
                 self.assertIsInstance(error.json()['fields'][field], list)
 
 
+    def test_malformed_filtered_queries_return_field_errors(self):
+        admin = User.objects.create_user(email='filter-reviewer@example.test', role='admin')
+        self.client.force_authenticate(admin)
+        cases = (
+            ('/api/payments/stats/', 'start_date'),
+            ('/api/payments/instructor/earnings/', 'end_date'),
+            ('/api/enrollments/', 'course'),
+            ('/api/exams/questions/', 'course_id'),
+            ('/api/students/notes/', 'lesson'),
+            ('/api/students/notes/', 'course'),
+        )
+        for route, field in cases:
+            with self.subTest(route=route, field=field):
+                response = self.client.get(route, {field: 'garbage'})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()['fields'])
+        self.assertEqual(self.client.get('/api/payments/stats/', {
+            'start_date': '2026-11-01', 'end_date': '2026-11-02T00:00:00Z',
+        }).status_code, 200)
+
+
 class OpenAPIContractTests(APITestCase):
     def test_schema_endpoint_matches_snapshot_and_documents_core_contracts(self):
         response = self.client.get('/api/schema/', HTTP_ACCEPT='application/vnd.oai.openapi+json')

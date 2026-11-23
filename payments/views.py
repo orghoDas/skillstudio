@@ -26,7 +26,7 @@ from payments.serializers import (
     RefundSerializer, RefundRequestSerializer,
     CouponSerializer, CouponCreateSerializer, CouponValidationSerializer,
     PublicCouponSerializer,
-    PaymentStatsSerializer, InstructorBalanceSerializer
+    PaymentDateRangeSerializer, PaymentStatsSerializer, InstructorBalanceSerializer
 )
 from payments import services
 from accounts.permissions import IsInstructor, IsAdmin
@@ -447,16 +447,9 @@ class PaymentStatsView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     
     def get(self, request):
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        # Parse dates if provided
-        if start_date:
-            start_date = timezone.datetime.fromisoformat(start_date)
-        if end_date:
-            end_date = timezone.datetime.fromisoformat(end_date)
-        
-        stats = services.get_payment_stats(start_date, end_date)
+        dates = PaymentDateRangeSerializer(data=request.query_params)
+        dates.is_valid(raise_exception=True)
+        stats = services.get_payment_stats(**dates.validated_data)
         serializer = PaymentStatsSerializer(stats)
         return Response(serializer.data)
 
@@ -466,14 +459,8 @@ class InstructorEarningsView(APIView):
     permission_classes = [IsAuthenticated, IsInstructor]
     
     def get(self, request):
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        if start_date:
-            start_date = timezone.datetime.fromisoformat(start_date)
-        if end_date:
-            end_date = timezone.datetime.fromisoformat(end_date)
-        
-        earnings = services.get_instructor_earnings(request.user, start_date, end_date)
+        dates = PaymentDateRangeSerializer(data=request.query_params)
+        dates.is_valid(raise_exception=True)
+        earnings = services.get_instructor_earnings(request.user, **dates.validated_data)
         
         return Response(earnings)

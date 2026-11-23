@@ -13,6 +13,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     from the email domain (accounts.utils.signup_role_for_email, Decision D-02).
     Any ``role`` sent by the client is ignored."""
 
+    email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
     role = serializers.CharField(read_only=True)
@@ -25,6 +26,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         }
 
     def validate_email(self, value):
+        value = User.objects.normalize_email(value)
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
         try:
             signup_role_for_email(value)
         except ValueError as exc:

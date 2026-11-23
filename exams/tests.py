@@ -401,7 +401,7 @@ class ExamAPITest(APITestCase):
         Profile.objects.filter(user=self.student).delete()
         response = self.client.post(f'/api/exams/{self.exam.pk}/start/')
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data['user_name'], self.student.email)
+        self.assertEqual(response.data['user_name'], 'SkillStudio learner')
 
         Profile.objects.update_or_create(user=self.student, defaults={'full_name': 'Exam Student'})
         self.client.force_authenticate(self.instructor)

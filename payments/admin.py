@@ -228,18 +228,35 @@ class RefundAdmin(MonetaryWorkflowAdmin):
     status_display.short_description = 'Status'
 
 
+class CouponAdminForm(forms.ModelForm):
+    def clean(self):
+        data = super().clean()
+        if data.get('applies_to') == 'specific' and not data.get('specific_courses'):
+            self.add_error('specific_courses', 'Select at least one course for this coupon.')
+        return data
+
+
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
+    form = CouponAdminForm
     list_display = [
         'code', 'discount_display', 'is_active', 'is_valid',
         'usage_display', 'expires_at', 'created_at'
     ]
     list_filter = ['is_active', 'discount_type', 'applies_to', 'created_at']
     search_fields = ['code']
-    readonly_fields = ['id', 'current_usage', 'is_valid', 'created_at', 'updated_at']
+    readonly_fields = ['id', 'current_usage', 'is_valid', 'created_by', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
     filter_horizontal = ['specific_courses']
     
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+            super().save_model(request, obj, form, change)
+        else:
+            fields = {field.name for field in obj._meta.concrete_fields}
+            obj.save(update_fields=(fields & set(form.changed_data)) | {'updated_at'})
+
     def discount_display(self, obj):
         if obj.discount_type == Coupon.PERCENT:
             return f"{obj.discount_value}%"

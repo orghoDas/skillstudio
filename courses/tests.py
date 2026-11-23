@@ -636,6 +636,6 @@ class CourseRoutedAPIDriftTest(APITestCase):
         response = self.client.get(reverse('admin-course-stats'))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['total_revenue'], 49.0)
+        self.assertEqual(response.data['total_revenue'], '49.00')
         self.assertEqual(response.data['courses']['published'], 1)
         self.assertEqual(response.data['enrollments']['active'], 1)

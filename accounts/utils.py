@@ -36,6 +36,10 @@ def public_instructor_name(user):
     return profile_display_name(user) or 'Instructor'
 
 
+def public_learner_name(user):
+    return profile_display_name(user) or 'SkillStudio learner'
+
+
 def signup_role_for_email(email):
     """Role a new self-registered account gets (Decision D-02 / SEC-07).
 

@@ -29,7 +29,8 @@ urlpatterns = [
     # API Keys
     path("api-keys/", views.APIKeyListCreateView.as_view(), name="api_key_list_create"),
     path("api-keys/<int:id>/", views.APIKeyDetailView.as_view(), name="api_key_detail"),
-    path("api-keys/<int:key_id>/toggle/", views.APIKeyToggleView.as_view(), name="api_key_toggle"),
+    path("api-keys/<int:key_id>/revoke/", views.APIKeyRevokeView.as_view(), name="api_key_revoke"),
+    path("api-keys/<int:key_id>/toggle/", views.APIKeyRevokeView.as_view(), name="api_key_toggle"),
     
     # Test endpoints
     path("instructor-only/", views.InstructorOnlyView.as_view(), name="instructor_only"),

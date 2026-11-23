@@ -225,29 +225,23 @@ def update_lesson_watch_progress(enrollment, lesson, watch_time_delta, *, local_
         lesson=lesson,
     )
 
-    if not created:
-        elapsed_seconds = max(0, int((now - progress.updated_at).total_seconds()))
-        plausible_delta = min(
-            MAX_WATCH_PROGRESS_DELTA_SECONDS,
-            elapsed_seconds + WATCH_PROGRESS_GRACE_SECONDS,
-        )
-        if watch_time_delta > plausible_delta:
-            raise ValidationError(
-                f"Watch time delta is too large for elapsed playback time; maximum allowed is {plausible_delta} seconds."
-            )
-
-    max_duration = lesson.duration_seconds
-    next_watch_time = progress.watch_time + watch_time_delta
-    if max_duration > 0:
-        next_watch_time = min(next_watch_time, max_duration)
+    if created:
+        available = WATCH_PROGRESS_GRACE_SECONDS
+    else:
+        # Quantize endpoints rather than every interval so repeated samples
+        # cannot accumulate rounding credit or lose a fraction on every tick.
+        available = max(0, int(now.timestamp()) - int(progress.updated_at.timestamp()))
+    next_watch_time = progress.watch_time + min(watch_time_delta, available)
+    if lesson.duration_seconds > 0:
+        next_watch_time = max(progress.watch_time, min(next_watch_time, lesson.duration_seconds))
 
     credited_seconds = max(0, next_watch_time - progress.watch_time)
     progress.watch_time = next_watch_time
     progress.updated_at = now
     progress.save(update_fields=["watch_time", "updated_at"])
-    if watch_time_delta > 0:
+    if credited_seconds > 0:
         record_learning_activity(enrollment.user_id, now, local_zone=local_zone, watch_seconds=credited_seconds)
-    return progress
+    return progress, credited_seconds
 
 
 def get_previous_lesson(lesson):

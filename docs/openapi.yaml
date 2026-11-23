@@ -124,10 +124,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
+  /api/accounts/api-keys/{key_id}/revoke/:
+    patch:
+      operationId: accounts_api_keys_key_id_revoke_patch
+      description: Permanently revoke one of the user's API keys.
+      parameters:
+      - in: path
+        name: key_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - bearerAuth: []
+      - cookieAuth: []
+      - apiKeyHeader: []
+      - apiKeyAuthorization: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        default:
+          description: API error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
   /api/accounts/api-keys/{key_id}/toggle/:
     patch:
       operationId: accounts_api_keys_key_id_toggle_patch
-      description: Toggle API key active status
+      description: Permanently revoke one of the user's API keys.
       parameters:
       - in: path
         name: key_id
@@ -5602,6 +5647,12 @@ paths:
       - apiKeyHeader: []
       - apiKeyAuthorization: []
       responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentBookmark'
+          description: ''
         '201':
           content:
             application/json:
@@ -5817,13 +5868,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/StudentNoteListRequest'
+              $ref: '#/components/schemas/StudentNoteRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/StudentNoteListRequest'
+              $ref: '#/components/schemas/StudentNoteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/StudentNoteListRequest'
+              $ref: '#/components/schemas/StudentNoteRequest'
         required: true
       security:
       - bearerAuth: []
@@ -5835,7 +5886,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StudentNoteList'
+                $ref: '#/components/schemas/StudentNote'
           description: ''
         default:
           description: API error
@@ -5866,7 +5917,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StudentNote'
+                $ref: '#/components/schemas/StudentNoteUpdate'
           description: ''
         default:
           description: API error
@@ -5890,13 +5941,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/StudentNoteRequest'
+              $ref: '#/components/schemas/StudentNoteUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/StudentNoteRequest'
+              $ref: '#/components/schemas/StudentNoteUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/StudentNoteRequest'
+              $ref: '#/components/schemas/StudentNoteUpdateRequest'
         required: true
       security:
       - bearerAuth: []
@@ -5908,7 +5959,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StudentNote'
+                $ref: '#/components/schemas/StudentNoteUpdate'
           description: ''
         default:
           description: API error
@@ -5932,13 +5983,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedStudentNoteRequest'
+              $ref: '#/components/schemas/PatchedStudentNoteUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedStudentNoteRequest'
+              $ref: '#/components/schemas/PatchedStudentNoteUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedStudentNoteRequest'
+              $ref: '#/components/schemas/PatchedStudentNoteUpdateRequest'
       security:
       - bearerAuth: []
       - cookieAuth: []
@@ -5949,7 +6000,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StudentNote'
+                $ref: '#/components/schemas/StudentNoteUpdate'
           description: ''
         default:
           description: API error
@@ -6332,7 +6383,6 @@ components:
           readOnly: true
         user_name:
           type: string
-          description: Get user's full name or email.
           readOnly: true
         course_title:
           type: string
@@ -6648,6 +6698,12 @@ components:
           readOnly: true
         rejection_reason:
           type: string
+          readOnly: true
+        reviewed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         total_duration:
           type: integer
           readOnly: true
@@ -6669,6 +6725,8 @@ components:
       - instructor_name
       - is_enrolled
       - modules
+      - rejection_reason
+      - reviewed_at
       - revision_of
       - slug
       - tags
@@ -6795,6 +6853,14 @@ components:
         lesson_count:
           type: integer
           readOnly: true
+        rejection_reason:
+          type: string
+          readOnly: true
+        reviewed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
       required:
       - category_name
       - enrollments_count
@@ -6803,6 +6869,8 @@ components:
       - instructor_name
       - lesson_count
       - module_count
+      - rejection_reason
+      - reviewed_at
       - slug
       - title
     CourseProgressStats:
@@ -9009,23 +9077,24 @@ components:
           nullable: true
         note:
           type: string
-    PatchedStudentNoteRequest:
+    PatchedStudentNoteUpdateRequest:
       type: object
       description: Serializer for student notes.
       properties:
-        lesson:
-          type: integer
         content:
           type: string
           minLength: 1
         timestamp:
           type: integer
           maximum: 2147483647
-          minimum: -2147483648
-          description: Video timestamp in seconds where note was taken
+          minimum: 0
         is_pinned:
           type: boolean
-        tags: {}
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
     PatchedStudentProfileRequest:
       type: object
       description: Serializer for student profile.
@@ -9040,12 +9109,14 @@ components:
           type: string
           description: Student's learning objectives
         interests:
-          description: List of interest tags
+          type: array
+          items:
+            type: string
+            minLength: 1
         weekly_study_hours:
           type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          description: Target study hours per week
+          maximum: 168
+          minimum: 0
         preferred_study_time:
           nullable: true
           oneOf:
@@ -9069,11 +9140,6 @@ components:
           readOnly: true
         instructor:
           type: integer
-          readOnly: true
-          nullable: true
-        instructor_email:
-          type: string
-          format: email
           readOnly: true
           nullable: true
         course:
@@ -9173,7 +9239,6 @@ components:
       - id
       - instructor
       - instructor_earnings
-      - instructor_email
       - is_successful
       - original_amount
       - platform_fee
@@ -9878,11 +9943,13 @@ components:
         timestamp:
           type: integer
           maximum: 2147483647
-          minimum: -2147483648
-          description: Video timestamp in seconds where note was taken
+          minimum: 0
         is_pinned:
           type: boolean
-        tags: {}
+        tags:
+          type: array
+          items:
+            type: string
         created_at:
           type: string
           format: date-time
@@ -9938,25 +10005,6 @@ components:
       - id
       - lesson
       - lesson_title
-    StudentNoteListRequest:
-      type: object
-      description: Simplified serializer for note lists.
-      properties:
-        lesson:
-          type: integer
-        content:
-          type: string
-          minLength: 1
-        timestamp:
-          type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          description: Video timestamp in seconds where note was taken
-        is_pinned:
-          type: boolean
-      required:
-      - content
-      - lesson
     StudentNoteRequest:
       type: object
       description: Serializer for student notes.
@@ -9969,14 +10017,90 @@ components:
         timestamp:
           type: integer
           maximum: 2147483647
-          minimum: -2147483648
-          description: Video timestamp in seconds where note was taken
+          minimum: 0
         is_pinned:
           type: boolean
-        tags: {}
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
       required:
       - content
       - lesson
+    StudentNoteUpdate:
+      type: object
+      description: Serializer for student notes.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          type: integer
+          readOnly: true
+        lesson:
+          type: integer
+          readOnly: true
+        lesson_title:
+          type: string
+          readOnly: true
+        course_id:
+          type: integer
+          readOnly: true
+        course_title:
+          type: string
+          readOnly: true
+        content:
+          type: string
+        timestamp:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_pinned:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - content
+      - course_id
+      - course_title
+      - created_at
+      - id
+      - lesson
+      - lesson_title
+      - updated_at
+      - user
+    StudentNoteUpdateRequest:
+      type: object
+      description: Serializer for student notes.
+      properties:
+        content:
+          type: string
+          minLength: 1
+        timestamp:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_pinned:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+      required:
+      - content
     StudentProfile:
       type: object
       description: Serializer for student profile.
@@ -10002,12 +10126,13 @@ components:
           type: string
           description: Student's learning objectives
         interests:
-          description: List of interest tags
+          type: array
+          items:
+            type: string
         weekly_study_hours:
           type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          description: Target study hours per week
+          maximum: 168
+          minimum: 0
         preferred_study_time:
           nullable: true
           oneOf:
@@ -10058,12 +10183,14 @@ components:
           type: string
           description: Student's learning objectives
         interests:
-          description: List of interest tags
+          type: array
+          items:
+            type: string
+            minLength: 1
         weekly_study_hours:
           type: integer
-          maximum: 2147483647
-          minimum: -2147483648
-          description: Target study hours per week
+          maximum: 168
+          minimum: 0
         preferred_study_time:
           nullable: true
           oneOf:

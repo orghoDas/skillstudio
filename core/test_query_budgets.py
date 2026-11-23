@@ -36,7 +36,7 @@ class ProgressQueryBudgetTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['count'], 5)
         self.assertTrue(all(
-            (item['enrollments_count'], item['module_count'], item['lesson_count']) == (1, 1, 3)
+            (item['enrollments_count'], item['module_count'], item['lesson_count']) == (2, 1, 3)
             for item in response.data['results']
         ))
 
@@ -46,7 +46,7 @@ class ProgressQueryBudgetTests(APITestCase):
             response = self.client.get(f'/api/courses/{self.last_course.pk}/')
         self.assertTrue(response.data['is_enrolled'])
         self.assertEqual(response.data['enrollment_count'], response.data['enrollments_count'])
-        self.assertEqual(response.data['enrollments_count'], 1)
+        self.assertEqual(response.data['enrollments_count'], 2)
 
     def test_enrollment_list_budget_and_required_progress(self):
         self.client.force_authenticate(self.student)

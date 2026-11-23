@@ -1,3 +1,4 @@
+from accounts.utils import public_learner_name
 from rest_framework import serializers
 from django.utils.functional import cached_property
 from decimal import Decimal
@@ -273,10 +274,13 @@ class ExamDetailSerializer(serializers.ModelSerializer):
 class ExamAttemptSerializer(serializers.ModelSerializer):
     """Serializer for exam attempts."""
     exam_title = serializers.CharField(source='exam.title', read_only=True)
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    user_name = serializers.SerializerMethodField()
     time_remaining = serializers.IntegerField(source='time_remaining_seconds', read_only=True)
     total_marks = serializers.DecimalField(source='grading_total_marks', max_digits=12, decimal_places=2, read_only=True)
     
+    def get_user_name(self, obj) -> str:
+        return public_learner_name(obj.user)
+
     class Meta:
         model = ExamAttempt
         fields = [

@@ -254,6 +254,13 @@ function renderCourseCard(course) {
                         ` : '<span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded">Free</span>'}
                     </div>
 
+                    ${course.status === 'draft' && course.rejection_reason ? `
+                        <div class="mb-4 rounded-lg border border-dark-border p-4">
+                            <p class="font-semibold">Returned to draft${course.reviewed_at ? ` · ${escapeHtml(new Date(course.reviewed_at).toLocaleDateString())}` : ''}</p>
+                            <p class="mt-1 whitespace-pre-wrap break-words">${escapeHtml(course.rejection_reason)}</p>
+                        </div>
+                    ` : ''}
+
                     <!-- Actions -->
                     <div class="flex space-x-3">
                         <a href="/instructor/courses/${escapeHtml(course.slug)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">

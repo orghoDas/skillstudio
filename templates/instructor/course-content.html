@@ -173,6 +173,13 @@ function renderContent() {
             </div>
         </div>
 
+        ${courseData.status === 'draft' && courseData.rejection_reason ? `
+            <div class="mb-4 rounded-lg border border-dark-border p-4">
+                <p class="font-semibold">Returned to draft${courseData.reviewed_at ? ` · ${escapeHtml(new Date(courseData.reviewed_at).toLocaleDateString())}` : ''}</p>
+                <p class="mt-1 whitespace-pre-wrap break-words">${escapeHtml(courseData.rejection_reason)}</p>
+            </div>
+        ` : ''}
+
         <!-- Sections List -->
         <div class="space-y-4">
             ${sections.length > 0 ? sections.map((section, index) => renderSection(section, index)).join('') : `

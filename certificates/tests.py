@@ -494,6 +494,9 @@ class RenderCertificatePDFTests(TestCase):
     def test_render_skips_existing_pdf_without_force(self, mock_pdf):
         from django.core.files.base import ContentFile
 
+        from accounts.utils import public_learner_name
+
+        self.cert.pdf_learner_name = public_learner_name(self.cert.user)
         self.cert.pdf_verification_url = self.cert.verification_url
         self.cert.pdf.save('existing.pdf', ContentFile(b'existing'), save=True)
 

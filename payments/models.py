@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError
+from django.db.models.functions import Upper
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -366,6 +368,7 @@ class Coupon(models.Model):
     max_discount_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
         null=True,
         blank=True,
         help_text="Maximum discount amount for percentage coupons"
@@ -373,6 +376,7 @@ class Coupon(models.Model):
     min_order_amount = models.DecimalField(
         max_digits=12, 
         decimal_places=2, 
+        validators=[MinValueValidator(Decimal('0.00'))],
         null=True, 
         blank=True,
         help_text="Minimum purchase amount to use coupon"
@@ -380,11 +384,13 @@ class Coupon(models.Model):
     
     # Usage limits
     usage_limit = models.IntegerField(
+        validators=[MinValueValidator(1)],
         null=True, 
         blank=True,
         help_text="Total number of times coupon can be used"
     )
     usage_limit_per_user = models.IntegerField(
+        validators=[MinValueValidator(1)],
         null=True,
         blank=True,
         help_text="Times each user can use this coupon"
@@ -414,11 +420,29 @@ class Coupon(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [models.UniqueConstraint(Upper('code'), name='unique_coupon_code_case_insensitive')]
         indexes = [
             models.Index(fields=['code']),
             models.Index(fields=['is_active', 'expires_at']),
         ]
     
+    def clean(self):
+        super().clean()
+        self.code = self.code.strip().upper()
+        errors = {}
+        if not self.code or len(self.code) > 64:
+            errors['code'] = 'Enter a code between 1 and 64 characters.'
+        if self.discount_type == self.PERCENT and self.discount_value is not None and self.discount_value > 100:
+            errors['discount_value'] = 'A percentage discount cannot exceed 100.'
+        if self.expires_at and self.valid_from and self.expires_at <= self.valid_from:
+            errors['expires_at'] = 'Expiry must be after the start date.'
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.code = self.code.strip().upper()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.code} - {self.discount_type}: {self.discount_value}"
 
@@ -472,6 +496,11 @@ class CouponRedemption(models.Model):
         related_name='coupon_redemptions'
     )
     
+    course = models.ForeignKey(
+        'courses.Course', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='coupon_redemptions',
+    )
+
     discount_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,

@@ -27,7 +27,7 @@ Lesson **order** (which lesson is unlocked) is a separate rule: `enrollments.ser
 
 ## Rules
 - The course instructor and platform admins can manage eligible courses, modules, and lessons. Management requests from other authenticated users return HTTP 403. An admin edit keeps the assigned instructor.
-- Catalog responses identify instructors by ID and profile display name. Review notes are available on course detail to the assigned instructor and platform admins.
+- Catalog responses identify instructors by ID and profile display name. Instructors see review feedback and the review date on My Courses and the course content page until they resubmit. Review feedback in the API is restricted to the course owner and platform admins.
 - The content editor creates drafts and submits them for platform admin review. Draft submission and publishing both require at least one module, with a lesson in each module.
 - Editing course details or adding, editing, or deleting a module or lesson returns a course under review to draft. Resubmit it after editing. Whole-course deletion is available for drafts.
 - A course owner or platform admin can open a draft revision from the published course's content page. The revision copies course content, quizzes, and question banks. Copied final exams start as drafts. Each published course can have one successor.

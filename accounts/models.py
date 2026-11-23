@@ -1,3 +1,4 @@
+from django.db.models.functions import Lower
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -9,6 +10,16 @@ from .utils import profile_display_name
 
 
 class UserManager(BaseUserManager):
+    @classmethod
+    def normalize_email(cls, email):
+        return super().normalize_email(email).strip().lower()
+
+    def get_by_natural_key(self, username):
+        return self.get(email__iexact=self.normalize_email(username))
+
+    async def aget_by_natural_key(self, username):
+        return await self.aget(email__iexact=self.normalize_email(username))
+
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("The Email field must be set")
@@ -61,6 +72,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         constraints = [
+            models.UniqueConstraint(Lower('email'), name='unique_user_email_case_insensitive'),
             models.CheckConstraint(
                 condition=(
                     models.Q(role='admin', is_staff=True)
@@ -85,7 +97,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f'{self.email} ({self.role})'
 
     def get_full_name(self):
-        return profile_display_name(self) or self.email
+        return profile_display_name(self)
 
     @property
     def is_platform_admin(self):
@@ -98,8 +110,14 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.role = self.Role.ADMIN
         self.is_staff = self.role == self.Role.ADMIN
 
+    def clean(self):
+        super().clean()
+        self.email = User.objects.normalize_email(self.email)
+
     def save(self, *args, **kwargs):
         update_fields = kwargs.get('update_fields')
+        if update_fields is None or 'email' in update_fields:
+            self.email = User.objects.normalize_email(self.email)
         if update_fields is not None:
             update_fields = set(update_fields)
             kwargs['update_fields'] = update_fields
@@ -174,11 +192,6 @@ class APIKey(models.Model):
     def revoke(self):
         self.is_active = False
         self.revoked_at = timezone.now()
-        self.save(update_fields=["is_active", "revoked_at"])
-
-    def restore(self):
-        self.is_active = True
-        self.revoked_at = None
         self.save(update_fields=["is_active", "revoked_at"])
 
     def __str__(self):

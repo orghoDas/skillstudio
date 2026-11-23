@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import F, Q, Count, OuterRef, Prefetch, Subquery, Sum
+from django.db.models import F, Q, Count, OuterRef, Prefetch, Sum
 from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -11,8 +11,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import IsAdmin, IsInstructor
+from core.query_params import optional_id
 from courses.policies import can_access_course_content, can_manage_course, can_view_course_catalog
-from courses.services import lock_course_for_edit, lock_draft_for_deletion, start_new_version, transition
+from courses.services import course_learner_count, lock_course_for_edit, lock_draft_for_deletion, start_new_version, transition
 from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import (
     get_access_enrollment, get_resume_lesson, lesson_lock_state, ordered_course_lessons, require_active_enrollment,
@@ -75,14 +76,9 @@ class CoursePagination(PageNumberPagination):
     max_page_size = 100
 
 
-def _course_enrollment_count(statuses):
-    counts = Enrollment.objects.filter(course_id=OuterRef('pk'), status__in=statuses).order_by().values('course_id')
-    return Coalesce(Subquery(counts.annotate(total=Count('pk')).values('total')), 0)
-
-
 def _with_course_counts(queryset):
     return queryset.select_related('instructor__profile', 'category').annotate(
-        enrollments_count=_course_enrollment_count(('active',)),
+        enrollments_count=course_learner_count(),
         module_count=Count('modules', distinct=True),
         lesson_count=Count('modules__lessons', distinct=True),
     )
@@ -100,10 +96,10 @@ class CourseListView(generics.ListAPIView):
         if instructor == 'me' and self.request.user.is_authenticated:
             # Show all courses (including drafts) for the logged-in instructor
             queryset = Course.objects.filter(instructor=self.request.user)
-        elif instructor and instructor.isdigit():
+        elif instructor and instructor.isascii() and instructor.isdecimal():
             # Show only published courses for other instructors
             queryset = Course.objects.filter(
-                instructor__id=instructor,
+                instructor_id=optional_id(self.request.query_params, 'instructor'),
                 status='published'
             )
         else:
@@ -161,16 +157,12 @@ class CourseListView(generics.ListAPIView):
         sort_by = self.request.query_params.get('ordering', '-created_at')
         if sort_by in ('rating', '-rating'):
             raise ValidationError({'ordering': 'Course rating order is unavailable.'})
+        queryset = _with_course_counts(queryset)
         if sort_by == 'popular':
-            queryset = queryset.annotate(
-                enrollment_count=_course_enrollment_count(ACCESS_STATUSES)
-            ).order_by('-enrollment_count', '-id')
-        else:
-            if sort_by.removeprefix('-') not in COURSE_ORDERING_FIELDS:
-                sort_by = '-created_at'
-            queryset = queryset.order_by(sort_by, '-id')
-
-        return _with_course_counts(queryset)
+            return queryset.order_by('-enrollments_count', '-id')
+        if sort_by.removeprefix('-') not in COURSE_ORDERING_FIELDS:
+            sort_by = '-created_at'
+        return queryset.order_by(sort_by, '-id')
 
 
 class CourseDetailView(generics.RetrieveAPIView):
@@ -178,7 +170,7 @@ class CourseDetailView(generics.RetrieveAPIView):
     queryset = Course.objects.select_related(
         'instructor', 'instructor__profile', 'category', 'current_version',
     ).prefetch_related('tags', 'modules__lessons').annotate(
-        enrollments_count=_course_enrollment_count(('active',)),
+        enrollments_count=course_learner_count(),
     )
     serializer_class = CourseDetailSerializer
     permission_classes = [AllowAny]

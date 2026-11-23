@@ -231,24 +231,8 @@ def get_or_create_student_profile(user):
 
 @transaction.atomic
 def update_student_profile(user, **kwargs):
-    """
-    Update student profile.
-    
-    Args:
-        user: User instance
-        **kwargs: Fields to update
-    
-    Returns:
-        Updated StudentProfile instance
-    
-    Raises:
-        ValidationError: If user doesn't have a profile
-    """
-    try:
-        profile = StudentProfile.objects.get(user=user)
-    except StudentProfile.DoesNotExist:
-        raise ValidationError("Student profile not found.")
-    
+    profile, _ = StudentProfile.objects.select_for_update().get_or_create(user=user)
+
     # Only allow updating certain fields
     allowed_fields = [
         'preferred_learning_style',
@@ -267,7 +251,7 @@ def update_student_profile(user, **kwargs):
 
 
 @transaction.atomic
-def create_student_note(user, lesson_id, content, timestamp=0, tags=None):
+def create_student_note(user, lesson_id, content, timestamp=0, tags=None, is_pinned=False):
     """
     Create a note for a lesson.
     
@@ -299,7 +283,8 @@ def create_student_note(user, lesson_id, content, timestamp=0, tags=None):
         lesson=lesson,
         content=content,
         timestamp=timestamp,
-        tags=tags or []
+        tags=tags or [],
+        is_pinned=is_pinned,
     )
     
     return note
@@ -323,7 +308,7 @@ def update_student_note(note_id, user, **kwargs):
         PermissionDenied: If user doesn't own the note
     """
     try:
-        note = StudentNote.objects.get(id=note_id)
+        note = StudentNote.objects.select_for_update().get(id=note_id)
     except StudentNote.DoesNotExist:
         raise ValidationError("Note not found.")
     
@@ -365,7 +350,7 @@ def delete_student_note(note_id, user):
 
 
 @transaction.atomic
-def create_bookmark(user, course_id=None, lesson_id=None, note=""):
+def create_bookmark(user, course_id=None, lesson_id=None, note="", *, return_created=False):
     """
     Create a bookmark for a course or lesson.
     
@@ -409,12 +394,11 @@ def create_bookmark(user, course_id=None, lesson_id=None, note=""):
     # Create or update bookmark
     bookmark, created = StudentBookmark.objects.update_or_create(
         user=user,
-        course=course,
-        lesson=lesson,
+        **({'course': course} if course is not None else {'lesson': lesson}),
         defaults={'note': note}
     )
-    
-    return bookmark
+
+    return (bookmark, created) if return_created else bookmark
 
 
 @transaction.atomic

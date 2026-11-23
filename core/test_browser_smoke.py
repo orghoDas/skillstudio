@@ -512,6 +512,53 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assertEqual(self.draft.price, Decimal("0.00"))
         self.assert_no_errors(page, "course price validation")
 
+    def test_course_review_notes_are_visible_until_resubmission(self):
+        from accounts.models import User
+        from courses.services import transition
+
+        reviewer = User.objects.create_superuser(email='review-note@example.test')
+        transition(self.draft, 'under_review', self.instructor)
+        note = 'Please add a summary lesson.'
+        transition(self.draft, 'draft', reviewer, reason=note)
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.visit(page, '/instructor/courses/')
+        expect(page.get_by_text(note, exact=True)).to_be_visible()
+        self.visit(page, f'/instructor/courses/{self.draft.slug}/content/')
+        expect(page.get_by_text(note, exact=True)).to_be_visible()
+        page.get_by_role('button', name='Submit for review').click()
+        expect(page.locator('#course-content-status')).to_have_text('under review')
+        expect(page.get_by_text(note, exact=True)).to_have_count(0)
+        self.assert_no_errors(page, 'course review notes')
+
+    def test_lesson_editor_shows_field_validation_message(self):
+        page = self.new_page()
+        self.login(page, self.instructor)
+        self.visit(page, f'/instructor/lessons/{self.draft_lesson.pk}/edit/')
+        page.select_option('#lesson-type', 'video')
+        page.fill('#video-url', 'https://example.test/not-a-video')
+        path = f'/api/courses/lessons/{self.draft_lesson.pk}/'
+        page.allowed_api_errors = {(path, 400)}
+        with page.expect_response(f'**{path}') as failed:
+            page.get_by_role('button', name='Save Draft').click()
+        self.assertEqual(failed.value.status, 400)
+        message = failed.value.json()['fields']['video_url'][0]
+        expect(page.get_by_text(message, exact=True)).to_be_visible()
+
+    def test_password_change_returns_the_browser_to_login(self):
+        page = self.new_page()
+        self.login(page, self.student)
+        self.visit(page, '/settings/')
+        page.get_by_role('button', name='Security').click()
+        new_password = 'Changed-browser-password!42'
+        page.fill('#current-password', self.password)
+        page.fill('#new-password', new_password)
+        page.fill('#confirm-password', new_password)
+        page.get_by_role('button', name='Update Password').click()
+        page.wait_for_url('**/auth/login/')
+        names = {item['name'] for item in page.context.cookies()}
+        self.assertFalse({'access_token', 'skillstudio_refresh'} & names)
+
     def test_course_revision_can_be_reviewed_while_the_original_remains_available_to_its_student(self):
         from accounts.models import User
         from courses.models import Course

@@ -278,12 +278,12 @@ class WatchTimeCompletesVideoLessonTests(LearningFlowFixture, APITestCase):
         first = self.client.patch(url, {"watch_time_delta": 50}, format="json")
         self.assertEqual(first.status_code, status.HTTP_200_OK, first.data)
         self.assertFalse(first.data["completed"])
-        # Pretend 60s of real playback time passed before the next report
+        # Pretend 70s of real playback time passed before the next report
         # (the server only accepts deltas plausible for the elapsed time).
         LessonProgress.objects.filter(enrollment=enrollment, lesson=self.lesson2).update(
-            updated_at=timezone.now() - timedelta(seconds=60)
+            updated_at=timezone.now() - timedelta(seconds=70)
         )
-        second = self.client.patch(url, {"watch_time_delta": 40}, format="json")
+        second = self.client.patch(url, {"watch_time_delta": 70}, format="json")
         self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
         self.assertTrue(second.data["completed"])
 

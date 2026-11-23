@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -46,7 +46,13 @@ class RegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        try:
+            with transaction.atomic():
+                user = serializer.save()
+        except IntegrityError as exc:
+            if User.objects.filter(email__iexact=serializer.validated_data['email']).exists():
+                raise ValidationError({'email': 'An account with this email already exists.'}) from exc
+            raise
         
         return Response({
             "message": "User registered successfully.",
@@ -88,12 +94,13 @@ class ChangePasswordView(APIView):
     """Change password for authenticated user."""
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        user = request.user
+        user = User.objects.select_for_update().get(pk=request.user.pk)
 
         # Check old password
         if not user.check_password(serializer.validated_data['old_password']):
@@ -108,9 +115,9 @@ class ChangePasswordView(APIView):
         # Invalidate outstanding refresh tokens so other sessions can't continue.
         _blacklist_user_refresh_tokens(user)
 
-        return Response({
+        return clear_jwt_cookies(Response({
             "message": "Password changed successfully. Please log in again."
-        }, status=status.HTTP_200_OK)
+        }))
 
 
 @extend_schema_view(
@@ -294,21 +301,19 @@ class APIKeyDetailView(generics.RetrieveDestroyAPIView):
         return APIKey.objects.filter(user=self.request.user).order_by('-created_at')
 
 
-class APIKeyToggleView(APIView):
-    """Toggle API key active status"""
+class APIKeyRevokeView(APIView):
+    """Permanently revoke one of the user's API keys."""
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def patch(self, request, key_id):
-        api_key = get_object_or_404(APIKey, id=key_id, user=request.user)
-        if api_key.is_active:
+        api_key = get_object_or_404(APIKey.objects.select_for_update(), id=key_id, user=request.user)
+        if api_key.is_active or api_key.revoked_at is None:
             api_key.revoke()
-        else:
-            api_key.restore()
-        
         return Response({
-            "message": f"API key {'activated' if api_key.is_active else 'deactivated'}.",
-            "api_key": APIKeySerializer(api_key).data
-        }, status=status.HTTP_200_OK)
+            "message": "API key revoked.",
+            "api_key": APIKeySerializer(api_key).data,
+        })
 
 
 class InstructorOnlyView(APIView):

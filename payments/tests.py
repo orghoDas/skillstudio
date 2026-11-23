@@ -184,6 +184,16 @@ class PurchaseCourseTests(PaymentsFixtureMixin, TestCase):
         self.assertEqual(result.outcome, services.OUTCOME_REACTIVATED)
         self.assertEqual(result.charged_amount, Decimal("100.00"))
 
+    def test_canceled_full_discount_enrollment_reactivates_without_charge_or_coupon_reuse(self):
+        coupon = self.make_coupon("FREE", discount_value=Decimal("100"), usage_limit_per_user=1)
+        services.purchase_course(self.student, self.course.pk, coupon_code="FREE")
+        Enrollment.objects.filter(user=self.student, course=self.course).update(status="canceled")
+        result = services.purchase_course(self.student, self.course.pk, coupon_code="FREE")
+        self.assertEqual(result.outcome, services.OUTCOME_REACTIVATED)
+        self.assertEqual(self.balance(self.student), Decimal("150.00"))
+        self.assertFalse(Payment.objects.filter(user=self.student).exists())
+        self.assertEqual(CouponRedemption.objects.filter(coupon=coupon, course=self.course).count(), 1)
+
     def test_free_course_creates_enrollment_without_payment(self):
         result = services.purchase_course(self.student, self.free_course.id)
         self.assertEqual(result.outcome, services.OUTCOME_CREATED)
@@ -395,6 +405,16 @@ class CouponAPITests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["valid"])
 
+    def test_invalid_coupon_limits_are_rejected_at_creation(self):
+        self.client.force_authenticate(self.admin)
+        base = {"code": "BADLIMIT", "discount_type": "percent", "discount_value": "10.00"}
+        for field, value in (("discount_value", "150.00"), ("min_order_amount", "-1.00")):
+            with self.subTest(field=field):
+                response = self.client.post("/api/payments/coupons/create/", {**base, field: value}, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()["fields"])
+        self.assertFalse(Coupon.objects.filter(code="BADLIMIT").exists())
+
     def test_admin_creates_course_specific_coupon(self):
         self.client.force_authenticate(self.admin)
         response = self.client.post("/api/payments/coupons/create/", {
@@ -429,10 +449,21 @@ class PaymentHistoryAndStatsTests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual({p["purpose"] for p in response.data["results"]}, {"course_purchase", "wallet_topup"})
         self.assertEqual(response.data["summary"]["total_spent"], "100.00")
+        self.assertNotContains(response, self.instructor.email)
         self.assertEqual(response.data["summary"]["pending_count"], 1)
         completed = self.client.get("/api/payments/?status=completed")
         self.assertEqual([p["course_slug"] for p in completed.data["results"]], [self.course.slug])
         self.assertEqual(completed.data["summary"]["pending_count"], 0)
+
+    def test_course_and_payment_stats_agree_after_partial_refund(self):
+        purchase = services.purchase_course(self.student, self.course.pk)
+        refund = services.request_refund(self.student, purchase.payment.pk, "Partial refund", amount=Decimal("25.00"))
+        services.approve_refund(refund.pk, self.admin)
+        self.client.force_authenticate(self.admin)
+        course_stats = self.client.get('/api/courses/admin/course-stats/').data
+        payment_stats = self.client.get('/api/payments/stats/').data
+        self.assertEqual(course_stats['total_revenue'], '75.00')
+        self.assertEqual(course_stats['total_revenue'], payment_stats['total_revenue'])
 
     def test_payment_summary_covers_all_pages_with_constant_queries(self):
         Payment.objects.bulk_create([
@@ -560,7 +591,7 @@ class PayoutTests(PaymentsFixtureMixin, APITestCase):
         self.assertEqual(too_much.data["code"], "insufficient_balance")
         listing = self.client.get("/api/payments/payouts/")
         self.assertEqual([p["id"] for p in listing.data['results']], [payout_id])
-        self.assertEqual(listing.data['results'][0]["instructor_name"], self.instructor.email)
+        self.assertEqual(listing.data['results'][0]["instructor_name"], "Instructor")
         self.assertEqual(
             self.client.post(f"/api/payments/payouts/{payout_id}/approve/").status_code,
             status.HTTP_403_FORBIDDEN,
@@ -872,6 +903,34 @@ class LegacyInstructorPayoutMigrationTests(TransactionTestCase):
                 cursor, Payout._meta.db_table,
             )}
         self.assertNotIn("account_details", columns)
+
+
+class CouponHistoryMigrationTests(TransactionTestCase):
+    def test_legacy_coupon_keeps_redemptions_and_backfills_known_course(self):
+        executor = MigrationExecutor(connection)
+        old = [('payments', '0007_couponredemption_course_and_more')]
+        executor.migrate(old)
+        try:
+            apps = executor.loader.project_state(old).apps
+            user = User.objects.create_user(email='legacy-coupon@example.test')
+            course = Course.objects.create(instructor=user, title='Legacy coupon course')
+            coupon = apps.get_model('payments', 'Coupon').objects.create(
+                code='spring25', discount_type='percent', discount_value=25, current_usage=2,
+            )
+            payment = Payment.objects.create(
+                user=user, course=course, amount=75, original_amount=100, status='completed',
+            )
+            redemptions = apps.get_model('payments', 'CouponRedemption').objects
+            paid = redemptions.create(coupon=coupon, user_id=user.pk, payment_id=payment.pk)
+            unlinked = redemptions.create(coupon=coupon, user_id=user.pk)
+        finally:
+            executor = MigrationExecutor(connection)
+            executor.migrate(executor.loader.graph.leaf_nodes())
+
+        migrated = Coupon.objects.get(pk=coupon.pk)
+        self.assertEqual((migrated.code, migrated.current_usage), ('SPRING25', 2))
+        self.assertEqual(CouponRedemption.objects.get(pk=paid.pk).course_id, course.pk)
+        self.assertIsNone(CouponRedemption.objects.get(pk=unlinked.pk).course_id)
 
 
 class RetireEventCouponsMigrationTests(PaymentsFixtureMixin, TestCase):

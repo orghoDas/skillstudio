@@ -26,6 +26,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "CHECK_REVOKE_TOKEN": True,
     "USER_AUTHENTICATION_RULE": "accounts.authentication.can_authenticate_on_website",
     # Rotate refresh tokens on use and blacklist the old one so a leaked
     # refresh token has a bounded useful life. Requires the token_blacklist app.

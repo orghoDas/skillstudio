@@ -110,6 +110,8 @@ Sign in at `/admin/` with a staff account. The overview shows the platform total
 - Course reviewers can publish a submission, return it to draft with feedback, or archive a published course. Finance operators can approve or reject wallet refunds, approve or reject payout requests, and record a transfer reference after sending a payout externally. The console records the operator and decision in the record’s history.
 - Create the initial superuser with `python manage.py createsuperuser`. To delegate, a superuser creates permission groups, creates an account with the **Admin** role, and assigns the appropriate groups on its account page. Grant **view** for monitoring and **change** for decisions on the relevant models, such as Course, Refund or Payout. Grant **view log entry** to let staff see other operators’ recent activity for models they can access.
 - Admin accounts created or promoted in the console are console-only by default. This restriction also blocks JWT and API-key authentication. Existing website administrators retain their current access unless a superuser enables **Admin console only** on their account.
+- Instructors can see learner contact emails for their own course rosters and dashboard. Learner-facing course, payment, and certificate displays use profile names or a generic fallback.
+- A full refund ends paid access and retains the coupon redemption in the usage counts. A course bought for zero with a recorded coupon redemption can be reactivated without another charge or redemption.
 
 ## Tests
 

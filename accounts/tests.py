@@ -225,6 +225,22 @@ class RegistrationAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class EmailIdentityTests(APITestCase):
+    def test_registration_and_login_use_case_insensitive_email(self):
+        address = 'CaseTest@Student.COM'
+        password = 'Unique-test-password!737'
+        data = {'email': address, 'password': password, 'password2': password}
+        self.assertEqual(self.client.post('/api/accounts/register/', data, format='json').status_code, 201)
+        duplicate = self.client.post('/api/accounts/register/', {**data, 'email': address.upper()}, format='json')
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertIn('email', duplicate.json()['fields'])
+        self.assertEqual(User.objects.get(email__iexact=address).email, address.lower())
+        response = self.client.post('/api/accounts/token/', {
+            'email': address.upper(), 'password': password, 'token_in_body': True,
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+
+
 class AuthenticationAPITest(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -383,20 +399,27 @@ class PasswordManagementTest(APITestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('NewPass123!'))
 
-    def test_change_password_revokes_existing_refresh_tokens(self):
-        """After a password change, previously issued refresh tokens stop working."""
+    def test_change_password_revokes_access_and_refresh_and_clears_cookies(self):
+        """After a password change, previously issued tokens stop working."""
         token_resp = self.client.post(
             '/api/accounts/token/',
             {'email': 'test@example.com', 'password': 'oldpass123', 'token_in_body': True},
         )
         refresh = token_resp.data['refresh']
 
-        self.client.post('/api/accounts/change-password/', {
+        changed = self.client.post('/api/accounts/change-password/', {
             'old_password': 'oldpass123',
             'new_password': 'NewPass123!',
             'new_password2': 'NewPass123!',
         })
 
+        self.assertEqual(changed.cookies['access_token']['max-age'], 0)
+        self.assertEqual(changed.cookies['skillstudio_refresh']['max-age'], 0)
+
+        self.client.force_authenticate(None)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token_resp.data['access']}")
+        self.assertEqual(self.client.get('/api/accounts/me/').status_code, 401)
+        self.client.credentials()
         refresh_resp = self.client.post('/api/accounts/token/refresh/', {'refresh': refresh})
         self.assertEqual(refresh_resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -471,6 +494,18 @@ class APIKeyTest(APITestCase):
         response = self.client.get('/api/accounts/me/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_revoke_and_legacy_toggle_are_idempotent(self):
+        key, _ = APIKey.create_for_user(user=self.user, label='Retire this key')
+        revoked_at = None
+        for suffix in ('revoke', 'toggle', 'revoke'):
+            response = self.client.patch(f'/api/accounts/api-keys/{key.pk}/{suffix}/')
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.data['api_key']['is_active'])
+            key.refresh_from_db()
+            self.assertIsNotNone(key.revoked_at)
+            revoked_at = revoked_at or key.revoked_at
+            self.assertEqual(key.revoked_at, revoked_at)
 
     def test_read_scope_allows_reads_within_the_users_role(self):
         _, secret = APIKey.create_for_user(user=self.user, label='Read key', scopes=['read'])
@@ -806,6 +841,18 @@ class PageGatingTests(TestCase):
 
 
 class StaffFlagMigrationTests(TransactionTestCase):
+    def test_email_migration_preserves_the_user_primary_key(self):
+        executor = MigrationExecutor(connection)
+        old = [('accounts', '0011_admin_console_only')]
+        executor.migrate(old)
+        try:
+            users = executor.loader.project_state(old).apps.get_model('accounts', 'User')
+            legacy = users.objects.create(email='LegacyMixed@Example.TEST')
+        finally:
+            executor = MigrationExecutor(connection)
+            executor.migrate(executor.loader.graph.leaf_nodes())
+        self.assertEqual(User.objects.get(pk=legacy.pk).email, 'legacymixed@example.test')
+
     def test_legacy_non_admin_staff_flags_are_cleared(self):
         executor = MigrationExecutor(connection)
         old = [('accounts', '0009_remove_profile_wallet')]

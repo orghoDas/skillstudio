@@ -18,7 +18,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.utils import timezone
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q, Count, F, Case, DecimalField, OuterRef, Subquery, Value, When
 from django.db.models.functions import Coalesce
 from django.core.exceptions import ImproperlyConfigured, ValidationError
@@ -75,17 +75,20 @@ def calculate_coupon_discount(coupon, amount):
     return max(Decimal("0.00"), min(discount, amount))
 
 
-def validate_coupon_for_course(coupon_code, user, course, amount):
+def validate_coupon_for_course(coupon_code, user, course, amount, *, lock=False):
     """Return the Coupon if it may be applied to ``course`` at ``amount``.
 
     Raises ``ValidationError`` with a user-facing message otherwise.
     """
     code = (coupon_code or "").strip().upper()
+    coupons = Coupon.objects.select_for_update() if lock else Coupon.objects
     try:
-        coupon = Coupon.objects.get(code=code)
+        coupon = coupons.get(code__iexact=code)
     except Coupon.DoesNotExist:
         raise ValidationError("Invalid coupon code.")
 
+    if coupon.discount_type == Coupon.PERCENT and coupon.discount_value > 100:
+        raise ValidationError('This coupon has an invalid percentage discount.')
     if not coupon.is_valid:
         raise ValidationError("This coupon is expired or inactive.")
     if not coupon.can_be_used_by(user):
@@ -99,22 +102,22 @@ def validate_coupon_for_course(coupon_code, user, course, amount):
     return coupon
 
 
-def quote_course_price(user, course, coupon_code=None) -> PriceQuote:
+def quote_course_price(user, course, coupon_code=None, *, lock_coupon=False) -> PriceQuote:
     """Server-side price for ``user`` buying ``course`` (optionally with a coupon)."""
     original = Decimal("0.00") if course.is_free else to_money(course.price)
     if not coupon_code:
         return PriceQuote(original, Decimal("0.00"), original, None)
     if original <= 0:
         raise ValidationError("This course is free; no coupon is needed.")
-    coupon = validate_coupon_for_course(coupon_code, user, course, original)
+    coupon = validate_coupon_for_course(coupon_code, user, course, original, lock=lock_coupon)
     discount = calculate_coupon_discount(coupon, original)
     return PriceQuote(original, discount, original - discount, coupon)
 
 
-def record_coupon_redemption(coupon, user, discount_amount, payment=None):
+def record_coupon_redemption(coupon, user, course, discount_amount, payment=None):
     """Record a redemption and bump usage atomically (no lost updates)."""
     CouponRedemption.objects.create(
-        coupon=coupon, user=user, payment=payment, discount_amount=discount_amount
+        coupon=coupon, user=user, course=course, payment=payment, discount_amount=discount_amount
     )
     Coupon.objects.filter(pk=coupon.pk).update(current_usage=F("current_usage") + 1)
 
@@ -196,21 +199,24 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
     if enrollment and enrollment.status in ACCESS_STATUSES:
         return PurchaseResult(enrollment, OUTCOME_ALREADY_ENROLLED, None, Decimal("0.00"))
 
-    try:
-        quote = quote_course_price(user, course, coupon_code)
-    except ValidationError as exc:
-        raise PurchaseError(exc.messages[0], "invalid_coupon")
+    # A full refund ends the paid entitlement. A zero-cost coupon redemption
+    # remains an entitlement to the particular course it purchased.
+    previously_owned = enrollment is not None and (
+        Payment.objects.filter(
+            user=user, course=course, purpose=Payment.PURPOSE_COURSE_PURCHASE,
+            status__in=("completed", "partially_refunded"),
+        ).exists()
+        or CouponRedemption.objects.filter(user=user, course=course, payment__isnull=True).exists()
+    )
 
-    # A fully refunded purchase no longer counts as paid (status "refunded").
-    previously_paid = enrollment is not None and Payment.objects.filter(
-        user=user, course=course,
-        purpose=Payment.PURPOSE_COURSE_PURCHASE,
-        status__in=("completed", "partially_refunded"),
-    ).exists()
+    try:
+        quote = quote_course_price(user, course, None if previously_owned else coupon_code, lock_coupon=True)
+    except ValidationError as exc:
+        raise PurchaseError(exc.messages[0], "invalid_coupon") from exc
 
     payment = None
     charged = Decimal("0.00")
-    if quote.final_amount > 0 and not previously_paid:
+    if quote.final_amount > 0 and not previously_owned:
         if buyer_wallet.balance < quote.final_amount:
             raise PurchaseError("Insufficient balance", "insufficient_balance")
 
@@ -239,8 +245,8 @@ def purchase_course(user, course_id, coupon_code=None) -> PurchaseResult:
         )
         charged = quote.final_amount
 
-    if quote.coupon and not previously_paid:
-        record_coupon_redemption(quote.coupon, user, quote.discount_amount, payment)
+    if quote.coupon and not previously_owned:
+        record_coupon_redemption(quote.coupon, user, course, quote.discount_amount, payment)
 
     if enrollment is None:
         enrollment = Enrollment.objects.create(user=user, course=course, status="active")
@@ -628,19 +634,22 @@ def get_pending_payouts():
 @transaction.atomic
 def create_coupon(code, discount_type, discount_value, created_by, **kwargs):
     """Create a new coupon"""
-    code = code.upper().strip()
-    
-    if Coupon.objects.filter(code=code).exists():
-        raise ValidationError(f"Coupon code '{code}' already exists")
-    
-    coupon = Coupon.objects.create(
-        code=code,
+    coupon = Coupon(
+        code=code.strip().upper(),
         discount_type=discount_type,
         discount_value=discount_value,
         created_by=created_by,
-        **kwargs
+        **kwargs,
     )
-    
+    coupon.full_clean()
+    try:
+        with transaction.atomic():
+            coupon.save()
+    except IntegrityError as exc:
+        if Coupon.objects.filter(code__iexact=coupon.code).exists():
+            raise ValidationError({'code': 'This coupon code already exists.'}) from exc
+        raise
+
     logger.info(f"Coupon created: {coupon.code}")
     return coupon
 

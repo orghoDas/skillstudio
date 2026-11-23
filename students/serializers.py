@@ -11,6 +11,8 @@ User = get_user_model()
 class StudentProfileSerializer(serializers.ModelSerializer):
     """Serializer for student profile."""
     
+    weekly_study_hours = serializers.IntegerField(min_value=0, max_value=168, required=False)
+    interests = serializers.ListField(child=serializers.CharField(), required=False)
     user_email = serializers.EmailField(source='user.email', read_only=True)
     
     class Meta:
@@ -46,6 +48,8 @@ class StudentProfileSerializer(serializers.ModelSerializer):
 class StudentNoteSerializer(serializers.ModelSerializer):
     """Serializer for student notes."""
     
+    timestamp = serializers.IntegerField(min_value=0, max_value=2**31 - 1, required=False)
+    tags = serializers.ListField(child=serializers.CharField(), required=False)
     lesson_title = serializers.CharField(source='lesson.title', read_only=True)
     course_id = serializers.IntegerField(source='lesson.module.course.id', read_only=True)
     course_title = serializers.CharField(source='lesson.module.course.title', read_only=True)
@@ -67,6 +71,11 @@ class StudentNoteSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+
+class StudentNoteUpdateSerializer(StudentNoteSerializer):
+    class Meta(StudentNoteSerializer.Meta):
+        read_only_fields = [*StudentNoteSerializer.Meta.read_only_fields, 'lesson']
 
 
 class StudentNoteListSerializer(serializers.ModelSerializer):
@@ -121,6 +130,8 @@ class StudentBookmarkSerializer(serializers.ModelSerializer):
         visible_courses = visible_catalog_courses(user)
         fields['course'].queryset = visible_courses
         fields['lesson'].queryset = Lesson.objects.filter(module__course__in=visible_courses)
+        fields['course'].error_messages['does_not_exist'] = 'Course not found.'
+        fields['lesson'].error_messages['does_not_exist'] = 'Lesson not found.'
         return fields
 
     def validate(self, data):

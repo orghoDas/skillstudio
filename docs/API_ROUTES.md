@@ -28,7 +28,8 @@ other clients send `Authorization: Bearer <access token>`.
 | `/api/accounts/users/<int:user_id>/activate/` | POST | IsAdmin | `accounts.views.ActivateUserView` |
 | `/api/accounts/api-keys/` | GET POST | IsAuthenticated | `accounts.views.APIKeyListCreateView` |
 | `/api/accounts/api-keys/<int:id>/` | GET DELETE | IsAuthenticated | `accounts.views.APIKeyDetailView` |
-| `/api/accounts/api-keys/<int:key_id>/toggle/` | PATCH | IsAuthenticated | `accounts.views.APIKeyToggleView` |
+| `/api/accounts/api-keys/<int:key_id>/revoke/` | PATCH | IsAuthenticated | `accounts.views.APIKeyRevokeView` |
+| `/api/accounts/api-keys/<int:key_id>/toggle/` | PATCH | IsAuthenticated | `accounts.views.APIKeyRevokeView` |
 | `/api/accounts/instructor-only/` | GET | IsInstructor | `accounts.views.InstructorOnlyView` |
 
 ## `/api/assessments/`

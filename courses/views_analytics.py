@@ -1,18 +1,18 @@
-"""Admin-only, platform-wide course statistics (/api/courses/admin/stats/).
+"""Admin-only, platform-wide course statistics (/api/courses/admin/course-stats/).
 
 Instructor analytics live in instructors.views (InstructorDashboardView).
 """
 
-from django.db.models import Count, Sum, Q
-from django.shortcuts import get_object_or_404
+from django.db.models import Count, Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from accounts.permissions import IsInstructor, IsAdmin
-from .models import Course, Lesson
-from enrollments.models import Enrollment, LessonProgress
-from payments.models import Payment
+from accounts.permissions import IsAdmin
+from .models import Course
+from .services import course_learner_count
+from enrollments.models import Enrollment
+from payments.services import get_payment_stats
 
 class AdminCourseStatsView(APIView):
     """Platform-wide course statistics (admin only)"""
@@ -35,17 +35,13 @@ class AdminCourseStatsView(APIView):
         )
 
         # Revenue stats
-        total_revenue = Payment.objects.filter(
-            purpose=Payment.PURPOSE_COURSE_PURCHASE,
-            status='completed',
-        ).aggregate(revenue=Sum('amount'))['revenue'] or 0
+        total_revenue = get_payment_stats()['total_revenue']
 
-        # Top courses by enrollment
-        top_courses = Course.objects.filter(
-            status='published'
-        ).annotate(
-            enrollment_count=Count('enrollments', filter=Q(enrollments__status='active'))
-        ).order_by('-enrollment_count')[:10]
+        top_courses = (
+            Course.objects.filter(status='published').select_related('instructor')
+            .annotate(enrollment_count=course_learner_count())
+            .order_by('-enrollment_count', '-pk')[:10]
+        )
 
         top_courses_data = [{
             'id': c.id,
@@ -69,7 +65,7 @@ class AdminCourseStatsView(APIView):
         return Response({
             'courses': course_stats,
             'enrollments': enrollment_stats,
-            'total_revenue': float(total_revenue),
+            'total_revenue': format(total_revenue, '.2f'),
             'top_courses': top_courses_data,
             'courses_pending_review': pending_data
         })

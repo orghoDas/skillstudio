@@ -73,6 +73,16 @@ class CoursePrivacyTests(APITestCase):
         self.client.force_authenticate(self.other_instructor)
         self.assertEqual(self.client.get(f'/api/courses/{self.draft.slug}/').status_code, 403)
 
+    def test_enrolled_student_does_not_receive_instructor_email(self):
+        Profile.objects.filter(user=self.owner).delete()
+        self.client.force_authenticate(self.student)
+        enrollment = Enrollment.objects.get(user=self.student, course=self.published)
+        for url in ('/api/enrollments/', f'/api/enrollments/enrollments/{enrollment.pk}/'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertNotContains(response, self.owner.email)
+            self.assertContains(response, 'Instructor')
+
     def test_student_contact_details_are_scoped_to_the_instructors_courses(self):
         url = '/api/instructors/dashboard/'
         self.client.force_authenticate(self.owner)

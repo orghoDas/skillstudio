@@ -1,3 +1,4 @@
+from accounts.utils import public_instructor_name
 from rest_framework import serializers
 from django.db.models import Count, Q, F, FloatField, ExpressionWrapper, Sum
 from .models import Enrollment, LessonProgress, Wishlist
@@ -64,7 +65,7 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
     course_title = serializers.CharField(source='course.title', read_only=True)
     course_slug = serializers.CharField(source='course.slug', read_only=True)
     course_thumbnail = serializers.URLField(source='course.thumbnail', read_only=True, allow_null=True)
-    instructor_name = serializers.CharField(source='course.instructor.get_full_name', read_only=True)
+    instructor_name = serializers.SerializerMethodField()
     progress_percentage = serializers.SerializerMethodField()
     completed_lessons = serializers.SerializerMethodField()
     completed_lessons_count = serializers.SerializerMethodField()
@@ -80,6 +81,9 @@ class EnrollmentListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['enrolled_at', 'completed_at']
     
+    def get_instructor_name(self, obj) -> str:
+        return public_instructor_name(obj.course.instructor)
+
     def get_course(self, obj) -> dict:
         """Return minimal course information"""
         return {
@@ -128,7 +132,7 @@ class EnrollmentDetailSerializer(serializers.ModelSerializer):
             'level': course.level,
             'instructor': {
                 'id': instructor.id,
-                'name': instructor.get_full_name(),
+                'name': public_instructor_name(instructor),
                 'bio': (profile.bio or '') if profile else '',
             }
         }

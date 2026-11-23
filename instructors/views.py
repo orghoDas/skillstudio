@@ -10,6 +10,7 @@ from accounts.utils import public_instructor_name
 from courses.models import Course
 from core.pagination import SummaryPageNumberPagination
 from enrollments.models import Enrollment
+from enrollments.constants import ACCESS_STATUSES
 from enrollments.services import lesson_progress_percentage, with_enrollment_progress
 from django.shortcuts import get_object_or_404
 from .models import InstructorProfile
@@ -40,7 +41,7 @@ class InstructorDashboardView(APIView):
         earnings, payouts = get_revenue_summary(instructor)
 
         enrollment_counts = Enrollment.objects.filter(course__instructor=instructor).aggregate(
-            total_students=Count('user', distinct=True),
+            total_students=Count('user', filter=Q(status__in=ACCESS_STATUSES), distinct=True),
             active_enrollments=Count('pk', filter=Q(status='active')),
         )
 
@@ -91,7 +92,9 @@ class InstructorProfileView(APIView):
         return Response(serializer.data)
     
     def put(self, request):
-        profile = update_instructor_profile(request.user, **request.data)
+        changes = InstructorProfileSerializer(data=request.data, partial=True)
+        changes.is_valid(raise_exception=True)
+        profile = update_instructor_profile(request.user, **changes.validated_data)
         serializer = InstructorProfileSerializer(profile)
         return Response(serializer.data)
 
@@ -149,7 +152,6 @@ class FeaturedInstructorsView(ListAPIView):
 
     def get_queryset(self):
         from django.contrib.auth import get_user_model
-        from enrollments.constants import ACCESS_STATUSES
 
         User = get_user_model()
         published = Q(courses__status='published')

@@ -1,8 +1,10 @@
+from core.query_params import optional_id
 from rest_framework.views import APIView
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from drf_spectacular.utils import extend_schema
 from django.db.models import Max
 from decimal import Decimal
 
@@ -16,6 +18,7 @@ from .models import StudentProfile, StudentNote, Wallet, WalletTransaction
 from .serializers import (
     StudentProfileSerializer,
     StudentNoteSerializer,
+    StudentNoteUpdateSerializer,
     StudentNoteListSerializer,
     StudentBookmarkSerializer,
     StudentDashboardSerializer,
@@ -87,7 +90,9 @@ class StudentProfileView(APIView):
         return Response(serializer.data)
     
     def put(self, request):
-        profile = update_student_profile(request.user, **request.data)
+        changes = StudentProfileSerializer(data=request.data, partial=True)
+        changes.is_valid(raise_exception=True)
+        profile = update_student_profile(request.user, **changes.validated_data)
         serializer = StudentProfileSerializer(profile)
         return Response(serializer.data)
 
@@ -100,37 +105,37 @@ class StudentNoteListCreateView(ListCreateAPIView):
     serializer_class = StudentNoteListSerializer
     
     def get_queryset(self):
-        lesson_id = self.request.query_params.get('lesson')
-        course_id = self.request.query_params.get('course')
+        lesson_id = optional_id(self.request.query_params, 'lesson')
+        course_id = optional_id(self.request.query_params, 'course')
         return get_student_notes(
             self.request.user,
             lesson_id=lesson_id,
             course_id=course_id
         )
     
+    @extend_schema(request=StudentNoteSerializer, responses={201: StudentNoteSerializer})
     def post(self, request):
-        note = create_student_note(
-            user=request.user,
-            lesson_id=request.data.get('lesson'),
-            content=request.data.get('content'),
-            timestamp=request.data.get('timestamp', 0),
-            tags=request.data.get('tags', [])
-        )
-        serializer = StudentNoteSerializer(note)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        serializer = StudentNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        lesson = data.pop('lesson')
+        note = create_student_note(request.user, lesson.pk, **data)
+        return Response(StudentNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
 class StudentNoteDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete a student note."""
     permission_classes = [IsAuthenticated, IsStudent]
-    serializer_class = StudentNoteSerializer
+    serializer_class = StudentNoteUpdateSerializer
     lookup_field = 'id'
     
     def get_queryset(self):
         return StudentNote.objects.filter(user=self.request.user)
     
     def put(self, request, id):
-        note = update_student_note(id, request.user, **request.data)
+        changes = self.get_serializer(data=request.data, partial=True)
+        changes.is_valid(raise_exception=True)
+        note = update_student_note(id, request.user, **changes.validated_data)
         serializer = StudentNoteSerializer(note)
         return Response(serializer.data)
 
@@ -174,15 +179,19 @@ class StudentBookmarkListCreateView(ListCreateAPIView):
     def get_queryset(self):
         return get_student_bookmarks(self.request.user)
     
+    @extend_schema(responses={200: StudentBookmarkSerializer, 201: StudentBookmarkSerializer})
     def post(self, request):
-        bookmark = create_bookmark(
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        bookmark, created = create_bookmark(
             user=request.user,
-            course_id=request.data.get('course'),
-            lesson_id=request.data.get('lesson'),
-            note=request.data.get('note', '')
+            course_id=getattr(data.get('course'), 'pk', None),
+            lesson_id=getattr(data.get('lesson'), 'pk', None),
+            note=data.get('note', ''),
+            return_created=True,
         )
-        serializer = self.get_serializer(bookmark)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(bookmark).data, status=201 if created else 200)
 
 
 class StudentBookmarkDetailView(RetrieveUpdateDestroyAPIView):

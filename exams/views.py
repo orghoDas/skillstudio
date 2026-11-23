@@ -1,3 +1,4 @@
+from core.query_params import optional_id
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -107,7 +108,7 @@ class QuestionBankListView(generics.ListCreateAPIView):
         return QuestionBankListSerializer
     
     def get_queryset(self):
-        course_id = self.request.query_params.get('course_id')
+        course_id = optional_id(self.request.query_params, 'course_id')
         queryset = QuestionBank.objects.select_related('course', 'created_by')
 
         if not is_admin_user(self.request.user):
@@ -528,7 +529,8 @@ def publish_exam(request, exam_id):
         ensure_question_bank_matches_course(exam)
         exam.total_marks = validated_exam_total(current_exam_questions(exam), exam.passing_marks)
     except ExamUnavailable as exc:
-        raise ValidationError({'detail': exc.message, 'code': exc.code}) from exc
+        transaction.set_rollback(True)
+        return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
     exam.status = 'published'
     exam.save(update_fields=['status', 'total_marks', 'updated_at'])
     

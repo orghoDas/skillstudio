@@ -439,7 +439,7 @@ class EnrollmentAPITest(APITestCase):
         self.assertEqual(result.status_code, 200, result.data)
         row = result.data['results'][0]
         self.assertIsNone(row['course_thumbnail'])
-        self.assertEqual(row['instructor_name'], self.instructor.email)
+        self.assertEqual(row['instructor_name'], 'Instructor')
     
     def test_enroll_in_course(self):
         """Test enrolling in a course."""
@@ -574,59 +574,35 @@ class EnrollmentAPITest(APITestCase):
             LessonProgress.objects.filter(user=self.user, lesson=self.lesson1).exists()
         )
 
-    def test_lesson_watch_time_accepts_incremental_delta(self):
+    def test_first_report_and_repeated_reports_cannot_inflate_time(self):
+        from unittest.mock import patch
+
         enrollment = Enrollment.objects.create(user=self.user, course=self.course)
-
-        response = self.client.patch(
-            f'/api/enrollments/lessons/{self.lesson1.id}/watch-time/',
-            {'watch_time_delta': 60},
-            format='json'
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['watch_time'], 60)
-        self.assertEqual(response.data['accepted_delta'], 60)
+        url = f'/api/enrollments/lessons/{self.lesson1.id}/watch-time/'
+        start = timezone.now()
+        for seconds, expected in ((0, 15), (0, 0), (1, 1), (2, 1)):
+            with patch('django.utils.timezone.now', return_value=start + timedelta(seconds=seconds)):
+                response = self.client.patch(url, {'watch_time_delta': 60}, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data['accepted_delta'], expected)
         progress = LessonProgress.objects.get(enrollment=enrollment, lesson=self.lesson1)
-        self.assertEqual(progress.watch_time, 60)
+        self.assertEqual(progress.watch_time, 17)
         self.assertFalse(progress.is_completed)
-
-    def test_lesson_watch_time_rejects_implausible_delta(self):
-        enrollment = Enrollment.objects.create(user=self.user, course=self.course)
-        LessonProgress.objects.create(
-            enrollment=enrollment,
-            user=self.user,
-            lesson=self.lesson1,
-            watch_time=60
-        )
-
-        response = self.client.patch(
-            f'/api/enrollments/lessons/{self.lesson1.id}/watch-time/',
-            {'watch_time_delta': 90},
-            format='json'
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('too large for elapsed playback time', response.data['detail'])
-        self.assertEqual(response.data['fields']['non_field_errors'], [response.data['detail']])
-        progress = LessonProgress.objects.get(enrollment=enrollment, lesson=self.lesson1)
-        self.assertEqual(progress.watch_time, 60)
 
     def test_lesson_watch_time_delta_allows_plausible_followup_after_elapsed_time(self):
         enrollment = Enrollment.objects.create(user=self.user, course=self.course)
-        progress = update_lesson_watch_progress(enrollment, self.lesson1, 120)
+        progress, _ = update_lesson_watch_progress(enrollment, self.lesson1, 120)
         LessonProgress.objects.filter(id=progress.id).update(
             updated_at=timezone.now() - timedelta(seconds=120)
         )
-
         response = self.client.patch(
             f'/api/enrollments/lessons/{self.lesson1.id}/watch-time/',
             {'watch_time_delta': 120},
             format='json'
         )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, 200)
         progress.refresh_from_db()
-        self.assertEqual(progress.watch_time, 240)
+        self.assertEqual(progress.watch_time, 135)
         self.assertFalse(progress.is_completed)
 
     def test_manual_complete_requires_watch_threshold_for_video(self):

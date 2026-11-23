@@ -88,7 +88,7 @@ bindActions({click: {
         if (!await showConfirm(button.dataset.active === 'true' ? 'Revoke this API key?' : 'Restore this API key?')) return;
         button.disabled = true;
         try {
-            await apiRequest(`/accounts/api-keys/${Number(button.dataset.keyId)}/toggle/`, {method: 'PATCH'});
+            await apiRequest(`/accounts/api-keys/${Number(button.dataset.keyId)}/revoke/`, {method: 'PATCH'});
             await loadKeys();
         } catch (error) {
             showAlert(error.message, 'error');

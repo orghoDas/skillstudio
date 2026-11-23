@@ -55,6 +55,7 @@ class Certificate(models.Model):
         blank=True
     )
     pdf_verification_url = models.CharField(max_length=500, blank=True)
+    pdf_learner_name = models.CharField(max_length=255, blank=True, default='', db_default='')
     pdf_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     
     # Metadata

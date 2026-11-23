@@ -299,6 +299,8 @@ class CatalogModuleSerializer(serializers.ModelSerializer):
 # ===== COURSE SERIALIZERS =====
 
 class CourseListSerializer(serializers.ModelSerializer):
+    rejection_reason = serializers.CharField(read_only=True)
+    reviewed_at = serializers.DateTimeField(read_only=True, allow_null=True)
     instructor_name = serializers.SerializerMethodField()
     instructor_id = serializers.IntegerField(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -312,14 +314,24 @@ class CourseListSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'description', 'thumbnail', 'price',
             'is_free', 'status', 'level', 'instructor_id', 'instructor_name',
             'category_name', 'published_at', 'created_at', 'enrollments_count',
-            'module_count', 'lesson_count'
+            'module_count', 'lesson_count', 'rejection_reason', 'reviewed_at'
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        user = getattr(self.context.get('request'), 'user', None)
+        if not data['rejection_reason'] or not can_manage_course(user, instance):
+            data.pop('rejection_reason', None)
+            data.pop('reviewed_at', None)
+        return data
 
     def get_instructor_name(self, obj) -> str:
         return public_instructor_name(obj.instructor)
 
 
 class CourseDetailSerializer(serializers.ModelSerializer):
+    rejection_reason = serializers.CharField(read_only=True)
+    reviewed_at = serializers.DateTimeField(read_only=True, allow_null=True)
     instructor_name = serializers.SerializerMethodField()
     instructor_id = serializers.IntegerField(read_only=True)
     category = CategorySerializer(read_only=True)
@@ -339,7 +351,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'is_free', 'status', 'level', 'instructor', 'instructor_id', 'instructor_name',
             'category', 'category_name', 'tags', 'modules', 'published_at',
             'created_at', 'updated_at', 'enrollment_count', 'enrollments_count', 'is_enrolled',
-            'rejection_reason', 'total_duration', 'revision_of', 'version_number'
+            'rejection_reason', 'reviewed_at', 'total_duration', 'revision_of', 'version_number'
         ]
 
     def to_representation(self, instance):
@@ -347,6 +359,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         user = getattr(self.context.get('request'), 'user', None)
         if not can_manage_course(user, instance):
             data.pop('rejection_reason', None)
+            data.pop('reviewed_at', None)
         return data
 
     def get_is_enrolled(self, obj) -> bool:

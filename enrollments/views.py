@@ -1,3 +1,4 @@
+from core.query_params import optional_id
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -59,7 +60,7 @@ class EnrollmentListView(generics.ListAPIView):
         ).select_related('course__instructor__profile')
         
         # Filter by course ID if provided
-        course_id = self.request.query_params.get('course')
+        course_id = optional_id(self.request.query_params, 'course')
         if course_id:
             queryset = queryset.filter(course_id=course_id)
         
@@ -275,10 +276,11 @@ class LessonWatchTimeView(APIView):
     """Update lesson watch time using incremental deltas."""
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def patch(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
         enrollment = get_object_or_404(
-            Enrollment,
+            Enrollment.objects.select_for_update(),
             user=request.user,
             course=lesson.module.course,
             status__in=ACCESS_STATUSES
@@ -295,7 +297,7 @@ class LessonWatchTimeView(APIView):
             raise DjangoValidationError('Watch time delta must be an integer number of seconds.') from exc
 
         local_zone = learning_timezone(request)
-        progress = update_lesson_watch_progress(
+        progress, accepted_delta = update_lesson_watch_progress(
             enrollment=enrollment,
             lesson=lesson,
             watch_time_delta=watch_time_delta,
@@ -313,7 +315,7 @@ class LessonWatchTimeView(APIView):
         max_duration = lesson.duration_seconds
         return Response({
             'watch_time': progress.watch_time,
-            'accepted_delta': watch_time_delta,
+            'accepted_delta': accepted_delta,
             'completed': progress.is_completed,
             'progress_percentage': round((progress.watch_time / max_duration * 100), 2) if max_duration > 0 else 0,
         })

@@ -1,7 +1,6 @@
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
 from django.http import Http404
 from django.urls import reverse
 from django.utils.html import format_html
@@ -11,7 +10,7 @@ from .models import (
     Course, Category, Tag, Module, Lesson,
     CourseVersion, CourseTag, LessonResource
 )
-from .services import transition
+from .services import course_learner_count, transition
 
 
 class LessonResourceInline(admin.TabularInline):
@@ -45,7 +44,7 @@ class CourseAdmin(WorkflowAdmin):
     decision_help = 'Use the record details to inspect the course before deciding. Returning it to draft requires feedback for the instructor.'
 
     def decision_details(self, obj):
-        return [*super().decision_details(obj), ('Instructor', obj.instructor.email), ('Category', obj.category.name)]
+        return [*super().decision_details(obj), ('Instructor', obj.instructor.email), ('Category', obj.category.name if obj.category else 'Uncategorized')]
 
     def workflow_choices(self, obj):
         if obj.status == 'under_review':
@@ -109,11 +108,11 @@ class CourseAdmin(WorkflowAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('instructor', 'category').annotate(
-            active_enrollments=Count('enrollments', filter=Q(enrollments__status='active')),
+            learner_count=course_learner_count(),
         )
 
     def enrollment_count(self, obj):
-        return obj.active_enrollments
+        return obj.learner_count
     enrollment_count.short_description = 'Enrollments'
     
     actions = ['publish_courses', 'archive_courses']

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin
-from accounts.utils import profile_display_name
+from accounts.utils import public_learner_name
 from .models import Certificate
 from .serializers import CertificateListSerializer, CertificateSerializer, CertificateVerificationSerializer
 from .services import ensure_certificate_pdf, regenerate_certificate_pdf, verify_certificate
@@ -27,7 +27,7 @@ class MyCertificatesListView(generics.ListAPIView):
         unreleased = Certificate.unreleased_exam_attempts(
             self.request.user.pk, OuterRef('course_id'), OuterRef('issued_at'),
         )
-        return Certificate.objects.filter(user=self.request.user).select_related('course', 'enrollment').annotate(
+        return Certificate.objects.filter(user=self.request.user).select_related('course', 'enrollment', 'user__profile').annotate(
             has_unreleased_exam_grades=Exists(unreleased),
         )
 
@@ -54,7 +54,7 @@ def verification_details(code):
     return {
         'valid': True,
         'id': certificate.pk,
-        'user_name': profile_display_name(certificate.user) or 'SkillStudio learner',
+        'user_name': public_learner_name(certificate.user),
         'course_title': certificate.course.title,
         'issued_at': certificate.issued_at,
         'completion_date': certificate.completion_date,

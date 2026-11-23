@@ -7,20 +7,20 @@ from rest_framework import serializers
 from decimal import Decimal
 from payments.models import Payment, Payout, Refund, Coupon
 from courses.models import Course
+from accounts.utils import public_instructor_name
 
 
 class PaymentSerializer(serializers.ModelSerializer):
     """Serializer for Payment model"""
     
     user_email = serializers.EmailField(source='user.email', read_only=True)
-    instructor_email = serializers.EmailField(source='instructor.email', read_only=True, allow_null=True)
     course_title = serializers.CharField(source='course.title', read_only=True, allow_null=True)
     course_slug = serializers.CharField(source='course.slug', read_only=True, allow_null=True)
 
     class Meta:
         model = Payment
         fields = [
-            'id', 'purpose', 'user', 'user_email', 'instructor', 'instructor_email',
+            'id', 'purpose', 'user', 'user_email', 'instructor',
             'course', 'course_title', 'course_slug',
             'amount', 'original_amount', 'discount_amount', 'currency',
             'platform_fee', 'instructor_earnings',
@@ -62,10 +62,7 @@ class PayoutSerializer(serializers.ModelSerializer):
         ]
     
     def get_instructor_name(self, obj) -> str:
-        # The custom User has no first/last name; names live on accounts.Profile.
-        profile = getattr(obj.instructor, 'profile', None)
-        name = profile and (profile.full_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip())
-        return name or obj.instructor.email
+        return public_instructor_name(obj.instructor)
 
     def get_account_details(self, obj) -> dict:
         return {'provided': True} if obj.account_details_encrypted else {}
@@ -183,7 +180,7 @@ class CouponCreateSerializer(serializers.Serializer):
     discount_value = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
     applies_to = serializers.ChoiceField(choices=Coupon.APPLIES_TO_CHOICES, default='all')
     specific_course_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.IntegerField(min_value=1, max_value=2**63 - 1),
         required=False,
         allow_empty=True
     )
@@ -199,8 +196,8 @@ class CouponCreateSerializer(serializers.Serializer):
         required=False,
         allow_null=True
     )
-    usage_limit = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    usage_limit_per_user = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    usage_limit = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=2**31 - 1)
+    usage_limit_per_user = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=2**31 - 1)
     valid_from = serializers.DateTimeField(required=False)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
     is_active = serializers.BooleanField(default=True)
@@ -226,6 +223,17 @@ class CouponValidationSerializer(serializers.Serializer):
 
     code = serializers.CharField(max_length=64)
     course_id = serializers.IntegerField()
+
+
+class PaymentDateRangeSerializer(serializers.Serializer):
+    start_date = serializers.DateTimeField(required=False)
+    end_date = serializers.DateTimeField(required=False)
+
+    def validate(self, attrs):
+        start, end = attrs.get('start_date'), attrs.get('end_date')
+        if start and end and start > end:
+            raise serializers.ValidationError({'end_date': 'The end date must not precede the start date.'})
+        return attrs
 
 
 class PaymentStatsSerializer(serializers.Serializer):

@@ -10,7 +10,7 @@ from reportlab.pdfbase.ttfonts import TTFont, shapeStr
 from reportlab.pdfgen import canvas
 import qrcode
 
-from accounts.utils import profile_display_name
+from accounts.utils import public_learner_name
 
 
 FONT_DIR = Path(__file__).with_name('fonts')
@@ -85,7 +85,7 @@ def generate_certificate_pdf(certificate):
     width, height = A4
     pdf.setTitle('Certificate of Completion')
 
-    name = profile_display_name(certificate.user) or certificate.user.email
+    name = public_learner_name(certificate.user)
     _draw_text(pdf, 'Certificate of Completion', width, height - 105, 55, 28, bold=True)
     _draw_text(pdf, name, width, height - 185, 95, 24)
     _draw_text(pdf, 'has successfully completed the course', width, height - 292, 30, 14)

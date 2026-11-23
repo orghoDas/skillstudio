@@ -141,10 +141,9 @@ class InstructorProfileServiceTests(TestCase):
         self.assertEqual(updated.headline, 'Expert Instructor')
         self.assertEqual(updated.years_of_experience, 15)
     
-    def test_update_nonexistent_profile(self):
-        """Test updating profile that doesn't exist."""
-        with self.assertRaises(ValidationError):
-            update_instructor_profile(self.user, bio='Test')
+    def test_update_creates_missing_profile(self):
+        updated = update_instructor_profile(self.user, bio='Test')
+        self.assertEqual(updated.bio, 'Test')
 
 
 # Payout tests moved to payments/tests.py (wallet-ledger payouts, PAY-07).

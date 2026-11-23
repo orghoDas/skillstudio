@@ -55,6 +55,12 @@ function safeUrl(value) {
 // API fetch helper.
 // Auth travels as httpOnly cookies (sent automatically on same-origin
 // requests), so no token is read from JS. CSRF token is sent on mutations.
+function firstFieldError(value) {
+    if (typeof value === 'string') return value.trim();
+    if (!value || typeof value !== 'object') return '';
+    return Object.values(value).map(firstFieldError).find(Boolean) || '';
+}
+
 async function apiRequest(endpoint, options = {}) {
     const isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
     const headers = {
@@ -91,7 +97,10 @@ async function apiRequest(endpoint, options = {}) {
         } catch (e) {
             // ignore parse errors
         }
-        const errMsg = (errorBody && errorBody.detail) || `HTTP error! status: ${response.status}`;
+        const detail = errorBody?.detail;
+        const fieldMessage = firstFieldError(errorBody?.fields);
+        const errMsg = ((!detail || detail === 'Invalid input.') && fieldMessage)
+            || detail || `HTTP error! status: ${response.status}`;
         const err = new Error(errMsg);
         err.status = response.status;
         err.body = errorBody;

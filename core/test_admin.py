@@ -47,6 +47,29 @@ class AdminDomainActionTests(TestCase):
         }, secure=True)
         self.assertEqual(response.status_code, 302)
 
+    def test_course_decision_renders_without_a_category(self):
+        self.category.delete()
+        response = self.client.get(reverse('admin:courses_course_decision', args=[self.course.pk]), secure=True)
+        self.assertContains(response, 'Uncategorized')
+
+    def test_coupon_creation_assigns_operator_and_normalizes_code(self):
+        from payments.models import Coupon
+
+        url = reverse('admin:payments_coupon_add')
+        response = self.client.get(url, secure=True)
+        self.assertNotContains(response, 'name="created_by"')
+        data = {
+            'code': 'spring25', 'discount_type': 'percent', 'discount_value': '25',
+            'applies_to': 'all', 'is_active': 'on',
+            'valid_from_0': '2026-01-01', 'valid_from_1': '00:00',
+        }
+        response = self.client.post(url, data, secure=True)
+        self.assertEqual(response.status_code, 302, getattr(response, 'context', None))
+        self.assertEqual(Coupon.objects.get(code='SPRING25').created_by, self.admin)
+        response = self.client.post(url, {**data, 'code': 'invalid', 'discount_value': '150'}, secure=True)
+        self.assertContains(response, 'A percentage discount cannot exceed 100.')
+        self.assertFalse(Coupon.objects.filter(code='INVALID').exists())
+
     def test_course_actions_enforce_source_status_and_keep_review_metadata(self):
         draft = Course.objects.create(
             title='Draft course', instructor=self.instructor, category=self.category,

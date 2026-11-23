@@ -3,6 +3,7 @@ from django.db.models import Count, Max, Sum, Q
 from django.core.exceptions import ValidationError
 
 from courses.models import Course
+from courses.services import course_learner_count
 from enrollments.models import Enrollment
 from payments.models import Payment, Payout
 from .models import InstructorProfile
@@ -14,7 +15,7 @@ def get_course_overview(instructor):
         Course.objects
         .filter(instructor=instructor)
         .annotate(
-            total_enrollments=Count("enrollments"),
+            total_enrollments=course_learner_count(),
         )
     )
 
@@ -79,24 +80,8 @@ def get_or_create_instructor_profile(user):
 
 @transaction.atomic
 def update_instructor_profile(user, **kwargs):
-    """
-    Update instructor profile.
-    
-    Args:
-        user: User instance
-        **kwargs: Fields to update
-    
-    Returns:
-        Updated InstructorProfile instance
-    
-    Raises:
-        ValidationError: If user doesn't have a profile
-    """
-    try:
-        profile = InstructorProfile.objects.get(user=user)
-    except InstructorProfile.DoesNotExist:
-        raise ValidationError("Instructor profile not found.")
-    
+    profile, _ = InstructorProfile.objects.select_for_update().get_or_create(user=user)
+
     # Only allow updating certain fields
     allowed_fields = [
         'bio',

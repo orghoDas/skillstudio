@@ -235,10 +235,9 @@ class StudentProfileServiceTests(TestCase):
         self.assertEqual(updated.preferred_learning_style, 'auditory')
         self.assertEqual(updated.weekly_study_hours, 15)
     
-    def test_update_nonexistent_profile(self):
-        """Test updating profile that doesn't exist."""
-        with self.assertRaises(ValidationError):
-            update_student_profile(self.user, weekly_study_hours=10)
+    def test_update_creates_missing_profile(self):
+        updated = update_student_profile(self.user, weekly_study_hours=10)
+        self.assertEqual(updated.weekly_study_hours, 10)
 
 
 class StudentNoteServiceTests(TestCase):
@@ -518,6 +517,58 @@ class StudentBookmarkServiceTests(TestCase):
         detail = client.get(f"{url}{response.data['id']}/")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.data['course_title'], self.course.title)
+
+
+class StudentWriteValidationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email='write-tests@example.test')
+        teacher = User.objects.create_user(email='write-teacher@example.test', role='instructor')
+        self.course = Course.objects.create(title='Write tests', instructor=teacher, status='published')
+        module = Module.objects.create(course=self.course, title='Module', position=1)
+        self.lesson = Lesson.objects.create(module=module, title='Lesson', position=1)
+        Enrollment.objects.create(user=self.user, course=self.course)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_profile_can_be_patched_before_a_get_and_rejects_invalid_hours(self):
+        url = '/api/students/profile/'
+        for hours in ('abc', -5):
+            response = self.client.patch(url, {'weekly_study_hours': hours}, format='json')
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('weekly_study_hours', response.json()['fields'])
+        response = self.client.patch(url, {'weekly_study_hours': 5}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['weekly_study_hours'], 5)
+        instructor = APIClient()
+        instructor.force_authenticate(self.course.instructor)
+        response = instructor.patch('/api/instructors/profile/', {'headline': 'Teacher'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['headline'], 'Teacher')
+
+    def test_note_validation_runs_on_create_and_patch(self):
+        path = '/api/students/notes/'
+        for data, field in (
+            ({'lesson': self.lesson.pk}, 'content'),
+            ({'lesson': 'x', 'content': 'Note'}, 'lesson'),
+            ({'lesson': self.lesson.pk, 'content': 'Note', 'timestamp': -9}, 'timestamp'),
+        ):
+            response = self.client.post(path, data, format='json')
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(field, response.json()['fields'])
+        response = self.client.post(path, {'lesson': self.lesson.pk, 'content': 'Note'}, format='json')
+        self.assertEqual(response.status_code, 201)
+        response = self.client.patch(f"{path}{response.json()['id']}/", {'timestamp': 'abc'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('timestamp', response.json()['fields'])
+
+    def test_bookmark_repeat_returns_existing_record(self):
+        url = '/api/students/bookmarks/'
+        for target in ({'course': self.course.pk}, {'lesson': self.lesson.pk}):
+            first = self.client.post(url, target, format='json')
+            second = self.client.post(url, target, format='json')
+            self.assertEqual((first.status_code, second.status_code), (201, 200))
+            self.assertEqual(first.json()['id'], second.json()['id'])
+        self.assertEqual(StudentBookmark.objects.filter(user=self.user).count(), 2)
 
 
 class StudentDashboardServiceTests(TestCase):

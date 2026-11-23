@@ -6,7 +6,7 @@ from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.utils import timezone
 
-from accounts.utils import is_platform_admin
+from accounts.utils import is_platform_admin, public_learner_name
 
 # Import PDF generation function
 from .pdf import generate_certificate_pdf
@@ -45,7 +45,7 @@ def issue_certificate(user, course):
     storage = certificate.pdf.storage
     fields.update(
         verification_code=str(uuid4()), issued_at=timezone.now(),
-        revoked_at=None, pdf=None, pdf_verification_url='', pdf_grade=None,
+        revoked_at=None, pdf=None, pdf_verification_url='', pdf_grade=None, pdf_learner_name='',
     )
     for field, value in fields.items():
         setattr(certificate, field, value)
@@ -73,6 +73,7 @@ def ensure_certificate_pdf(certificate):
     if (
         certificate.pdf_verification_url == certificate.verification_url
         and certificate.pdf_grade == certificate.released_grade
+        and certificate.pdf_learner_name == public_learner_name(certificate.user)
         and certificate_has_pdf(certificate)
     ):
         return certificate
@@ -108,9 +109,11 @@ def render_certificate_pdf(certificate_id, force=False):
         raise ValidationError("Revoked certificates cannot be rendered.")
     verification_url = certificate.verification_url
     grade = certificate.released_grade
+    learner_name = public_learner_name(certificate.user)
     if (
         not force and certificate.pdf_verification_url == verification_url
-        and certificate.pdf_grade == grade and certificate_has_pdf(certificate)
+        and certificate.pdf_grade == grade and certificate.pdf_learner_name == learner_name
+        and certificate_has_pdf(certificate)
     ):
         return certificate
 
@@ -120,7 +123,8 @@ def render_certificate_pdf(certificate_id, force=False):
     certificate.pdf.save(pdf_file.name, pdf_file, save=False)
     certificate.pdf_verification_url = verification_url
     certificate.pdf_grade = grade
-    certificate.save(update_fields=['pdf', 'pdf_verification_url', 'pdf_grade'])
+    certificate.pdf_learner_name = learner_name
+    certificate.save(update_fields=['pdf', 'pdf_verification_url', 'pdf_grade', 'pdf_learner_name'])
     if previous_name and previous_name != certificate.pdf.name:
         transaction.on_commit(lambda: storage.delete(previous_name), robust=True)
     return certificate

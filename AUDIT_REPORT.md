@@ -70,11 +70,17 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 36 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01) |
 | P3 | 13 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03) |
 | **Total** | **88** | **21** |
-| *Resolved so far* | *67 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1 findings are resolved. The re-audit still has 11 P2 and six P3 findings open.* |
+| *Resolved so far* | *78 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04, ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1 and P2 findings are resolved. The re-audit still has six P3 findings open.* |
 
 ### Follow-up after the 2026-11-22 re-audit
 
 The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
+
+### P2 remediation 2026-11-23
+
+All 11 P2 findings from the re-audit are resolved in code. The email and coupon data migrations stop on normalization conflicts so existing data can be reconciled without discarding records. The payment migration preserves older discount history and links it when the original payment identifies the course.
+
+Verification passed with 493 SQLite tests and three PostgreSQL-only skips, 496 PostgreSQL tests, and 27 Chromium tests. The OpenAPI snapshot, API route reference, migration checks, and Tailwind build also passed.
 
 ### P1 remediation 2026-11-23
 
@@ -99,7 +105,7 @@ The pass found **21 new issues** that the green suite doesn't cover:
   - [LRN-04](#lrn-04): locked lessons can be completed out of order.
   - [SEC-10](#sec-10): website admins can mint admins and deactivate the superuser through the API.
   - [EXM-04](#exm-04): a closed exam window or used-up attempts make completion impossible, with no recovery.
-- **P2:**
+- **P2 findings (resolved 2026-11-23):**
   - [ERR-02](#err-02): 9 inputs still 500.
   - [STU-03](#stu-03): profile and note writes are unvalidated.
   - [CRS-08](#crs-08): instructor emails leak through `get_full_name()`, and the certificate PDF prints the learner's email.
@@ -276,17 +282,17 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [FE-02](#fe-02) | P2 | Role-based navbar, page guards and stale frontend code ✅ resolved 2026-11-22 |
 | [ASM-03](#asm-03) | P2 | Quiz editing respects the course lock ✅ resolved 2026-11-22 |
 | [INS-01](#ins-01) | P2 | Instructor dashboard error handling and aggregate counts ✅ resolved 2026-11-22 |
-| [ERR-02](#err-02) | P2 | Malformed query parameters and request bodies still return 500 — 🔴 open (re-audit 2026-11-22) |
-| [STU-03](#stu-03) | P2 | Student profile and note writes bypass their serializers — 🔴 open (re-audit 2026-11-22) |
-| [CRS-08](#crs-08) | P2 | Instructor (and student) emails still reach other users — 🔴 open (re-audit 2026-11-22) |
-| [CRS-09](#crs-09) | P2 | A rejected course never shows the instructor why — 🔴 open (re-audit 2026-11-22) |
-| [PAY-10](#pay-10) | P2 | Console-created coupons can be unredeemable; coupon form exposes every account — 🔴 open (re-audit 2026-11-22) |
-| [ADM-02](#adm-02) | P2 | Console course decision page crashes when the course has no category — 🔴 open (re-audit 2026-11-22) |
-| [LRN-05](#lrn-05) | P2 | Watch-time anti-cheat lets a client skip most of a video — 🔴 open (re-audit 2026-11-22) |
-| [FE-04](#fe-04) | P2 | API field-validation messages never reach the user — 🔴 open (re-audit 2026-11-22) |
-| [ACC-02](#acc-02) | P2 | Password change and API-key revocation don't do what the UI says — 🔴 open (re-audit 2026-11-22) |
-| [ACC-03](#acc-03) | P2 | Email addresses are case-sensitive: duplicate accounts and failed logins — 🔴 open (re-audit 2026-11-22) |
-| [RPT-01](#rpt-01) | P2 | The same statistic is calculated differently in different places — 🔴 open (re-audit 2026-11-22) |
+| [ERR-02](#err-02) | P2 | Malformed query parameters and request bodies still return 500 — ✅ resolved 2026-11-23 |
+| [STU-03](#stu-03) | P2 | Student profile and note writes bypass their serializers — ✅ resolved 2026-11-23 |
+| [CRS-08](#crs-08) | P2 | Instructor (and student) emails still reach other users — ✅ resolved 2026-11-23 |
+| [CRS-09](#crs-09) | P2 | A rejected course never shows the instructor why — ✅ resolved 2026-11-23 |
+| [PAY-10](#pay-10) | P2 | Console-created coupons can be unredeemable; coupon form exposes every account — ✅ resolved 2026-11-23 |
+| [ADM-02](#adm-02) | P2 | Console course decision page crashes when the course has no category — ✅ resolved 2026-11-23 |
+| [LRN-05](#lrn-05) | P2 | Watch-time anti-cheat lets a client skip most of a video — ✅ resolved 2026-11-23 |
+| [FE-04](#fe-04) | P2 | API field-validation messages never reach the user — ✅ resolved 2026-11-23 |
+| [ACC-02](#acc-02) | P2 | Password change and API-key revocation don't do what the UI says — ✅ resolved 2026-11-23 |
+| [ACC-03](#acc-03) | P2 | Email addresses are case-sensitive: duplicate accounts and failed logins — ✅ resolved 2026-11-23 |
+| [RPT-01](#rpt-01) | P2 | The same statistic is calculated differently in different places — ✅ resolved 2026-11-23 |
 | [REPO-01](#repo-01) | P3 | ~~5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git~~ ✅ resolved 2026-11-21 |
 | [REPO-02](#repo-02) | P3 | ~~Dead code and stale comments~~ ✅ resolved 2026-11-21 |
 | [REPO-03](#repo-03) | P3 | ~~Migration churn in `accounts`~~ ✅ resolved 2026-11-21 (squashed 0001–0008) |
@@ -1719,7 +1725,9 @@ The UI can show a lesson as unlocked that the server then refuses.
 **Fix approach:** Remove the try/except and let errors 500 and get logged. Fix the data source mismatch from [PAY-07](#pay-07), and collapse the three duplicate count queries into one aggregate.
 
 <a id="err-02"></a>
-### ERR-02: Malformed query parameters and request bodies still return 500 — 🔴 OPEN (re-audit 2026-11-22)
+### ERR-02: Malformed query parameters and request bodies still return 500 — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The reported payment date, enrollment, question-bank and note filters return field-level HTTP 400 errors for malformed input. Payment datetime filters use timezone-aware values.
 
 **Evidence (✔ each one returned `500 internal_error` against the live server):**
 
@@ -1742,7 +1750,9 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Parse query parameters with a small helper or a DRF `Serializer` (`IntegerField`, `DateTimeField`) and raise `ValidationError`. Add one table-driven test that sends bad values to every list filter.
 
 <a id="stu-03"></a>
-### STU-03: Student profile and note writes bypass their serializers — 🔴 OPEN (re-audit 2026-11-22)
+### STU-03: Student profile and note writes bypass their serializers — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Profile and note writes validate through their serializers. Students and instructors can update a profile before their first GET. Repeating a lesson or course bookmark returns the existing row with HTTP 200.
 
 **Evidence:** `StudentProfileView.put/patch` calls `update_student_profile(request.user, **request.data)`. `StudentNoteListCreateView.post` and `StudentNoteDetailView.put/patch` call the note services with raw request values ([students/views.py](students/views.py), [students/services.py](students/services.py)). The services use a field allowlist, so there is no mass assignment, but no type validation runs.
 - ✔ Wrong types and missing content return 500 (see [ERR-02](#err-02)).
@@ -1754,7 +1764,9 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Validate with `StudentProfileSerializer` / `StudentNoteSerializer` (`partial=True` for PATCH) and pass `validated_data` to the services. Use `get_or_create` in both profile update services. Add a unique `(user, lesson)` constraint on bookmarks and return 200 for an existing one.
 
 <a id="crs-08"></a>
-### CRS-08: Instructor (and student) emails still reach other users — 🔴 OPEN (re-audit 2026-11-22)
+### CRS-08: Instructor (and student) emails still reach other users — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Learner-facing course, payment and certificate responses use display names and generic fallbacks. Certificate PDFs now match public verification and are refreshed on download when the display name changes. Instructor roster and dashboard emails are limited to that instructor’s own courses.
 
 **Evidence (✔ seen in live API responses):** [CRS-06](#crs-06) removed instructor emails from public course endpoints, but `User.get_full_name()` returns the **email** whenever the profile has no name, and several serializers still use it or expose the email directly:
 - A student's `POST /api/enrollments/enroll/` and `GET /api/enrollments/...` returned `"instructor": {"name": "ina@instructor.com"}` (`EnrollmentDetailSerializer`). `EnrollmentListSerializer.instructor_name` behaves the same way.
@@ -1766,14 +1778,18 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Use `accounts.utils.public_instructor_name()` in every learner-facing serializer and drop `instructor_email` from student payment responses. Use the same fallback on the PDF as on the verify page, and re-render the PDF when the name changes. Make `get_full_name()` stop falling back to the email, or stop using it in serializers. Document whether instructors may see learner emails.
 
 <a id="crs-09"></a>
-### CRS-09: A rejected course never shows the instructor why — 🔴 OPEN (re-audit 2026-11-22)
+### CRS-09: A rejected course never shows the instructor why — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The course list and content editor show the review date and private rejection reason for returned drafts. Resubmitting clears the feedback from both views.
 
 **Evidence (✔ verified):** The console reviewer chose "Return to draft" with the note "Please add a summary lesson". The course went back to `draft`, and `GET /api/courses/<slug>/` returns `rejection_reason` to the owner. However, no template reads `rejection_reason`. A repo-wide search over `templates/` only finds the unrelated refund reason. The instructor's content page, course list and edit page show the course as a plain draft, so the review loop has no feedback in the UI. [courses/README.md](courses/README.md) says "Review notes are available on course detail to the assigned instructor", which is true only for the API.
 
 **Fix approach:** Show the latest `rejection_reason` and `reviewed_at` on the content page and in the instructor course list while the course is a draft, and clear it on resubmit (the service already does that).
 
 <a id="pay-10"></a>
-### PAY-10: Console-created coupons can be unredeemable; coupon form exposes every account — 🔴 OPEN (re-audit 2026-11-22)
+### PAY-10: Console-created coupons can be unredeemable; coupon form exposes every account — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Coupon codes are normalized and unique regardless of case. The console assigns the operator and shares discount validation with the API. Refunds retain coupon usage. Zero-cost redemptions tied to a course retain the learner’s entitlement when reactivated. Legacy redemptions acquire a course only when there is a linked payment that identifies it. Earlier payment-free redemptions with no course evidence are preserved for manual reconciliation.
 
 **Evidence (✔ verified):**
 - An operator created coupon `spring25` in the console coupon form, which is a plain `ModelAdmin`. It was stored lower-case and appeared in the public `GET /api/payments/coupons/` list as `spring25`. Every redemption attempt returned **"Invalid coupon code."**, including one typed exactly as listed, because `validate_coupon_for_course` upper-cases the input and matches exactly. The API path (`services.create_coupon`) upper-cases codes, but the console doesn't.
@@ -1785,14 +1801,18 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Normalise `code` in `Coupon.save()` or a `clean_code`, use a case-insensitive lookup (`code__iexact`) and a unique constraint on `Upper('code')`. Set `created_by` from `request.user` in `CouponAdmin.save_model` and make it read-only. Share validation between the admin form and the API. Decide what a refund does to coupon usage.
 
 <a id="adm-02"></a>
-### ADM-02: Console course decision page crashes when the course has no category — 🔴 OPEN (re-audit 2026-11-22)
+### ADM-02: Console course decision page crashes when the course has no category — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The course decision form renders an uncategorized course and preserves its review actions.
 
 **Evidence (✔ 500 in the live run):** `Course.category` is `on_delete=SET_NULL, null=True`, but `CourseAdmin.decision_details` ([courses/admin.py](courses/admin.py)) reads `obj.category.name`. After a category was deleted, `/admin/courses/course/<id>/decision/` raised `AttributeError: 'NoneType' object has no attribute 'name'`. Reviewers can't publish or archive such a course from the console.
 
 **Fix approach:** `obj.category.name if obj.category else '—'`, plus a regression test. Consider `PROTECT` on categories in use.
 
 <a id="lrn-05"></a>
-### LRN-05: Watch-time anti-cheat lets a client skip most of a video — 🔴 OPEN (re-audit 2026-11-22)
+### LRN-05: Watch-time anti-cheat lets a client skip most of a video — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The first watch event can credit at most 15 seconds. Each later event is capped by server elapsed time, with no repeat grace grant. Responses report the actual credited delta.
 
 **Evidence (✔ verified):** `update_lesson_watch_progress` ([enrollments/services.py](enrollments/services.py)):
 - skips the elapsed-time check on the **first** event for a lesson, because the progress row is created in that call. One `PATCH .../watch-time/ {"watch_time_delta": 60}` credited 60 seconds and completed a 1-minute video in **0.0 s**. Any video up to 150 seconds long completes from a single request, since the cap is 120 s and the threshold is 80%.
@@ -1802,14 +1822,18 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Credit the first event at most the grace window, and make the grace cumulative (`watch_time <= elapsed_since_started + grace`) rather than per event. Alternatively, accept the limits as demo-grade and say so in the docs.
 
 <a id="fe-04"></a>
-### FE-04: API field-validation messages never reach the user — 🔴 OPEN (re-audit 2026-11-22)
+### FE-04: API field-validation messages never reach the user — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The shared browser API client surfaces field messages when the response detail is generic, including nested validation errors.
 
 **Evidence (✔ verified):** With the [API-04](#api-04) envelope, field errors arrive in `fields` and `detail` is the generic "Invalid input.". `apiRequest()` ([static/js/app.js](static/js/app.js)) builds its error from `detail` only. Saving a lesson with a non-video URL therefore showed just **"Invalid input."**, while the reason (`fields.video_url`) was dropped. Only three pages read `error.body.fields`, and each reads only specific fields: course create/edit read `price`, and settings reads the password fields. Every other form behaves like the lesson editor, including the exam builder, quiz builder, payouts, refunds, notes and profile.
 
 **Fix approach:** In `apiRequest()`, when `detail` is the generic message, use the first entry of `fields` as the error message. Better, add a shared helper that marks each invalid input.
 
 <a id="acc-02"></a>
-### ACC-02: Password change and API-key revocation don't do what the UI says — 🔴 OPEN (re-audit 2026-11-22)
+### ACC-02: Password change and API-key revocation don't do what the UI says — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Changing a password invalidates old JWT access and refresh tokens, clears the browser cookies, and returns the browser to login. API-key revocation is permanent and idempotent through the revoke endpoint and the legacy toggle URL. The unsupported account-deletion control was removed.
 
 **Evidence (✔ verified):**
 - After a password change, the page says "Password changed successfully. Please log in again." The user stays on Settings, and `/api/accounts/me/` still returns 200. The access cookie stays valid for up to 30 minutes. The refresh token was silently blacklisted, so the session ends later at an unpredictable moment. Other browsers also keep working until their access token expires.
@@ -1819,7 +1843,9 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** After a password change, clear the auth cookies in the response and redirect to the login page. Make revocation one-way: split the toggle into a `revoke` endpoint. Remove the Delete Account block, or replace it with "contact an admin".
 
 <a id="acc-03"></a>
-### ACC-03: Email addresses are case-sensitive: duplicate accounts and failed logins — 🔴 OPEN (re-audit 2026-11-22)
+### ACC-03: Email addresses are case-sensitive: duplicate accounts and failed logins — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Email identity is case-insensitive for creation, sign-in and storage. The migration normalizes existing addresses in place and reports conflicting account IDs before modifying any rows. Collision resolution requires a decision about the existing accounts and their records.
 
 **Evidence (✔ verified):** With `s1@student.com` registered, `POST /api/accounts/register/ {"email": "S1@student.com", …}` returned **201** and created a second account. The DB then held both `s1@student.com` and `S1@student.com`. Logging in as `S1@STUDENT.COM` returned **401** for the original user. `BaseUserManager.normalize_email` lower-cases only the domain part, `User.email` is a case-sensitive unique field, and the login backend matches exactly.
 
@@ -1828,7 +1854,9 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 **Fix approach:** Lower-case the whole address on save and registration, add a unique constraint on `Lower('email')`, and authenticate with `email__iexact`. Check existing rows for case duplicates before adding the constraint.
 
 <a id="rpt-01"></a>
-### RPT-01: The same statistic is calculated differently in different places — 🔴 OPEN (re-audit 2026-11-22)
+### RPT-01: The same statistic is calculated differently in different places — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Catalog, course detail, popularity, instructor course reporting and the console count both active and completed enrollments. Admin course and payment reports share the same net course-sale calculation and return revenue strings.
 
 **Evidence (read in source; the revenue figures were confirmed in the live run):**
 - `enrollments_count` on course list and detail counts only `active` enrollments, so the number shown **drops when students complete the course**. `ordering=popular` and the console use `ACCESS_STATUSES` (active + completed) ([courses/views.py](courses/views.py)).
@@ -2133,7 +2161,7 @@ Move aspirational features to a "Roadmap" section.
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ~~ENR-01~~ ✅, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
-| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. Next ERR-02 + STU-03 together, CRS-08, CRS-09, PAY-10, ADM-02, FE-04, ACC-02, ACC-03, LRN-05, RPT-01. Finally REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
+| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. ~~ERR-02~~ ✅, ~~STU-03~~ ✅, ~~CRS-08~~ ✅, ~~CRS-09~~ ✅, ~~PAY-10~~ ✅, ~~ADM-02~~ ✅, ~~FE-04~~ ✅, ~~ACC-02~~ ✅, ~~ACC-03~~ ✅, ~~LRN-05~~ ✅, ~~RPT-01~~ ✅. Next REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
 
 ### Definition of done for release
 

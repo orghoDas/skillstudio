@@ -1,10 +1,12 @@
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.utils import timezone
 
-from enrollments.models import LessonProgress
+from enrollments.constants import ACCESS_STATUSES
+from enrollments.models import Enrollment, LessonProgress
 from accounts.utils import is_platform_admin
 from .models import Course, Module, Lesson
 from .policies import can_manage_course
@@ -17,6 +19,15 @@ COURSE_TRANSITIONS = {
     'published': {'archived'},
     'archived': set(),
 }
+
+
+def course_learner_count():
+    """Count enrollments that still grant access, including completed courses."""
+    enrollments = (
+        Enrollment.objects.filter(course_id=OuterRef('pk'), status__in=ACCESS_STATUSES)
+        .order_by().values('course_id').annotate(total=Count('pk')).values('total')
+    )
+    return Coalesce(Subquery(enrollments), 0)
 
 
 def _lock_course(course_id):
