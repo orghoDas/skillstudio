@@ -166,7 +166,9 @@ class ExamWindowTests(APITestCase):
         question_url = f'/api/exams/questions/{self.question.pk}/'
         self.assertEqual(self.client.patch(question_url, {'marks': 3}, format='json').status_code, 400)
         self.assertEqual(self.client.delete(question_url).status_code, 400)
-        self.assertEqual(self.client.patch(f'{base}/', {'title': 'Updated title'}, format='json').status_code, 200)
+        response = self.client.patch(f'{base}/', {'title': 'Updated title'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('draft revision', response.data['detail'])
 
         # Verify that even an out-of-band data change can't change an attempt.
         QuestionBank.objects.filter(pk=self.question.pk).update(
@@ -181,8 +183,70 @@ class ExamWindowTests(APITestCase):
         )
         self.assertEqual((result.data['score'], result.data['total_marks'], result.data['passed']), (1, 1, True))
 
+    def test_invalid_window_rejected_on_create_update_and_publish(self):
+        Course.objects.filter(pk=self.exam.course_id).update(status='draft')
+        self.client.force_authenticate(self.instructor)
+        invalid_end = self.exam.start_datetime.isoformat()
+        payload = {
+            'course': self.exam.course_id, 'title': 'Invalid', 'duration_minutes': 5,
+            'start_datetime': invalid_end, 'end_datetime': invalid_end,
+        }
+        response = self.client.post('/api/exams/', payload, format='json')
+        self.assertIn('end_datetime', response.data['fields'])
+        url = f'/api/exams/{self.exam.pk}/'
+        response = self.client.patch(url, {'end_datetime': invalid_end}, format='json')
+        self.assertIn('end_datetime', response.data['fields'])
+        Exam.objects.filter(pk=self.exam.pk).update(end_datetime=self.exam.start_datetime, status='draft')
+        response = self.client.post(f'{url}publish/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('end_datetime', response.data['fields'])
+
+    def test_published_course_rejects_new_exams(self):
+        self.client.force_authenticate(self.instructor)
+        response = self.client.post('/api/exams/', {
+            'course': self.exam.course_id, 'title': 'Late exam', 'duration_minutes': 5,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('draft revision', response.data['detail'])
+
+    def test_console_retry_preserves_quiz_and_exam_records_and_restores_attempts(self):
+        from django.contrib.admin.models import LogEntry
+        from django.test import Client
+        from django.urls import reverse
+
+        from assessments.models import Quiz, QuizAttempt
+        from assessments.services import start_quiz_attempt
+        from courses.models import Lesson, Module
+
+        self.open_window()
+        exam_attempt = start_exam_attempt(self.exam, self.student)
+        submit_exam_attempt(exam_attempt, {})
+        self.assertEqual(self.start().data['code'], 'max_attempts')
+
+        module = Module.objects.create(course=self.exam.course, title='Module', position=1)
+        lesson = Lesson.objects.create(module=module, title='Quiz lesson', position=1)
+        quiz = Quiz.objects.create(lesson=lesson, title='Quiz', is_published=True, max_attempts=1)
+        quiz_attempt = QuizAttempt.objects.create(quiz=quiz, user=self.student, completed_at=timezone.now())
+        operator = User.objects.create_superuser(email='assessment-reviewer@example.test')
+        console = Client()
+        console.force_login(operator)
+        for name, attempt in (('exams_examattempt', exam_attempt), ('assessments_quizattempt', quiz_attempt)):
+            url = reverse(f'admin:{name}_decision', args=[attempt.pk])
+            data = {'action': 'grant_retry', 'note': 'Approved support request'}
+            self.assertEqual(console.post(url, data, secure=True).status_code, 302)
+            attempt.refresh_from_db()
+            self.assertTrue(attempt.retry_granted)
+            self.assertFalse(attempt.passed)
+            self.assertEqual(console.post(url, data, secure=True).status_code, 403)
+        self.assertEqual(LogEntry.objects.filter(user=operator, change_message__contains='Approved support request').count(), 2)
+        exam_card = self.client.get('/api/exams/').data['results'][0]
+        self.assertEqual((exam_card['attempt_count'], exam_card['attempts_used']), (1, 0))
+        self.assertEqual(self.start().data['attempt_number'], 2)
+        self.assertEqual(start_quiz_attempt(self.student, quiz).attempt_number, 2)
+
     def test_status_and_total_are_server_owned_and_publish_validates_passing_marks(self):
         self.client.force_authenticate(self.instructor)
+        Course.objects.filter(pk=self.exam.course_id).update(status='draft')
         payload = {'course': self.exam.course_id, 'title': 'Small exam', 'duration_minutes': 5}
         draft = self.client.post('/api/exams/', {**payload, 'status': 'published'}, format='json')
         self.assertEqual(draft.status_code, 201, draft.data)

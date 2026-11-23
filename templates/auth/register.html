@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Clear previous errors
         registerError.classList.add('hidden');
-        document.querySelectorAll('[id$="-error"]').forEach(el => {
+        document.querySelectorAll('[id$="-error"]:not(#register-error)').forEach(el => {
             el.classList.add('hidden');
             el.textContent = '';
         });
@@ -184,7 +184,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.location.href = '/auth/login/';
                 }, 2000);
             } else {
-                const fields = data.fields;
+                const fields = data.fields || {};
                 if (fields.email) {
                     document.getElementById('email-error').textContent = fields.email[0];
                     document.getElementById('email-error').classList.remove('hidden');

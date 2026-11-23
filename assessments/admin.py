@@ -1,5 +1,6 @@
 from django.contrib import admin
-from core.admin import ReadOnlyAdmin
+from django.core.exceptions import ValidationError
+from core.admin import ReadOnlyAdmin, WorkflowAdmin
 from .models import Quiz, QuizQuestion, QuestionOption, QuizAttempt
 
 
@@ -27,7 +28,28 @@ class QuizQuestionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(QuizAttempt)
-class QuizAttemptAdmin(ReadOnlyAdmin):
+class QuizAttemptAdmin(WorkflowAdmin):
     list_display = ("id", "quiz", "user", "started_at", "completed_at", "score")
     list_filter = ("completed_at",)
     search_fields = ("user__email",)
+
+    decision_help = "Grant one extra try while retaining this attempt and its score."
+
+    def workflow_choices(self, obj):
+        if obj.completed_at and not obj.passed and not obj.retry_granted and obj.quiz.max_attempts is not None:
+            return [('grant_retry', 'Grant extra attempt')]
+        return []
+
+    def decision_details(self, obj):
+        return [('Student', obj.user.email), ('Quiz', obj.quiz.title), ('Attempt', obj.attempt_number)]
+
+    def apply_decision(self, request, obj, data):
+        quiz = Quiz.objects.select_for_update().get(pk=obj.quiz_id)
+        attempt = QuizAttempt.objects.select_for_update().get(pk=obj.pk)
+        attempt.quiz = quiz
+        if not self.workflow_choices(attempt):
+            raise ValidationError('This attempt is no longer eligible for a retry.')
+        attempt.retry_granted = True
+        attempt.save(update_fields=['retry_granted'])
+        note = data['note']
+        return f'Granted an extra quiz attempt. {note}'.strip()

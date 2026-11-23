@@ -69,7 +69,10 @@ def graded_course_exam_attempts(user, course):
 
 
 def course_exam_requirements_met(user, course):
-    required_ids = set(course.exams.filter(status='published').values_list('pk', flat=True))
+    # An exam with a closing date is optional for course completion.
+    required_ids = set(course.exams.filter(
+        status='published', end_datetime__isnull=True,
+    ).values_list('pk', flat=True))
     if not required_ids:
         return True
     passed_ids = {attempt.exam_id for attempt in graded_course_exam_attempts(user, course) if attempt.passed}
@@ -136,7 +139,7 @@ def start_exam_attempt(exam, user):
         # Let any overdue grading commit even if the next attempt is refused.
         try:
             ensure_exam_open(exam)
-            if attempts.count() >= exam.max_attempts:
+            if attempts.filter(retry_granted=False).count() >= exam.max_attempts:
                 raise ExamUnavailable(
                     f"You have used all {exam.max_attempts} attempt(s) for this exam.", 'max_attempts'
                 )

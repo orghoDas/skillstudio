@@ -124,17 +124,17 @@ function createExamCard(exam) {
     const now = new Date();
     const startDate = new Date(exam.start_datetime);
     const endDate = new Date(exam.end_datetime);
-    const isActive = startDate <= now && endDate >= now && exam.status === 'published';
+    const isActive = (!exam.start_datetime || startDate <= now) && (!exam.end_datetime || endDate >= now) && exam.status === 'published';
     const isUpcoming = startDate > now;
-    const hasAttempts = exam.attempt_count > 0;
-    const canRetake = !hasAttempts || (exam.attempt_count < exam.max_attempts);
+    const hasResults = exam.attempt_count > (exam.has_open_attempt ? 1 : 0);
+    const canStart = exam.has_open_attempt || (isActive && exam.attempts_used < exam.max_attempts);
     
     let statusBadge = '';
     if (isActive) {
         statusBadge = '<span class="px-3 py-1 bg-green-900/30 text-green-400 text-sm rounded-full">Available Now</span>';
     } else if (isUpcoming) {
         statusBadge = '<span class="px-3 py-1 bg-blue-900/30 text-blue-400 text-sm rounded-full">Upcoming</span>';
-    } else if (hasAttempts) {
+    } else if (hasResults) {
         statusBadge = '<span class="px-3 py-1 bg-gray-900/30 text-gray-400 text-sm rounded-full">Completed</span>';
     } else {
         statusBadge = '<span class="px-3 py-1 bg-gray-900/30 text-gray-400 text-sm rounded-full">Ended</span>';
@@ -144,7 +144,7 @@ function createExamCard(exam) {
         <div class="flex items-start justify-between mb-4">
             <div class="flex-1">
                 <h3 class="text-xl font-semibold mb-2">${escapeHtml(exam.title)}</h3>
-                <p class="text-sm text-gray-400 mb-3">${escapeHtml(exam.course_name || 'Course')}</p>
+                <p class="text-sm text-gray-400 mb-3">${escapeHtml(exam.course_title)}</p>
             </div>
             ${statusBadge}
         </div>
@@ -174,24 +174,24 @@ function createExamCard(exam) {
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
-                ${escapeHtml(exam.attempt_count || 0)}/${escapeHtml(exam.max_attempts)} attempts
+                ${escapeHtml(exam.attempts_used)}/${escapeHtml(exam.max_attempts)} attempts
             </div>
         </div>
         
         <div class="flex items-center justify-between pt-4 border-t border-dark-border">
             <div class="text-sm text-gray-400">
-                <div>Starts: ${escapeHtml(new Date(exam.start_datetime).toLocaleString())}</div>
-                <div>Ends: ${escapeHtml(new Date(exam.end_datetime).toLocaleString())}</div>
+                <div>Starts: ${escapeHtml(exam.start_datetime ? startDate.toLocaleString() : 'Any time')}</div>
+                <div>Ends: ${escapeHtml(exam.end_datetime ? endDate.toLocaleString() : 'No closing date')}</div>
             </div>
             <div class="flex space-x-2">
-                ${hasAttempts ? `
+                ${hasResults ? `
                     <button data-click="viewResults" data-value-one="${escapeHtml(exam.id)}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                         View Results
                     </button>
                 ` : ''}
-                ${isActive && canRetake ? `
+                ${canStart ? `
                     <button data-click="startExam" data-value-one="${escapeHtml(exam.id)}" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
-                        ${escapeHtml(hasAttempts ? 'Retake Exam' : 'Start Exam')}
+                        ${escapeHtml(exam.has_open_attempt ? 'Resume Exam' : hasResults ? 'Retake Exam' : 'Start Exam')}
                     </button>
                 ` : ''}
             </div>

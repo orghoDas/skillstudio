@@ -459,7 +459,7 @@ class LessonDetailView(APIView):
 
     def get(self, request, lesson_id):
         from courses.policies import can_access_lesson
-        from enrollments.services import get_access_enrollment, lesson_lock_state
+        from enrollments.services import get_access_enrollment, require_unlocked_lesson
 
         lesson = get_object_or_404(
             Lesson.objects.select_related('module__course').prefetch_related('resources'), id=lesson_id
@@ -481,9 +481,7 @@ class LessonDetailView(APIView):
         # exactly as the curriculum shows it; owners/admins are never locked.
         if not can_manage_course(user, course):
             enrollment = get_access_enrollment(user, course)
-            if enrollment and lesson_lock_state(enrollment).get(lesson.id):
-                return Response({'error': 'Lesson is locked. Complete the previous lessons first.',
-                                 'code': 'lesson_locked'}, status=status.HTTP_403_FORBIDDEN)
+            require_unlocked_lesson(enrollment, lesson)
 
         # Count only views that actually got the content.
         Lesson.objects.filter(id=lesson.id).update(view_count=F('view_count') + 1)

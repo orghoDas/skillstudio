@@ -1,5 +1,7 @@
 from django.contrib import admin
-from core.admin import ReadOnlyAdmin
+from django.core.exceptions import ValidationError
+from core.admin import ReadOnlyAdmin, WorkflowAdmin
+from .services import exam_availability
 from .models import QuestionBank, Exam, ExamAttempt, ExamResult
 
 
@@ -64,7 +66,7 @@ class ExamAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ExamAttempt)
-class ExamAttemptAdmin(ReadOnlyAdmin):
+class ExamAttemptAdmin(WorkflowAdmin):
     """Admin interface for Exam Attempts."""
     list_display = ['id', 'user_email', 'exam_title', 'score', 'percentage', 'passed', 'status', 'started_at', 'completed_at']
     list_filter = ['status', 'passed', 'exam', 'started_at']
@@ -86,6 +88,30 @@ class ExamAttemptAdmin(ReadOnlyAdmin):
         }),
     )
     
+    decision_help = "Grant one extra try while retaining this attempt and its score."
+
+    def workflow_choices(self, obj):
+        if (
+            obj.status == 'completed' and obj.passed is False and not obj.retry_granted
+            and exam_availability(obj.exam) in {'open', 'not_open_yet'}
+        ):
+            return [('grant_retry', 'Grant extra attempt')]
+        return []
+
+    def decision_details(self, obj):
+        return [('Student', obj.user.email), ('Exam', obj.exam.title), ('Attempt', obj.attempt_number)]
+
+    def apply_decision(self, request, obj, data):
+        exam = Exam.objects.select_for_update().get(pk=obj.exam_id)
+        attempt = ExamAttempt.objects.select_for_update().get(pk=obj.pk)
+        attempt.exam = exam
+        if not self.workflow_choices(attempt):
+            raise ValidationError('This attempt is no longer eligible for a retry.')
+        attempt.retry_granted = True
+        attempt.save(update_fields=['retry_granted'])
+        note = data['note']
+        return f'Granted an extra exam attempt. {note}'.strip()
+
     def user_email(self, obj):
         return obj.user.email
     user_email.short_description = 'User'

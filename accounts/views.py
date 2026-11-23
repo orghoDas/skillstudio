@@ -180,12 +180,16 @@ class UserDetailView(generics.RetrieveAPIView):
 
 
 @transaction.atomic
-def _update_role(user_id, role):
+def _update_role(actor, user_id, role):
     user = get_object_or_404(User.objects.select_for_update(), id=user_id)
+    if not actor.is_superuser and (user.is_staff or user.is_superuser or role == User.Role.ADMIN):
+        raise PermissionDenied('Only superusers can grant admin privileges or change staff accounts.')
     if user.is_superuser and role != User.Role.ADMIN:
         raise ValidationError({'role': 'A superuser must retain the admin role.'})
-    user.role = role
-    user.save(update_fields=['role'])
+    if user.role != role:
+        user.role = role
+        user.admin_console_only = role == User.Role.ADMIN
+        user.save(update_fields=['role', 'admin_console_only'])
     return user
 
 
@@ -197,7 +201,7 @@ class UpdateUserRoleView(APIView):
         serializer = UpdateUserRoleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        user = _update_role(user_id, serializer.validated_data['role'])
+        user = _update_role(request.user, user_id, serializer.validated_data['role'])
         
         return Response({
             "message": f"User {user.email} role updated to {user.role}.",
@@ -210,7 +214,7 @@ class PromoteToInstructorView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, user_id):
-        user = _update_role(user_id, User.Role.INSTRUCTOR)
+        user = _update_role(request.user, user_id, User.Role.INSTRUCTOR)
         return Response({
             "message": f"User {user.email} promoted to Instructor.",
             "user": UserSerializer(user).data
@@ -221,8 +225,11 @@ class DeactivateUserView(APIView):
     """Deactivate user account (admin only)"""
     permission_classes = [IsAdmin]
 
+    @transaction.atomic
     def post(self, request, user_id):
-        user = get_object_or_404(User, id=user_id)
+        user = get_object_or_404(User.objects.select_for_update(), id=user_id)
+        if user.is_staff or user.is_superuser or user.pk == request.user.pk:
+            raise PermissionDenied('Staff accounts and your own account cannot be deactivated here.')
         user.is_active = False
         user.save(update_fields=['is_active'])
         return Response({
@@ -234,8 +241,11 @@ class ActivateUserView(APIView):
     """Activate user account (admin only)"""
     permission_classes = [IsAdmin]
 
+    @transaction.atomic
     def post(self, request, user_id):
-        user = get_object_or_404(User, id=user_id)
+        user = get_object_or_404(User.objects.select_for_update(), id=user_id)
+        if (user.is_staff or user.is_superuser) and not request.user.is_superuser:
+            raise PermissionDenied('Only superusers can activate staff accounts.')
         user.is_active = True
         user.save(update_fields=['is_active'])
         return Response({

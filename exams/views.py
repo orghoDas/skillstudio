@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -24,6 +24,7 @@ from .services import (
 )
 from .grading import MAX_EXAM_MARKS, total_question_marks
 from courses.models import Course
+from courses.services import lock_course_for_edit
 from accounts.permissions import IsInstructor
 from accounts.utils import is_platform_admin
 from enrollments.models import Enrollment
@@ -137,6 +138,8 @@ class QuestionBankDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def _lock_related_exams(self, question):
         exams = list(Exam.objects.filter(questions=question).order_by('pk').select_for_update(of=('self',)))
+        for course_id in sorted({exam.course_id for exam in exams}):
+            lock_course_for_edit(Course(pk=course_id), self.request.user)
         if any(exam.attempts.exists() for exam in exams):
             raise ValidationError("This question has been used in an exam attempt. Create a new question for future exams.")
         return exams
@@ -215,7 +218,7 @@ class ExamListCreateView(generics.ListCreateAPIView):
             if not is_admin_user(user) and user.role != 'instructor':
                 attempts = attempts.filter(user=user)
             queryset = queryset.filter(Exists(attempts))
-        return queryset.order_by('-created_at', '-pk')
+        return queryset_with_attempt_counts(queryset, user).order_by('-created_at', '-pk')
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -226,6 +229,7 @@ class ExamListCreateView(generics.ListCreateAPIView):
         if not course or not owns_course(self.request.user, course):
             raise PermissionDenied("You do not have permission to create exams for this course.")
 
+        lock_course_for_edit(course, self.request.user)
         lock_selected_questions(serializer, course)
         serializer.save(created_by=self.request.user)
 
@@ -294,6 +298,9 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
         course = serializer.validated_data.get('course', serializer.instance.course)
         if not owns_course(self.request.user, course):
             raise PermissionDenied("You do not have permission to manage exams in that course.")
+        source = serializer.instance.course
+        for affected_course in sorted({source, course}, key=lambda item: item.pk):
+            lock_course_for_edit(affected_course, self.request.user)
         lock_selected_questions(serializer, course)
         serializer.save()
 
@@ -302,6 +309,7 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
+        lock_course_for_edit(instance.course, self.request.user)
         if instance.attempts.exists():
             raise ValidationError("Archive this exam to preserve its attempts and results.")
         instance.delete()
@@ -324,6 +332,17 @@ def _finalize_if_due(attempt):
 # 🎯 Exam Taking Views (Students)
 # ===========================
 
+def queryset_with_attempt_counts(queryset, user):
+    own_attempt = Q(attempts__user=user)
+    return queryset.annotate(
+        attempt_count=Count('attempts', filter=own_attempt),
+        attempts_used=Count('attempts', filter=own_attempt & Q(attempts__retry_granted=False)),
+        has_open_attempt=Exists(ExamAttempt.objects.filter(
+            exam_id=OuterRef('pk'), user=user, status='in_progress',
+        )),
+    )
+
+
 class CourseExamListView(generics.ListAPIView):
     """Published exams accessible to an enrolled learner or course manager."""
     permission_classes = [IsAuthenticated]
@@ -334,7 +353,8 @@ class CourseExamListView(generics.ListAPIView):
         course = get_object_or_404(Course, pk=self.kwargs['course_id'])
         if not owns_course(self.request.user, course) and not has_active_course_enrollment(self.request.user, course):
             raise PermissionDenied("Active course enrollment required.")
-        return Exam.objects.filter(course=course, status='published').select_related('course').order_by('-created_at', '-pk')
+        queryset = Exam.objects.filter(course=course, status='published').select_related('course')
+        return queryset_with_attempt_counts(queryset, self.request.user).order_by('-created_at', '-pk')
 
 
 @extend_schema(request=None, responses={201: ExamAttemptSerializer})
@@ -501,11 +521,14 @@ class InstructorExamAttemptsView(ExamAttemptsListView):
 def publish_exam(request, exam_id):
     """Publish an exam."""
     exam = get_manageable_exam_or_404(request.user, exam_id, lock=True)
+    lock_course_for_edit(exam.course, request.user)
+    if exam.start_datetime and exam.end_datetime and exam.start_datetime >= exam.end_datetime:
+        raise ValidationError({'end_datetime': 'The exam must end after it starts.'})
     try:
         ensure_question_bank_matches_course(exam)
         exam.total_marks = validated_exam_total(current_exam_questions(exam), exam.passing_marks)
     except ExamUnavailable as exc:
-        return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+        raise ValidationError({'detail': exc.message, 'code': exc.code}) from exc
     exam.status = 'published'
     exam.save(update_fields=['status', 'total_marks', 'updated_at'])
     
@@ -522,6 +545,7 @@ def publish_exam(request, exam_id):
 def archive_exam(request, exam_id):
     """Archive an exam."""
     exam = get_manageable_exam_or_404(request.user, exam_id, lock=True)
+    lock_course_for_edit(exam.course, request.user)
     exam.status = 'archived'
     exam.save(update_fields=['status', 'updated_at'])
     

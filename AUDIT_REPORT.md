@@ -70,11 +70,15 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | P2 | 36 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01) |
 | P3 | 13 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03) |
 | **Total** | **88** | **21** |
-| *Resolved so far* | *63 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, and OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All 55 original P1–P3 items are resolved. The 21 items added by the 2026-11-22 re-audit are open.* |
+| *Resolved so far* | *67 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1 findings are resolved. The re-audit still has 11 P2 and six P3 findings open.* |
 
 ### Follow-up after the 2026-11-22 re-audit
 
 The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
+
+### P1 remediation 2026-11-23
+
+All four P1 findings from the re-audit are resolved. Verification on isolated test databases passed with 479 SQLite tests and three PostgreSQL-only skips, 145 focused PostgreSQL tests, and 24 Chromium browser tests. The OpenAPI snapshot, API route reference and migration checks passed.
 
 ### Second re-audit 2026-11-22: full-repo pass and live E2E run after `d0ad799`
 
@@ -90,7 +94,7 @@ Wallet and ledger totals reconcile at every step: $40 + $30 sales at a 10% fee l
 A route matrix (36 pages × 4 roles) and every business state machine were also checked; each one lands on the right page and stores the right state, with the exceptions listed below. Two API-level suites then ran 208 more checks (59 business scenarios and 149 per-module cases). Every cross-user access check passed, and the wallet ledger stayed consistent through every money path.
 
 The pass found **21 new issues** that the green suite doesn't cover:
-- **P1, fix first:**
+- **P1 findings (resolved 2026-11-23):**
   - [FE-03](#fe-03): a wrong password silently freezes the login form.
   - [LRN-04](#lrn-04): locked lessons can be completed out of order.
   - [SEC-10](#sec-10): website admins can mint admins and deactivate the superuser through the API.
@@ -243,10 +247,10 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [TEST-01](#test-01) | P1 | ~~Payments tests don't run, and tests write into the real `media/`~~ ✅ resolved 2026-11-21 |
 | [TEST-02](#test-02) | P1 | ~~No tests cover the frontend↔API contract~~ ✅ resolved 2026-11-21 (contract + browser smoke tests) |
 | [OPS-05](#ops-05) | P1 | ~~Tests and scratch scripts run against the hosted database by default~~ ✅ resolved 2026-11-21 |
-| [LRN-04](#lrn-04) | P1 | Locked lessons can be completed out of order — 🔴 open (re-audit 2026-11-22) |
-| [SEC-10](#sec-10) | P1 | Website admins can mint admins and deactivate the superuser through the REST API — 🔴 open (re-audit 2026-11-22) |
-| [FE-03](#fe-03) | P1 | Login and signup errors are never shown; the button stays stuck — 🔴 open (re-audit 2026-11-22) |
-| [EXM-04](#exm-04) | P1 | Course completion can become permanently impossible (exams and quiz attempts) — 🔴 open (re-audit 2026-11-22) |
+| [LRN-04](#lrn-04) | P1 | Locked lessons can be completed out of order — ✅ resolved 2026-11-23 |
+| [SEC-10](#sec-10) | P1 | Website admins can mint admins and deactivate the superuser through the REST API — ✅ resolved 2026-11-23 |
+| [FE-03](#fe-03) | P1 | Login and signup errors are never shown; the button stays stuck — ✅ resolved 2026-11-23 |
+| [EXM-04](#exm-04) | P1 | Course completion can become permanently impossible (exams and quiz attempts) — ✅ resolved 2026-11-23 |
 | [ADM-01](#adm-01) | P2 | ~~Django admin actions and fields bypass the domain logic~~ ✅ resolved 2026-11-21 |
 | [SEC-09](#sec-09) | P2 | ~~Gateway secrets and payout bank details stored in plaintext~~ ✅ resolved in code 2026-11-21 |
 | [EXM-03](#exm-03) | P2 | ~~Exam grading and marks integrity (no snapshot, unpassable exams)~~ ✅ resolved in code 2026-11-21 |
@@ -1196,7 +1200,9 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 - Optionally refuse to run `test` when the DB host isn't `localhost`/CI.
 
 <a id="lrn-04"></a>
-### LRN-04: Locked lessons can be completed out of order — 🔴 OPEN (re-audit 2026-11-22)
+### LRN-04: Locked lessons can be completed out of order — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Lesson completion, watch time, and quiz detail, start, answer and submit all use the same prerequisite rule. A rejected completion does not create a progress record.
 
 **Evidence (✔ verified in the live E2E run):**
 - A student enrolled in "Git Essentials" called `POST /api/enrollments/lessons/<2nd lesson>/complete/` before finishing the 1st lesson. `GET .../lessons/<id>/content/` correctly returned **403 `lesson_locked`**, but `complete/` returned **200 "Lesson marked as completed."**
@@ -1209,7 +1215,9 @@ Delete `STATICFILES_STORAGE`, run `collectstatic` in the build step, and confirm
 **Fix approach:** In both views, and in quiz start/submit, return 403 `lesson_locked` when `lesson_lock_state(enrollment)[lesson.id]` is true, using the same check as `LessonDetailView`. Create the progress row only after the request is accepted. Add API tests for both endpoints.
 
 <a id="sec-10"></a>
-### SEC-10: Website admins can mint admins and deactivate the superuser through the REST API — 🔴 OPEN (re-audit 2026-11-22)
+### SEC-10: Website admins can mint admins and deactivate the superuser through the REST API — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Only superusers can grant or revoke admin privileges or change staff accounts through the REST API. Newly promoted admins are console-only. Staff and self-deactivation are blocked on the API.
 
 **Evidence (✔ verified):** A non-superuser `role=admin` account that can use the website signed in on the website and called the following:
 - `PATCH /api/accounts/users/<student>/role/ {"role":"admin"}` returned **200**. The student became `role=admin, is_staff=True, admin_console_only=False`, which gives website admin powers and staff console access.
@@ -1222,7 +1230,9 @@ The new console ([accounts/admin.py](accounts/admin.py)) deliberately restricts 
 **Fix approach:** Use one rule for both paths. Require `is_superuser` to grant or revoke the admin role or to change staff accounts. Refuse to deactivate superusers, staff accounts and yourself through the API. Set `admin_console_only=True` whenever the API grants the admin role, as the console does. Alternatively, remove these REST endpoints and keep user management in the console only.
 
 <a id="fe-03"></a>
-### FE-03: Login and signup errors are never shown; the button stays stuck — 🔴 OPEN (re-audit 2026-11-22)
+### FE-03: Login and signup errors are never shown; the button stays stuck — ✅ RESOLVED 2026-11-23
+
+**Resolution:** The login and signup forms preserve their general error message nodes when clearing field errors. A wrong password or throttled signup displays the error and re-enables submission.
 
 **Evidence (✔ verified in Chromium):**
 - Signing in with a wrong password showed no message. `#login-error` stayed hidden, the button stayed disabled with "Signing in...", and the page threw `TypeError: Cannot set properties of null (setting 'textContent')`.
@@ -1235,7 +1245,9 @@ The new console ([accounts/admin.py](accounts/admin.py)) deliberately restricts 
 **Fix approach:** Exclude the containers from the selector (`[id$="-error"]:not(#login-error):not(#register-error)`) or write to a dedicated message element. Add Playwright tests for a wrong password and for a throttled signup.
 
 <a id="exm-04"></a>
-### EXM-04: Course completion can become permanently impossible (exams and quiz attempts) — 🔴 OPEN (re-audit 2026-11-22)
+### EXM-04: Course completion can become permanently impossible (exams and quiz attempts) — ✅ RESOLVED 2026-11-23
+
+**Resolution:** Exams with a closing date are optional for course completion. Published exams without a closing date must be passed. The console can grant an extra attempt from a failed quiz or eligible exam attempt, retaining its grade and logging the decision. Create, edit and publish validate exam windows. Exam changes go through a draft course or revision. New paid courses require a non-preview lesson. An existing course with only previews can be completed by finishing all lessons. Operators can use **Evaluate selected enrollments for completion** for existing enrollments that already meet the updated requirements.
 
 **Evidence (✔ verified):**
 - An instructor published a second exam on an already-published course with a 45-second window. A student then completed every lesson and passed the quiz: progress was 100%, but the enrollment stayed `active`. `POST /api/exams/<id>/start/` now returns **409 "This exam closed at ..."**, so the student can never complete the course or earn its certificate.
@@ -2121,7 +2133,7 @@ Move aspirational features to a "Roadmap" section.
 | **3: Frontend/API alignment** | Every page talks to a real, documented endpoint | ~~API-01 (build or remove each)~~ ✅, ~~API-04 (OpenAPI + error envelope)~~ ✅, ~~ENR-01~~ ✅, ~~ENR-02~~ ✅, ~~CRS-06~~ ✅, ~~CRS-07~~ ✅, ~~FE-02~~ ✅, ~~ERR-01~~ ✅ | 3–5 days |
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
-| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | P1 first: FE-03 (small template fix), LRN-04, SEC-10, EXM-04. Then ERR-02 + STU-03 together, CRS-08, CRS-09, PAY-10, ADM-02, FE-04, ACC-02, ACC-03, LRN-05, RPT-01. Finally REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
+| **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. Next ERR-02 + STU-03 together, CRS-08, CRS-09, PAY-10, ADM-02, FE-04, ACC-02, ACC-03, LRN-05, RPT-01. Finally REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 | 3–5 days |
 
 ### Definition of done for release
 

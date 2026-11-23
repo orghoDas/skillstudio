@@ -4,8 +4,6 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 
-from exams.models import Exam, ExamAttempt
-
 
 class ExamAttemptSnapshotMigrationTests(TransactionTestCase):
     previous = [('exams', '0003_mcq_tf_only')]
@@ -38,7 +36,11 @@ class ExamAttemptSnapshotMigrationTests(TransactionTestCase):
             exam=exam, user=student, attempt_number=1, status='completed', score=10, percentage=100, passed=False,
         )
         active = attempts.create(exam=exam, user=student, attempt_number=2, answers={'old-1': 0})
-        MigrationExecutor(connection).migrate(self.target)
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.target)
+        migrated = executor.loader.project_state(self.target).apps
+        Exam = migrated.get_model('exams', 'Exam')
+        ExamAttempt = migrated.get_model('exams', 'ExamAttempt')
 
         updated = Exam.objects.get(pk=exam.pk)
         self.assertEqual((updated.total_marks, updated.passing_marks), (Decimal('10.00'), Decimal('5.00')))

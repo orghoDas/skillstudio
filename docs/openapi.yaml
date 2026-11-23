@@ -7528,10 +7528,26 @@ components:
           type: string
           format: date-time
           nullable: true
+        max_attempts:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        attempt_count:
+          type: integer
+          readOnly: true
+        attempts_used:
+          type: integer
+          readOnly: true
+        has_open_attempt:
+          type: boolean
+          readOnly: true
       required:
+      - attempt_count
+      - attempts_used
       - course
       - course_title
       - duration_minutes
+      - has_open_attempt
       - id
       - question_count
       - title

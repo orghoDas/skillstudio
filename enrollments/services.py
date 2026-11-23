@@ -1,8 +1,9 @@
 from django.db import transaction
-from django.db.models import Count, F, OuterRef, Prefetch, Subquery, Sum
+from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied as ApiPermissionDenied
 
 from certificates.services import issue_certificate
 from certificates.models import Certificate
@@ -38,8 +39,17 @@ def mark_lesson_completed(enrollment, lesson, *, local_zone=None, record_activit
 COURSE_LESSON_ORDER = ('module__position', 'module_id', 'position', 'id')
 
 
+def _completion_lessons(queryset):
+    non_preview = Lesson.objects.filter(module__course_id=OuterRef('module__course_id'), is_free=False)
+    # Existing courses with only previews can be completed by finishing every lesson.
+    return queryset.filter(
+        Q(is_free=False) | ~Exists(non_preview)
+    )
+
+
 def required_lessons_for_courses(course_ids):
-    return Lesson.objects.filter(module__course_id__in=course_ids, is_free=False).order_by(*COURSE_LESSON_ORDER)
+    lessons = Lesson.objects.filter(module__course_id__in=course_ids)
+    return _completion_lessons(lessons).order_by(*COURSE_LESSON_ORDER)
 
 
 def get_required_lessons(course):
@@ -47,13 +57,16 @@ def get_required_lessons(course):
 
 
 def _required_completion_rows(queryset, course_id):
-    return queryset.filter(is_completed=True, lesson__is_free=False, lesson__module__course_id=course_id)
+    non_preview = Lesson.objects.filter(module__course_id=OuterRef('lesson__module__course_id'), is_free=False)
+    return queryset.filter(is_completed=True, lesson__module__course_id=course_id).filter(
+        Q(lesson__is_free=False) | ~Exists(non_preview)
+    )
 
 
 def with_enrollment_progress(queryset, *, completed_ids=False, durations=False):
     """Load progress without per-enrollment queries or fan-out across joins."""
     lessons = (
-        Lesson.objects.filter(module__course_id=OuterRef('course_id'), is_free=False)
+        _completion_lessons(Lesson.objects.filter(module__course_id=OuterRef('course_id')))
         .order_by()
         .values('module__course_id')
     )
@@ -262,9 +275,9 @@ def get_resume_lesson(enrollment, *, lessons=None, completed_ids=None):
     if completed_ids is None:
         completed_ids = completed_lesson_ids(enrollment)
     locks = lesson_lock_state(enrollment, lessons, completed_ids)
+    required = [lesson for lesson in lessons if not lesson.is_free] or lessons
     return next(
-        (lesson for lesson in lessons
-         if not lesson.is_free and lesson.pk not in completed_ids and not locks[lesson.pk]),
+        (lesson for lesson in required if lesson.pk not in completed_ids and not locks[lesson.pk]),
         None,
     )
 
@@ -306,6 +319,11 @@ def lesson_lock_state(enrollment, lessons=None, completed_ids=None):
         if lesson.id not in completed_ids:
             gate_open = False
     return state
+
+
+def require_unlocked_lesson(enrollment, lesson):
+    if enrollment is not None and lesson_lock_state(enrollment).get(lesson.pk):
+        raise ApiPermissionDenied('Complete the previous lessons first.', code='lesson_locked')
 
 
 def get_access_enrollment(user, course):

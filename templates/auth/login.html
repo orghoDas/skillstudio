@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Clear previous errors
         loginError.classList.add('hidden');
-        document.querySelectorAll('[id$="-error"]').forEach(el => {
+        document.querySelectorAll('[id$="-error"]:not(#login-error)').forEach(el => {
             el.classList.add('hidden');
             el.textContent = '';
         });

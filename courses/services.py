@@ -37,6 +37,9 @@ def validate_course_for_submission(course: Course):
             )
 
 
+    if not course.is_free and not Lesson.objects.filter(module__course=course, is_free=False).exists():
+        raise ValidationError("A paid course needs at least one lesson that is not a free preview.")
+
     missing_quizzes = Lesson.objects.filter(module__course=course, content_type='quiz').exclude(
         quiz__is_published=True,
     )

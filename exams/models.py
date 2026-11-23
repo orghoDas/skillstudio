@@ -138,6 +138,7 @@ class ExamAttempt(models.Model):
     passed = models.BooleanField(null=True, blank=True)
     
     # Status
+    retry_granted = models.BooleanField(default=False, db_default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
     
     auto_graded_at = models.DateTimeField(null=True, blank=True)

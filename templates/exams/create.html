@@ -85,8 +85,9 @@
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium mb-2">End Date & Time *</label>
-                    <input type="datetime-local" id="end-datetime" required class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <label class="block text-sm font-medium mb-2">End date (optional)</label>
+                    <input type="datetime-local" id="end-datetime" class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <p class="mt-1 text-sm text-gray-400">Only exams without a closing date are required for course completion.</p>
                 </div>
             </div>
         </div>
@@ -254,17 +255,22 @@ let questionMap = {};
 
 async function loadCourses() {
     try {
-        const payload = await apiRequest('/courses/instructor/courses/');
         const select = document.getElementById('course-select');
-
-        const courses = payload.results;
+        const courses = [];
+        let path = '/courses/instructor/courses/';
+        while (path) {
+            const payload = await apiRequest(path);
+            courses.push(...payload.results.filter(course => ['draft', 'under_review'].includes(course.status)));
+            const next = payload.next && new URL(payload.next, window.location.origin);
+            path = next ? next.pathname.slice(API_BASE.length) + next.search : null;
+        }
         // If no courses, show friendly message
         if (!courses || courses.length === 0) {
             const select = document.getElementById('course-select');
             select.innerHTML = '';
             const option = document.createElement('option');
             option.value = '';
-            option.textContent = 'No courses found. Create courses first or check your instructor account.';
+            option.textContent = 'Create a draft course or a revision before adding an exam.';
             select.appendChild(option);
             return;
         }
@@ -605,7 +611,7 @@ async function submitForm(status = 'published') {
     const showResults = document.getElementById('show-results').checked;
     const showAnswers = document.getElementById('show-answers').checked;
     
-    if (!courseId || !title || !startDatetimeLocal || !endDatetimeLocal) {
+    if (!courseId || !title || !startDatetimeLocal) {
         showAlert('Please fill in all required fields', 'error');
         return;
     }
@@ -624,11 +630,11 @@ async function submitForm(status = 'published') {
     // The datetime-local input gives us YYYY-MM-DDTHH:MM
     // We need to convert it to a proper ISO 8601 UTC string
     const startDate = new Date(startDatetimeLocal);
-    const endDate = new Date(endDatetimeLocal);
+    const endDate = endDatetimeLocal ? new Date(endDatetimeLocal) : null;
     
     // Convert to ISO string (this automatically uses UTC)
     const startDatetime = startDate.toISOString();
-    const endDatetime = endDate.toISOString();
+    const endDatetime = endDate ? endDate.toISOString() : null;
     
     const examData = {
         course: courseId,
@@ -683,15 +689,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     document.getElementById('start-datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
-    
-    // Set default end time to 7 days from now
-    const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const endYear = endDate.getFullYear();
-    const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
-    const endDay = String(endDate.getDate()).padStart(2, '0');
-    const endHours = String(endDate.getHours()).padStart(2, '0');
-    const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
-    document.getElementById('end-datetime').value = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
     
     loadCourses();
 });

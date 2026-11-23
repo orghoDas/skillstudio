@@ -61,6 +61,7 @@ class QuizAttempt(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
     started_at = models.DateTimeField(default=timezone.now)
+    retry_granted = models.BooleanField(default=False, db_default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     score = models.DecimalField(

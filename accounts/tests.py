@@ -557,7 +557,7 @@ class PermissionsTest(APITestCase):
         django_admin.force_login(former_admin)
         self.assertEqual(django_admin.get(reverse('admin:index'), secure=True).status_code, 200)
 
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(User.objects.create_superuser(email='role-operator@example.test'))
         response = self.client.patch(
             f'/api/accounts/users/{former_admin.pk}/role/', {'role': 'student'}, format='json',
         )
@@ -568,7 +568,7 @@ class PermissionsTest(APITestCase):
 
     def test_both_role_endpoints_reject_superuser_demotion(self):
         superuser = User.objects.create_superuser(email='protected-superuser@example.test')
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(User.objects.create_superuser(email='role-operator@example.test'))
         url = f'/api/accounts/users/{superuser.pk}/'
         response = self.client.patch(f'{url}role/', {'role': 'student'}, format='json')
         self.assertEqual(response.status_code, 400)
@@ -578,6 +578,31 @@ class PermissionsTest(APITestCase):
         self.assertIn('role', response.data['fields'])
         superuser.refresh_from_db()
         self.assertEqual((superuser.role, superuser.is_staff, superuser.is_superuser), ('admin', True, True))
+
+    def test_website_admin_can_manage_students_but_cannot_change_staff_or_grant_admin(self):
+        superuser = User.objects.create_superuser(email='governance@example.test')
+        self.client.force_authenticate(self.admin)
+        base = '/api/accounts/users/'
+        self.assertEqual(self.client.patch(
+            f'{base}{self.student.pk}/role/', {'role': 'admin'}, format='json',
+        ).status_code, 403)
+        for target, action in (
+            (superuser, 'deactivate'), (superuser, 'promote'),
+            (superuser, 'activate'), (self.admin, 'deactivate'),
+        ):
+            self.assertEqual(self.client.post(f'{base}{target.pk}/{action}/').status_code, 403)
+        self.assertEqual(self.client.post(f'{base}{self.student.pk}/promote/').status_code, 200)
+        superuser.refresh_from_db()
+        self.assertTrue(superuser.is_active)
+
+        self.client.force_authenticate(superuser)
+        self.assertEqual(self.client.patch(
+            f'{base}{self.student.pk}/role/', {'role': 'admin'}, format='json',
+        ).status_code, 200)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.is_staff)
+        self.assertTrue(self.student.admin_console_only)
+        self.assertEqual(self.client.post(f'{base}{self.student.pk}/deactivate/').status_code, 403)
 
     def test_django_admin_form_rejects_superuser_demotion(self):
         actor = User.objects.create_superuser(email='form-admin@example.test')

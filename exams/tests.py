@@ -628,6 +628,7 @@ class ExamAccessControlAPITest(APITestCase):
             self.assertEqual(response.status_code, 400, response.data)
             self.assertIn('questions', response.data['fields'])
 
+        Course.objects.filter(pk=self.course.pk).update(status='draft')
         self.exam.questions.add(foreign)
         rejected = self.client.post(f'{base}publish/')
         self.assertEqual((rejected.status_code, rejected.data['code']), (400, 'invalid_question_course'))

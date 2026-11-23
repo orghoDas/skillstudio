@@ -102,6 +102,10 @@ class ExamSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         exam = self.instance
         course = attrs.get('course', getattr(exam, 'course', None))
+        start = attrs.get('start_datetime', getattr(exam, 'start_datetime', None))
+        end = attrs.get('end_datetime', getattr(exam, 'end_datetime', None))
+        if start and end and start >= end:
+            raise serializers.ValidationError({'end_datetime': 'The exam must end after it starts.'})
         bank = attrs.get('questions')
         if bank is None:
             bank = list(exam.questions.all()) if exam else []
@@ -184,11 +188,16 @@ class ExamListSerializer(serializers.ModelSerializer):
     question_count = serializers.IntegerField(source='get_question_count', read_only=True)
     course_title = serializers.CharField(source='course.title', read_only=True)
     
+    attempt_count = serializers.IntegerField(read_only=True)
+    attempts_used = serializers.IntegerField(read_only=True)
+    has_open_attempt = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Exam
         fields = [
             'id', 'title', 'course', 'course_title', 'total_marks', 'passing_marks',
-            'duration_minutes', 'question_count', 'status', 'start_datetime', 'end_datetime'
+            'duration_minutes', 'question_count', 'status', 'start_datetime', 'end_datetime',
+            'max_attempts', 'attempt_count', 'attempts_used', 'has_open_attempt',
         ]
 
 

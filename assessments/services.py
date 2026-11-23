@@ -114,7 +114,7 @@ def normalize_quiz_answers(attempt: QuizAttempt, answers: dict) -> dict[str, str
 def save_quiz_answer(attempt: QuizAttempt, question_id, option_id) -> QuizAttempt:
     locked_attempt = (
         QuizAttempt.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related("quiz")
         .get(pk=attempt.pk)
     )
@@ -155,7 +155,7 @@ def get_quiz_attempt_status(user, quiz: Quiz) -> dict:
     """What a student may do next with a quiz (used by the quiz detail API)."""
     attempts = QuizAttempt.objects.filter(quiz=quiz, user=user)
     completed = attempts.filter(completed_at__isnull=False)
-    used = completed.count()
+    used = completed.filter(retry_granted=False).count()
     last = completed.order_by("-attempt_number").first()
     has_passed = completed.filter(passed=True).exists()
     remaining = None if quiz.max_attempts is None else max(0, quiz.max_attempts - used)
@@ -181,6 +181,7 @@ def start_quiz_attempt(user, quiz: Quiz) -> QuizAttempt:
     An open attempt is resumed; one whose time ran out is first graded from its
     saved answers. Starting again after passing is refused.
     """
+    refusal = None
     with transaction.atomic():
         locked_quiz = Quiz.objects.select_for_update().get(pk=quiz.pk)
         if not locked_quiz.is_published:
@@ -198,27 +199,30 @@ def start_quiz_attempt(user, quiz: Quiz) -> QuizAttempt:
 
         status = get_quiz_attempt_status(user, locked_quiz)
         if status["has_passed"]:
-            raise ValidationError("You have already passed this quiz.")
-        if not status["can_start"]:
-            raise ValidationError("You have no attempts left for this quiz.")
-
-        question_snapshot = build_quiz_attempt_snapshot(locked_quiz)
-        try:
-            with transaction.atomic():
-                return QuizAttempt.objects.create(
-                    quiz=locked_quiz,
-                    user=user,
-                    attempt_number=_next_attempt_number(locked_quiz, user),
-                    started_at=timezone.now(),
-                    question_snapshot=question_snapshot,
-                    total_marks_snapshot=get_snapshot_total_marks(question_snapshot),
+            refusal = "You have already passed this quiz."
+        elif not status["can_start"]:
+            refusal = "You have no attempts left for this quiz."
+        else:
+            question_snapshot = build_quiz_attempt_snapshot(locked_quiz)
+            try:
+                with transaction.atomic():
+                    return QuizAttempt.objects.create(
+                        quiz=locked_quiz,
+                        user=user,
+                        attempt_number=_next_attempt_number(locked_quiz, user),
+                        started_at=timezone.now(),
+                        question_snapshot=question_snapshot,
+                        total_marks_snapshot=get_snapshot_total_marks(question_snapshot),
+                    )
+            except IntegrityError:
+                # A concurrent request created the open attempt first: resume it.
+                attempt = QuizAttempt.objects.select_for_update().get(
+                    quiz=locked_quiz, user=user, completed_at__isnull=True
                 )
-        except IntegrityError:
-            # A concurrent request created the open attempt first: resume it.
-            attempt = QuizAttempt.objects.select_for_update().get(
-                quiz=locked_quiz, user=user, completed_at__isnull=True
-            )
-            return ensure_attempt_snapshot(attempt)
+                return ensure_attempt_snapshot(attempt)
+
+    # Preserve an overdue attempt's grade even when there is no retry left.
+    raise ValidationError(refusal)
 
 
 @transaction.atomic
@@ -233,7 +237,7 @@ def submit_quiz_attempt(attempt: QuizAttempt, answers: dict | None = None, auto_
     """
     attempt = (
         QuizAttempt.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related("quiz")
         .get(pk=attempt.pk)
     )

@@ -5,7 +5,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 
-from enrollments.services import require_active_enrollment
+from enrollments.services import require_active_enrollment, require_unlocked_lesson
 
 from .models import Quiz, QuizAttempt
 from .serializers import (
@@ -30,7 +30,8 @@ class QuizDetailView(APIView):
     def get(self, request, lesson_id):
         quiz = get_object_or_404(Quiz, lesson_id=lesson_id)
         course = quiz.lesson.module.course
-        require_active_enrollment(request.user, course)
+        enrollment = require_active_enrollment(request.user, course)
+        require_unlocked_lesson(enrollment, quiz.lesson)
         if not quiz.is_published and not can_manage_course(request.user, course):
             # Students can't start an unpublished quiz, so don't show it (ASM-01).
             return Response({"error": "Quiz not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -46,7 +47,8 @@ class StartQuizView(APIView):
 
     def post(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, id=quiz_id)
-        require_active_enrollment(request.user, quiz.lesson.module.course)
+        enrollment = require_active_enrollment(request.user, quiz.lesson.module.course)
+        require_unlocked_lesson(enrollment, quiz.lesson)
 
         try:
             attempt = start_quiz_attempt(request.user, quiz)
@@ -65,6 +67,9 @@ class SubmitQuizView(APIView):
             id=attempt_id,
             user=request.user
         )
+        lesson = attempt.quiz.lesson
+        enrollment = require_active_enrollment(request.user, lesson.module.course)
+        require_unlocked_lesson(enrollment, lesson)
 
         answers = request.data.get("answers", {})
         try:

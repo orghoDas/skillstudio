@@ -17,6 +17,7 @@ from students.activity import learning_timezone
 from courses.models import Course, Lesson
 from courses.policies import can_view_course_catalog
 from .models import Enrollment, LessonProgress, Wishlist
+from assessments.services import is_lesson_assessment_completed
 from .serializers import (
     EnrollmentListSerializer,
     EnrollmentDetailSerializer,
@@ -30,6 +31,7 @@ from .serializers import (
 )
 from .services import (
     mark_lesson_completed,
+    require_unlocked_lesson,
     cancel_enrollments,
     check_and_complete_course,
     auto_complete_lesson,
@@ -281,6 +283,7 @@ class LessonWatchTimeView(APIView):
             course=lesson.module.course,
             status__in=ACCESS_STATUSES
         )
+        require_unlocked_lesson(enrollment, lesson)
 
         if 'watch_time' in request.data and 'watch_time_delta' not in request.data:
             raise DjangoValidationError('Use watch_time_delta; absolute watch_time updates are not accepted.')
@@ -300,7 +303,10 @@ class LessonWatchTimeView(APIView):
         )
 
         # Auto-complete lesson if threshold reached
-        if auto_complete_lesson(progress) and not progress.is_completed:
+        if (
+            not progress.is_completed and auto_complete_lesson(progress)
+            and is_lesson_assessment_completed(request.user, lesson)
+        ):
             progress = mark_lesson_completed(enrollment, lesson, local_zone=local_zone)
             check_and_complete_course(enrollment)
 
@@ -395,12 +401,7 @@ class CompleteLessonView(APIView):
             course=lesson.module.course,
             status__in=ACCESS_STATUSES
         )
-
-        progress, _ = LessonProgress.objects.get_or_create(
-            enrollment=enrollment,
-            user=request.user,
-            lesson=lesson
-        )
+        require_unlocked_lesson(enrollment, lesson)
 
         # Watch time is required only for videos the learn page can actually
         # play and observe (LRN-02); otherwise a lesson with a non-trackable
@@ -411,21 +412,16 @@ class CompleteLessonView(APIView):
             and lesson.duration_seconds > 0
             and parse_video_url(lesson.video_url) is not None
         )
-        if requires_watch_time and not auto_complete_lesson(progress):
-            return Response(
-                {'error': 'Watch at least 80% of the video to complete this lesson.',
-                 'code': 'watch_threshold_not_met'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if requires_watch_time:
+            progress = enrollment.lesson_progress.filter(lesson=lesson).first()
+            if progress is None or not auto_complete_lesson(progress):
+                return Response(
+                    {'error': 'Watch at least 80% of the video to complete this lesson.',
+                     'code': 'watch_threshold_not_met'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        try:
-            from assessments.services import is_lesson_assessment_completed
-        except ImportError:
-            is_assessment_completed = True
-        else:
-            is_assessment_completed = is_lesson_assessment_completed(request.user, lesson)
-
-        if not is_assessment_completed:
+        if not is_lesson_assessment_completed(request.user, lesson):
             return Response(
                 {'error': 'Lesson assessment requirements have not been met.'},
                 status=status.HTTP_400_BAD_REQUEST

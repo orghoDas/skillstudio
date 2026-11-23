@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from enrollments.services import require_active_enrollment
+from enrollments.services import require_active_enrollment, require_unlocked_lesson
 
 from .models import Quiz, QuizAttempt
 from .services import QUIZ_SUBMIT_GRACE_SECONDS, save_quiz_answer, start_quiz_attempt
@@ -16,7 +16,8 @@ class StartQuizAttemptView(APIView):
 
     def post(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, id=quiz_id)
-        require_active_enrollment(request.user, quiz.lesson.module.course)
+        enrollment = require_active_enrollment(request.user, quiz.lesson.module.course)
+        require_unlocked_lesson(enrollment, quiz.lesson)
 
         try:
             attempt = start_quiz_attempt(request.user, quiz)
@@ -39,6 +40,9 @@ class SubmitQuizAnswerView(APIView):
             id=attempt_id,
             user=request.user
         )
+        lesson = attempt.quiz.lesson
+        enrollment = require_active_enrollment(request.user, lesson.module.course)
+        require_unlocked_lesson(enrollment, lesson)
 
         if attempt.completed_at:
             return Response(

@@ -92,6 +92,55 @@ class LessonLockRuleTests(LearningFlowFixture, APITestCase):
         self.complete(enrollment, self.lesson1)
         self.assertFalse(lesson_lock_state(enrollment)[self.lesson2.id])
 
+    def test_locked_lesson_rejects_progress_and_quiz_writes(self):
+        from assessments.models import Quiz, QuizAttempt
+
+        enrollment = self.enroll()
+        self.client.force_authenticate(self.student)
+        quiz = Quiz.objects.create(lesson=self.lesson2, title='Quiz', is_published=True)
+        attempt = QuizAttempt.objects.create(quiz=quiz, user=self.student)
+        lesson_url = f'/api/enrollments/lessons/{self.lesson2.pk}/'
+        quiz_url = '/api/assessments/quiz/'
+        for method, url, payload in (
+            (self.client.post, f'{lesson_url}complete/', {}),
+            (self.client.patch, f'{lesson_url}watch-time/', {'watch_time_delta': 10}),
+            (self.client.post, f'{quiz_url}{quiz.pk}/start/', {}),
+            (self.client.post, f'{quiz_url}{quiz.pk}/attempt/start/', {}),
+            (self.client.post, f'{quiz_url}attempt/{attempt.pk}/submit/', {'answers': {}}),
+            (self.client.post, f'{quiz_url}attempt/{attempt.pk}/answer/submit/', {}),
+        ):
+            with self.subTest(url=url):
+                response = method(url, payload, format='json')
+                self.assertEqual((response.status_code, response.data.get('code')), (403, 'lesson_locked'))
+        self.assertFalse(enrollment.lesson_progress.exists())
+        attempt.refresh_from_db()
+        self.assertIsNone(attempt.completed_at)
+
+    def test_refused_video_completion_does_not_create_progress(self):
+        enrollment = self.enroll()
+        self.complete(enrollment, self.lesson1)
+        self.client.force_authenticate(self.student)
+        response = self.client.post(f'/api/enrollments/lessons/{self.lesson2.pk}/complete/')
+        self.assertEqual(response.data['code'], 'watch_threshold_not_met')
+        self.assertFalse(enrollment.lesson_progress.filter(lesson=self.lesson2).exists())
+
+    def test_existing_preview_only_course_can_complete_even_with_a_closed_exam(self):
+        from certificates.models import Certificate
+        from exams.models import Exam
+
+        Lesson.objects.filter(module=self.module).exclude(pk=self.free_intro.pk).delete()
+        Exam.objects.create(
+            title='Closed assessment', course=self.course, duration_minutes=10, status='published',
+            end_datetime=timezone.now() - timedelta(days=1),
+        )
+        enrollment = self.enroll()
+        self.client.force_authenticate(self.student)
+        response = self.client.post(f'/api/enrollments/lessons/{self.free_intro.pk}/complete/')
+        self.assertEqual(response.status_code, 200)
+        enrollment.refresh_from_db()
+        self.assertEqual(enrollment.status, 'completed')
+        self.assertTrue(Certificate.objects.filter(user=self.student, course=self.course).exists())
+
     def test_no_enrollment_means_nothing_locked(self):
         self.assertFalse(any(lesson_lock_state(None, ordered_course_lessons(self.course)).values()))
 

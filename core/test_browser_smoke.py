@@ -256,6 +256,29 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         self.assertEqual((payout.status, payout.transaction_id), ("paid", "browser-transfer-fixture"))
         self.assert_no_errors(page, "finance workflow")
 
+    def test_login_and_signup_errors_leave_forms_ready_to_retry(self):
+        page = self.new_page()
+        page.allowed_api_errors = {('/api/accounts/token/', 401), ('/api/accounts/register/', 429)}
+        self.visit(page, '/auth/login/')
+        page.fill('#email', self.student.email)
+        page.fill('#password', 'incorrect-password')
+        page.click('#login-btn')
+        expect(page.locator('#login-error p')).to_be_visible()
+        expect(page.locator('#login-btn')).to_be_enabled()
+
+        self.visit(page, '/auth/register/')
+        page.route('**/api/accounts/register/', lambda route: route.fulfill(
+            status=429, json={'detail': 'Registration is throttled. Try again later.'},
+        ))
+        page.fill('#email', 'new@student.com')
+        page.fill('#password', self.password)
+        page.fill('#password2', self.password)
+        page.check('#terms')
+        page.click('#register-btn')
+        expect(page.locator('#register-error p')).to_have_text('Registration is throttled. Try again later.')
+        expect(page.locator('#register-btn')).to_be_enabled()
+        self.assert_no_errors(page, 'authentication failure')
+
     def test_public_pages_render_without_errors(self):
         page = self.new_page()
         for path in ["/", "/courses/", f"/courses/{self.course.slug}/", "/search/", "/browse/",
@@ -750,19 +773,19 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         from enrollments.models import Enrollment
         from exams.models import Exam, ExamAttempt, QuestionBank
 
-        Enrollment.objects.create(user=self.student, course=self.course)
+        Enrollment.objects.create(user=self.student, course=self.draft)
         question = QuestionBank.objects.create(
-            course=self.course, question_text="Which answer is correct?", marks=3,
+            course=self.draft, question_text="Which answer is correct?", marks=3,
             options=[{"text": "First", "is_correct": True}, {"text": "Second", "is_correct": False}],
         )
         other_question = QuestionBank.objects.create(
-            course=self.course, question_text="Which animal barks?", marks=1,
+            course=self.draft, question_text="Which animal barks?", marks=1,
             options=[{"text": "Dog", "is_correct": True}, {"text": "Cat", "is_correct": False}],
         )
         instructor_page = self.new_page()
         self.login(instructor_page, self.instructor)
         self.visit(instructor_page, "/exams/create/")
-        instructor_page.select_option("#course-select", str(self.course.pk))
+        instructor_page.select_option("#course-select", str(self.draft.pk))
         instructor_page.fill("#title", "Browser exam")
         instructor_page.fill("#duration", "2")
         instructor_page.fill("#start-datetime", "2020-01-01T00:00")
@@ -779,6 +802,12 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
         exam = Exam.objects.get(title="Browser exam")
         self.assertEqual((exam.status, exam.total_marks), ("published", Decimal("4.00")))
         self.assert_no_errors(instructor_page, "exam publication")
+        from courses.services import transition
+        from accounts.models import User
+
+        operator = User.objects.create_superuser(email="exam-reviewer@example.test")
+        transition(self.draft, 'under_review', self.instructor)
+        transition(self.draft, 'published', operator)
 
         page = self.new_page()
         self.login(page, self.student)
