@@ -40,6 +40,13 @@ Every finding below was read in source, and the ones marked **✔ verified** wer
 | Per-module suite | 149 table-driven checks across accounts, courses, tags/categories, modules/lessons, enrollments, wishlist, CSV, quizzes, exams, certificates, payments, students and instructors. They cover validation, cross-user access (IDOR), role permissions and computed numbers checked against the DB. | ✅ 144 pass, including every cross-user access check (other users' enrollments, notes, payments, refunds, payouts, API keys, attempts, certificates, question banks, CSV) and the dashboard, earnings and progress numbers. ❌ [EXM-04](#exm-04) (inverted exam window accepted and publishable), [PAY-10](#pay-10) (150% coupon), [STU-03](#stu-03) (duplicate bookmarks, profile PATCH before GET), and [API-05](#api-05) (unordered pagination) |
 | Business-workflow transitions | Each state machine was driven through the UI and the console, and the stored state, ledger rows and landing page were checked after every step | ✅ **Course:** draft → review → returned to draft with a reason → editing under review returns it to draft → resubmit → publish revision (the original is archived, the catalogue shows only the revision, an active learner keeps the original, a refunded learner gets 403). **Enrollment:** active → completed. A full refund cancels it and revokes the certificate. Cancel → "Enroll Again" reactivates it for free and keeps progress. **Refund:** approve moves money and cancels access; reject moves nothing and shows the reason to the student. **Payout:** request reserves the amount, instructor cancel returns it, console reject returns it, and approve → record sent pays it (ledger $37 → $27 → $37, then $20 paid). **Quiz/exam:** start, answer, submit, results. ❌ [CRS-09](#crs-09) (the rejection reason is never shown), [EXM-04](#exm-04) |
 
+**Mobile responsiveness audit 2026-11-24:**
+
+| Check | Command / method | Result |
+|---|---|---|
+| Phone-width overflow on every page | Headless Chromium (Playwright) loaded 49 page states at 320, 375, 768 and 1024px. These were the 36 page routes plus the open navbar menu, user menu and sidebar drawer, a live exam attempt and the staff console. It visited them as anonymous, student, instructor, website admin and console operator, with deliberately long course titles, names and emails. Each page recorded `scrollWidth` against the viewport, the deepest elements past the edge, tap targets under 24px and form fields under 16px, plus full-page screenshots. | ❌ Before the fixes: 5 pages overflowed at 375px and 5 more at 320px, and the exam builder cut off a button ([FE-07](#fe-07), [FE-09](#fe-09)). The lesson editor's styles never loaded ([FE-08](#fe-08)). ✅ After the fixes: all 49 states fit at every width, with no JS or API errors. |
+| Interactive states on phones | A second Chromium pass opened 23 interactive states at 320×568, 375×667 and landscape 667×375: the confirm and text-prompt dialogs, a long toast, the insufficient-balance modal, the add-section, add-lesson and question-bank modals, the enrollment-cancel and delete confirmations, the open menus and sidebar drawer, the expanded curriculum, settings tabs, the new API key panel, certificate sharing, exam results, the lesson editor's quiz and video modes, and the learn page with an article containing a long URL and code line. It flagged text clipped by its container or squeezed narrower than 24px, and any modal wider than the screen or with an unreachable control. | ❌ Before the fixes: lessons on the learn page got no width on phones ([FE-10](#fe-10)), and the course content editor and quiz editor clipped their rows ([FE-11](#fe-11)). ✅ After the fixes: all 69 checks pass. The dialogs, toasts and modals were already fine: they fit at every size, and tall modals scroll inside themselves. |
+
 ### Severity scale
 
 - **P0, critical:** an exploitable security or money hole, or a core user journey that does not work at all. Fix before anything else.
@@ -66,15 +73,34 @@ The domain layering (services, policies, serializers per app) is good, and the a
 | Severity | Count | Added by the 2026-11-22 re-audit |
 |---|---|---|
 | P0 | 12 | 0 |
-| P1 | 27 | 4 (LRN-04, SEC-10, FE-03, EXM-04) |
-| P2 | 36 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01) |
-| P3 | 13 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03) |
-| **Total** | **88** | **21** |
-| *Resolved so far* | *84 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04, ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01, REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 on 2026-11-23). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 findings are resolved.* |
+| P1 | 28 | 4 (LRN-04, SEC-10, FE-03, EXM-04); +1 from the 2026-11-24 mobile audit (FE-10) |
+| P2 | 39 | 11 (ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01); +3 from the 2026-11-24 mobile audit (FE-07, FE-08, FE-11) |
+| P3 | 14 | 6 (REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03); +1 from the 2026-11-24 mobile audit (FE-09) |
+| **Total** | **93** | **21** (+5 from the 2026-11-24 mobile audit) |
+| *Resolved so far* | *89 (SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, ASM-01, ASM-02, API-01, API-02, API-03, PAY-01, PAY-02, PAY-03, PAY-06, PAY-07, PAY-08, PAY-09, ENR-01, LRN-01, LRN-02, LRN-03, FE-01, BUG-01, BUG-02, OPS-01, OPS-02, OPS-03, CRS-01, TEST-01, OPS-05, TEST-02, EXM-01, REPO-01, REPO-02, REPO-03, DOC-01, DOC-02, DEP-01, ASM-04, ADM-01, SEC-09, EXM-03, STU-02, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, ENR-02, ENR-03, ERR-01, STU-01, EXM-02, CRT-01, ACC-01, PERF-01, API-04 on 2026-11-21, OPS-04, SEC-08, FE-02, ASM-03, INS-01 on 2026-11-22, and FE-03, LRN-04, SEC-10, EXM-04, ERR-02, STU-03, CRS-08, CRS-09, PAY-10, ADM-02, LRN-05, FE-04, ACC-02, ACC-03, RPT-01, REPO-04, DOC-03, FE-05, FE-06, API-05, TEST-03 on 2026-11-23, and FE-07, FE-08, FE-09, FE-10, FE-11 on 2026-11-24). Four partially resolved P0 items remain open (SEC-01, SEC-03, PAY-04, PAY-05). All P1, P2 and P3 findings are resolved.* |
 
 ### Follow-up after the 2026-11-22 re-audit
 
 The follow-up repairs populated wishlist and webhook admin lists, locks quiz and money records to their application workflows, protects accounts with financial history, and fixes course progress, formatted articles, refund reporting, pagination, and mobile payment history. Browser controls now cover notes, bookmarks, wishlists, coupons, wallet refunds, manual payouts, payment receipts, CSV export, and API keys. Removed unsupported settings controls and placeholder links. The four open P0 entries below retain their existing scope.
+
+### Mobile responsiveness audit and fixes 2026-11-24
+
+A phone-width browser audit of every page found three new findings, all resolved the same day:
+- [FE-07](#fe-07) (P2): five instructor and exam pages scrolled sideways on a standard 375px phone. The worst was the instructor course list, at 645px wide.
+- [FE-08](#fe-08) (P2): the lesson editor's stylesheet never rendered at any width.
+- [FE-09](#fe-09) (P3): five more pages overflowed on 320px phones, the exam builder cut off a button, and some phone controls were too small or made iOS zoom.
+
+Public pages, the student dashboard, payment and certificate pages, and the staff console already fit. The learn page only appeared to fit; see [FE-10](#fe-10) below.
+
+The fix keeps header rows, course cards and tab bars from forcing a wider page on small screens. A new browser test loads the affected pages at 320px with long titles and names, and fails if any page scrolls sideways or the lesson editor's styles are missing. With the template changes reverted, it failed on all 8 broken pages and the editor styling.
+
+**Follow-up the same day: interactive states.** The first pass only loaded pages, so a second pass opened every modal, dialog, menu and revealed panel, and checked for clipped content as well as page overflow. It found two more issues, both resolved:
+- [FE-10](#fe-10) (P1): on phones, the learn page gave the whole width to the lesson list, so students could not read lessons. The page didn't widen, so the first pass missed it.
+- [FE-11](#fe-11) (P2): the course content editor's section and lesson rows, and the quiz editor's answer rows, clipped or overflowed on 320px phones.
+
+The phone-width browser test now also checks that a lesson is readable on the learn page and that the outline opens, and it covers the course content editor and the quiz editor. With those three templates reverted, it fails at the learn page.
+
+Verification passed with 529 SQLite tests (including 29 Chromium tests) and three PostgreSQL-only skips. The Tailwind build passed.
 
 ### P3 remediation 2026-11-23
 
@@ -263,6 +289,7 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [SEC-10](#sec-10) | P1 | Website admins can mint admins and deactivate the superuser through the REST API — ✅ resolved 2026-11-23 |
 | [FE-03](#fe-03) | P1 | Login and signup errors are never shown; the button stays stuck — ✅ resolved 2026-11-23 |
 | [EXM-04](#exm-04) | P1 | Course completion can become permanently impossible (exams and quiz attempts) — ✅ resolved 2026-11-23 |
+| [FE-10](#fe-10) | P1 | Students can't read lessons on a phone — ✅ resolved 2026-11-24 |
 | [ADM-01](#adm-01) | P2 | ~~Django admin actions and fields bypass the domain logic~~ ✅ resolved 2026-11-21 |
 | [SEC-09](#sec-09) | P2 | ~~Gateway secrets and payout bank details stored in plaintext~~ ✅ resolved in code 2026-11-21 |
 | [EXM-03](#exm-03) | P2 | ~~Exam grading and marks integrity (no snapshot, unpassable exams)~~ ✅ resolved in code 2026-11-21 |
@@ -299,6 +326,9 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [ACC-02](#acc-02) | P2 | Password change and API-key revocation don't do what the UI says — ✅ resolved 2026-11-23 |
 | [ACC-03](#acc-03) | P2 | Email addresses are case-sensitive: duplicate accounts and failed logins — ✅ resolved 2026-11-23 |
 | [RPT-01](#rpt-01) | P2 | The same statistic is calculated differently in different places — ✅ resolved 2026-11-23 |
+| [FE-07](#fe-07) | P2 | Instructor and exam pages scroll sideways on phones — ✅ resolved 2026-11-24 |
+| [FE-08](#fe-08) | P2 | The lesson editor's stylesheet never renders — ✅ resolved 2026-11-24 |
+| [FE-11](#fe-11) | P2 | Course content and quiz editor rows clip on phones — ✅ resolved 2026-11-24 |
 | [REPO-01](#repo-01) | P3 | ~~5,965 vendored `venv` files, `.pyc`, and scratch scripts tracked in git~~ ✅ resolved 2026-11-21 |
 | [REPO-02](#repo-02) | P3 | ~~Dead code and stale comments~~ ✅ resolved 2026-11-21 |
 | [REPO-03](#repo-03) | P3 | ~~Migration churn in `accounts`~~ ✅ resolved 2026-11-21 (squashed 0001–0008) |
@@ -312,6 +342,7 @@ The pass found **21 new issues** that the green suite doesn't cover:
 | [FE-06](#fe-06) | P3 | Routing and status-display inconsistencies — ✅ resolved 2026-11-23 |
 | [API-05](#api-05) | P3 | API contract gaps found by the scenario suites — ✅ resolved 2026-11-23 |
 | [TEST-03](#test-03) | P3 | Gaps the green suite doesn't catch; noisy output; local env drift — ✅ resolved 2026-11-23 |
+| [FE-09](#fe-09) | P3 | Small-phone overflow, small tap targets and iOS input zoom — ✅ resolved 2026-11-24 |
 
 ---
 
@@ -1277,6 +1308,15 @@ The new console ([accounts/admin.py](accounts/admin.py)) deliberately restricts 
 - Validate `start_datetime < end_datetime` on create, update and publish. Require at least one required (non-preview) lesson to submit a paid course, or treat a course with no required lessons as complete once the student has finished every lesson.
 - Put exam create, publish and edit on a published course behind the same course edit lock and revision used for lessons, or at least behind review.
 
+<a id="fe-10"></a>
+### FE-10: Students can't read lessons on a phone — ✅ RESOLVED 2026-11-24
+
+**Resolution:** Below the `lg` breakpoint, the learn page stacks: the course header and progress bar come first, then a **Course contents** toggle that opens the lesson list. Picking a lesson closes the list and scrolls to the lesson, which uses the full width. The lesson controls show a full-width **Mark as Complete** above **Previous** and **Next**. Long URLs and words in lesson articles wrap (`.lesson-article { overflow-wrap: anywhere }`). Desktop keeps the side-by-side layout. The phone-width browser test checks that the lesson text is visible and at least 250px wide at 320px, and that the outline opens.
+
+**Evidence (✔ verified in Chromium at 320, 375 and 667px wide):** `templates/students/learn.html` rendered a fixed `flex h-screen overflow-hidden` row: a `w-96` (384px) lesson list beside the lesson. On a phone the list took the entire width and the lesson column shrank to nothing. The screen showed the course outline and footer, and the lesson that had just loaded was invisible. Because the row clips its content instead of widening the page, the page-overflow check in the first mobile pass ([FE-07](#fe-07)) reported it as fitting. The interactive pass found it by checking for squeezed and clipped content.
+
+**Impact:** The core learning journey didn't work on phones: students could open a course but not read or watch its lessons, or reach **Mark as Complete**.
+
 ---
 
 ## 6. P2: Medium
@@ -1870,6 +1910,41 @@ The date parameters also produce naive datetimes while `USE_TZ=True`. Similar pa
 
 **Fix approach:** Define "learners", "revenue" and "sales" once, for example in `payments.services` and `courses.services`, reuse those definitions, and return money as strings.
 
+<a id="fe-07"></a>
+### FE-07: Instructor and exam pages scroll sideways on phones — ✅ RESOLVED 2026-11-24
+
+**Resolution:** Header rows stack below the `sm` breakpoint (`lg` for course preview) and their buttons wrap. Instructor course cards put the thumbnail above the text on phones, and their action buttons wrap. Long titles break instead of widening the page. On phones, the exam header shows only the title, a one-line course summary and the timer; Submit stays in the fixed bottom bar, which now has space reserved under the questions. The card's **Students** button now opens the instructor roster. `core.test_browser_smoke` `test_pages_fit_a_small_phone_screen` checks these pages at 320px.
+
+**Evidence (✔ verified in Chromium at 375px, screenshots reviewed):**
+
+| Page | Page width | Cause |
+|---|---|---|
+| `/instructor/courses/` | **645px** | Each course card is a fixed row: a 192px thumbnail beside the text, and four action buttons that never wrap. Titles were squeezed to about three words per line. |
+| `/instructor/courses/<slug>/preview/` | 563px | The title, status badge, **Edit Course** and **Manage Content** share one non-wrapping row. |
+| `/exams/take/<id>/?attempt=<id>` | 410px | The sticky header pushes **Submit Exam** off-screen. |
+| `/instructor/lessons/<id>/edit/` | 404px | **Save & Publish** is pushed off-screen. |
+| `/exams/` (instructor) | 387px | The title, **Create Exam** and the status filter share one row. |
+
+All five use the same pattern: `flex items-center justify-between` with no wrapping or stacking at small widths. The same course card's **Students** button linked to `/instructor/courses/<slug>/students/`, which has no route, so it returned 404 at every width.
+
+**Impact:** Instructors on a phone had to scroll sideways to reach the main actions on their course list, preview and editor. A student taking an exam on a phone saw a header with its Submit button cut off.
+
+<a id="fe-08"></a>
+### FE-08: The lesson editor's stylesheet never renders — ✅ RESOLVED 2026-11-24
+
+**Resolution:** The styles moved to `{% block extra_head %}`. No other template uses a block that `base.html` lacks. The toolbar buttons also got a 40px minimum size for touch. The phone-width browser test checks that the toolbar's styles are applied.
+
+**Evidence (✔ verified):** `templates/instructor/lesson-editor.html` put its `<style>` in `{% block extra_css %}`, but `base.html` only defines `extra_head`. Django drops content in a block the parent never renders. So the formatting toolbar, editor area and quiz-builder styles were missing at every width. The toolbar showed as bare text, with the Italic button 4px wide.
+
+<a id="fe-11"></a>
+### FE-11: Course content and quiz editor rows clip on phones — ✅ RESOLVED 2026-11-24
+
+**Resolution:** On phones, section headers on the course content page stack the title above the lesson count and buttons, and lesson rows put **Edit Content** and **Delete** under the title. Answer inputs in the quiz editor and the exam builder's question form have `min-width: 0`, so they shrink instead of pushing the remove button out. The phone-width browser test loads a draft course's content page and the quiz editor at 320px.
+
+**Evidence (✔ verified in Chromium at 320px):**
+- `/instructor/courses/<slug>/content/`: section titles were squeezed into a narrow column beside the lesson count, **+ Add Lesson** and delete. The section card's `overflow-hidden` clipped the lesson count and the **Delete** buttons.
+- `/instructor/lessons/<id>/edit/` in quiz mode: each answer row (radio, text input, × button) was 338px wide. A text input in a flex row doesn't shrink below about 20 characters without `min-width: 0`.
+
 ---
 
 ## 7. P3: Low
@@ -2153,6 +2228,25 @@ Move aspirational features to a "Roadmap" section.
 
 **Fix approach:** Add tests for each finding above as it is fixed. Add an E2E journey that starts from an empty database and goes through the UI (see the re-audit run in section 1). Quiet request logging in the test runner. Run `pip-sync` locally.
 
+<a id="fe-09"></a>
+### FE-09: Small-phone overflow, small tap targets and iOS input zoom — ✅ RESOLVED 2026-11-24
+
+**Resolution:**
+- Tab bars stay on one line and scroll inside their own row.
+- Profile headers stack the avatar above the name, and long names, emails and usernames break.
+- The exam builder's button rows wrap.
+- The navbar **Sign In**, phone-menu button and footer links have larger tap areas.
+- Form fields reached on phones use 16px text: the phone-menu search box and fields on the console's custom pages.
+
+**Evidence (✔ verified in Chromium at 320px):**
+- `/my-courses/` (352px) and `/enrollments/` (345px): the three tabs don't fit, so **Completed** is cut off.
+- `/profile/` (329px) and `/instructor/profile/` (352px): the avatar and name row doesn't stack, and a long name or email overflows.
+- `/dashboard/`: "Welcome back, *username*" doesn't break a long username (324px).
+- `/exams/create/`: the right-aligned Cancel / Save as Draft / Publish row pushes **Cancel** 28px past the left edge.
+- At 375px, the navbar **Sign In** link is 17px tall. The phone-menu search box uses 14px text, which makes iOS Safari zoom the page on focus. The console's refund and payout decision pages have the same zoom problem.
+
+**Left as is:** checkboxes and radios stay 16–20px; their labels are clickable. The staff console's header links come from Django's stock admin.
+
 ---
 
 ## 8. What is in good shape
@@ -2180,6 +2274,7 @@ Move aspirational features to a "Roadmap" section.
 | **4: Hardening** *(re-scoped by [D-03](#d-03): no deployment)* | Observable and hardened for local use | ~~OPS-01~~ ✅, ~~OPS-02~~ ✅, ~~OPS-04 (local items)~~ ✅, ~~SEC-06~~ ✅, ~~SEC-08~~ ✅, ~~PERF-01~~ ✅, ~~CRT-01~~ ✅, ~~CRS-02~~ ✅, ~~CRS-03~~ ✅, ~~CRS-04~~ ✅, ~~CRS-05~~ ✅, ~~ACC-01~~ ✅, ~~STU-01~~ ✅, ~~STU-02~~ ✅, ~~EXM-02~~ ✅, ~~ASM-03~~ ✅, ~~INS-01~~ ✅ | 1 week |
 | **5: Hygiene** | Clean repo and truthful docs | ~~REPO-01–03~~ ✅, ~~DOC-01–02~~ ✅, ~~DEP-01~~ ✅, ~~ASM-04~~ ✅ | done |
 | **6: Re-audit follow-up (2026-11-22)** | Close what the second pass and the live E2E run found | ~~FE-03~~ ✅, ~~LRN-04~~ ✅, ~~SEC-10~~ ✅, ~~EXM-04~~ ✅. ~~ERR-02~~ ✅, ~~STU-03~~ ✅, ~~CRS-08~~ ✅, ~~CRS-09~~ ✅, ~~PAY-10~~ ✅, ~~ADM-02~~ ✅, ~~FE-04~~ ✅, ~~ACC-02~~ ✅, ~~ACC-03~~ ✅, ~~LRN-05~~ ✅, ~~RPT-01~~ ✅. ~~REPO-04~~ ✅, ~~DOC-03~~ ✅, ~~FE-05~~ ✅, ~~FE-06~~ ✅, ~~API-05~~ ✅, ~~TEST-03~~ ✅ | Complete |
+| **7: Mobile responsiveness (2026-11-24)** | Every page fits a phone screen | ~~FE-10~~ ✅, ~~FE-07~~ ✅, ~~FE-08~~ ✅, ~~FE-11~~ ✅, ~~FE-09~~ ✅ | Complete |
 
 ### Definition of done for release
 

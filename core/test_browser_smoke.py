@@ -849,6 +849,69 @@ class BrowserSmokeTests(BrowserTestCase):
         self.assert_no_errors(page, "course content page")
 
 
+    def test_pages_fit_a_small_phone_screen(self):
+        """FE-07/FE-10: pages fit a 320px screen, even with long titles and names."""
+        from accounts.models import Profile
+        from enrollments.models import Enrollment
+        from exams.models import Exam, QuestionBank
+        from exams.services import start_exam_attempt
+
+        long_title = "Complete Professional Bootcamp: Full-Stack Web Development with Django and React"
+        self.course.title = long_title
+        self.course.save(update_fields=["title"])
+        Profile.objects.filter(user=self.student).update(full_name="Samantha Alexandria Montgomery-Whitfield")
+        Enrollment.objects.create(user=self.student, course=self.course)
+        question = QuestionBank.objects.create(
+            course=self.course, question_text="Which of these options best describes the concept?", marks=1,
+            options=[{"text": "A fairly long answer choice", "is_correct": True},
+                     {"text": "Another fairly long answer choice", "is_correct": False}],
+        )
+        exam = Exam.objects.create(course=self.course, title="Final certification exam", duration_minutes=30,
+                                   total_marks=1, passing_marks=1, status="published", created_by=self.instructor)
+        exam.questions.set([question])
+        attempt = start_exam_attempt(exam, self.student)
+
+        def assert_fits(page, path):
+            with self.subTest(path=path):
+                page.errors.clear()
+                self.visit(page, path)
+                widths = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
+                self.assertLessEqual(widths[0], widths[1], f"{path} scrolls sideways on a 320px screen")
+                self.assert_no_errors(page, path)
+
+        student = self.new_page()
+        student.set_viewport_size({"width": 320, "height": 640})
+        self.login(student, self.student)
+        for path in ["/", "/dashboard/", "/my-courses/", "/enrollments/", "/profile/", "/exams/",
+                     f"/learn/{self.course.slug}/"]:
+            assert_fits(student, path)
+        # FE-10: the lesson itself gets the screen width; the outline is a collapsible list above it.
+        student.get_by_text("Body one of the course.").wait_for()
+        self.assertGreater(student.locator("#lesson-content").bounding_box()["width"], 250)
+        expect(student.locator("#course-outline")).to_be_hidden()
+        student.locator("#outline-toggle").click()
+        expect(student.get_by_role("button", name=self.lesson1.title)).to_be_visible()
+        assert_fits(student, f"/exams/take/{exam.pk}/?attempt={attempt.pk}")
+        student.evaluate("window.onbeforeunload = null")
+
+        instructor = self.new_page()
+        instructor.set_viewport_size({"width": 320, "height": 640})
+        self.login(instructor, self.instructor)
+        for path in ["/instructor/courses/", f"/instructor/courses/{self.course.slug}/preview/",
+                     f"/instructor/courses/{self.draft.slug}/content/",
+                     f"/instructor/lessons/{self.draft_lesson.pk}/edit/", "/instructor/profile/",
+                     "/exams/", "/exams/create/"]:
+            assert_fits(instructor, path)
+        self.visit(instructor, f"/instructor/lessons/{self.draft_lesson.pk}/edit/")
+        instructor.select_option("#lesson-type", "quiz")
+        expect(instructor.locator(".quiz-option").first).to_be_visible()
+        widths = instructor.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
+        self.assertLessEqual(widths[0], widths[1], "quiz editor scrolls sideways on a 320px screen")
+        # The lesson editor's own stylesheet loads (it was once in a block base.html never renders).
+        self.visit(instructor, f"/instructor/lessons/{self.lesson1.pk}/edit/")
+        self.assertEqual(instructor.locator(".editor-toolbar").evaluate("el => getComputedStyle(el).display"), "flex")
+
+
 class BrowserJourneyTests(BrowserTestCase):
     def register_user(self, page, address):
         from accounts.models import User

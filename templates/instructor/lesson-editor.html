@@ -2,7 +2,7 @@
 
 {% block title %}Edit Lesson - SkillStudio{% endblock %}
 
-{% block extra_css %}
+{% block extra_head %}
 <style>
     .editor-toolbar {
         background: rgba(30, 41, 59, 0.5);
@@ -21,6 +21,8 @@
         border-radius: 0.375rem;
         cursor: pointer;
         transition: all 0.2s;
+        min-width: 2.5rem;
+        min-height: 2.5rem;
     }
     .editor-toolbar button:hover {
         background: rgba(59, 130, 246, 0.1);
@@ -68,15 +70,15 @@
 <div class="max-w-6xl mx-auto px-4 py-8">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between mb-4">
-            <div>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div class="min-w-0">
                 <a href="#" data-click="goBack" class="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
                     ← Back to Course Content
                 </a>
-                <h1 class="text-3xl font-bold" id="lesson-title-display">Edit Lesson</h1>
+                <h1 class="text-3xl font-bold break-words" id="lesson-title-display">Edit Lesson</h1>
                 <p class="text-gray-400 mt-2" id="lesson-meta">Loading...</p>
             </div>
-            <div class="flex items-center space-x-3">
+            <div class="flex flex-wrap items-center gap-3 sm:shrink-0">
                 <button data-click="saveDraft" class="px-6 py-3 bg-dark-surface border border-dark-border hover:bg-dark-hover text-white rounded-lg font-semibold transition-colors">
                     Save Draft
                 </button>
@@ -472,7 +474,7 @@ function renderQuestionOptions(options) {
         <div class="quiz-option ${escapeHtml(opt.is_correct ? 'correct' : '')}" data-option-index="${escapeHtml(index)}">
             <input type="radio" name="correct-${escapeHtml(Date.now())}" ${escapeHtml(opt.is_correct ? 'checked' : '')} 
                 data-change="markCorrect" class="w-4 h-4 text-green-600">
-            <input type="text" maxlength="255" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none"
+            <input type="text" maxlength="255" class="option-text flex-1 min-w-0 px-3 py-2 bg-transparent border-0 focus:outline-none"
                 value="${escapeHtml(opt.text || '')}" placeholder="Option ${escapeHtml(String.fromCharCode(65 + index))}">
             <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,7 +494,7 @@ function addOption(questionId) {
     const optionHtml = `
         <div class="quiz-option" data-option-index="${escapeHtml(optionCount)}">
             <input type="radio" name="${escapeHtml(radioName)}" data-change="markCorrect" class="w-4 h-4 text-green-600">
-            <input type="text" maxlength="255" class="option-text flex-1 px-3 py-2 bg-transparent border-0 focus:outline-none"
+            <input type="text" maxlength="255" class="option-text flex-1 min-w-0 px-3 py-2 bg-transparent border-0 focus:outline-none"
                 placeholder="Option ${escapeHtml(String.fromCharCode(65 + optionCount))}">
             <button data-click="removeOption" class="text-red-400 hover:text-red-300">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

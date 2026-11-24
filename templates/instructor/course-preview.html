@@ -16,15 +16,15 @@
 
 <div id="course-preview" class="hidden space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
             <a href="/instructor/courses/" class="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
                 ← Back to My Courses
             </a>
-            <h1 id="course-title" class="text-3xl font-bold">Course Preview</h1>
+            <h1 id="course-title" class="text-3xl font-bold break-words">Course Preview</h1>
             <p class="text-gray-400 mt-2">Preview how your course appears to students</p>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center gap-3 lg:shrink-0">
             <span id="course-status-badge" class="px-4 py-2 text-sm rounded-lg font-semibold"></span>
             <a id="edit-course-btn" href="#" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                 Edit Course

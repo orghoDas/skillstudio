@@ -50,6 +50,11 @@ body {
     }
 }
 
+/* Long URLs and unbroken words wrap instead of widening the lesson on phones. */
+.lesson-article {
+    overflow-wrap: anywhere;
+}
+
 .lesson-article h1 {
     font-size: 1.75rem;
     font-weight: 700;

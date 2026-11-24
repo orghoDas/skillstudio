@@ -263,13 +263,13 @@ function renderSection(section, index) {
     
     return `
         <div class="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
-            <div class="p-6 border-b border-dark-border">
-                <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                        <h3 class="text-xl font-semibold mb-1">Section ${escapeHtml(index + 1)}: ${escapeHtml(section.title)}</h3>
+            <div class="p-4 sm:p-6 border-b border-dark-border">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-xl font-semibold mb-1 break-words">Section ${escapeHtml(index + 1)}: ${escapeHtml(section.title)}</h3>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="text-sm text-gray-400">${escapeHtml(lessons.length)} lessons</span>
+                    <div class="flex flex-wrap items-center gap-2 sm:shrink-0">
+                        <span class="text-sm text-gray-400 whitespace-nowrap">${escapeHtml(lessons.length)} lessons</span>
                         ${canEditCourseContent() ? `<button data-click="openAddLesson" data-value-one="${escapeHtml(section.id)}" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                             + Add Lesson
                         </button>
@@ -303,23 +303,23 @@ function renderLesson(lesson, index) {
     };
 
     return `
-        <div class="p-4 hover:bg-dark-hover transition-colors flex items-center justify-between">
-            <div class="flex items-center space-x-4 flex-1">
+        <div class="p-4 hover:bg-dark-hover transition-colors flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center space-x-4 flex-1 min-w-0">
                 <div class="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         ${typeIcons[lesson.content_type] || typeIcons.article /* trusted constant SVG */}
                     </svg>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <h4 class="font-medium mb-1">${escapeHtml(lesson.title)}</h4>
-                    <div class="flex items-center space-x-4 text-xs text-gray-400">
+                    <h4 class="font-medium mb-1 break-words">${escapeHtml(lesson.title)}</h4>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
                         <span class="capitalize">${escapeHtml(lesson.content_type)}</span>
                         ${lesson.duration ? `<span>${escapeHtml(lesson.duration)} min</span>` : ''}
                         ${lesson.is_free_preview ? '<span class="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">Free Preview</span>' : ''}
                     </div>
                 </div>
             </div>
-            ${canEditCourseContent() ? `<div class="flex items-center space-x-2">
+            ${canEditCourseContent() ? `<div class="flex items-center gap-2 pl-14 sm:pl-0 sm:shrink-0">
                 <a href="/instructor/lessons/${escapeHtml(lesson.id)}/edit/" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-semibold transition-colors">
                     Edit Content
                 </a>

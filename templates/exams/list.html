@@ -11,12 +11,12 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h1 class="text-3xl font-bold mb-2">Exams</h1>
             <p class="text-gray-400">Take final exams to test your knowledge</p>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center gap-3">
             <a href="/exams/create/" id="create-exam-btn" class="hidden px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
                 <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -178,12 +178,12 @@ function createExamCard(exam) {
             </div>
         </div>
         
-        <div class="flex items-center justify-between pt-4 border-t border-dark-border">
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-dark-border">
             <div class="text-sm text-gray-400">
                 <div>Starts: ${escapeHtml(exam.start_datetime ? startDate.toLocaleString() : 'Any time')}</div>
                 <div>Ends: ${escapeHtml(exam.end_datetime ? endDate.toLocaleString() : 'No closing date')}</div>
             </div>
-            <div class="flex space-x-2">
+            <div class="flex flex-wrap gap-2">
                 ${hasResults ? `
                     <button data-click="viewResults" data-value-one="${escapeHtml(exam.id)}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors">
                         View Results
